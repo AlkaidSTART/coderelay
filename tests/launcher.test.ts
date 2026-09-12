@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
+import type { ChildProcess } from "node:child_process";
 import { createCliAdapters } from "../src/agents/cli-adapters";
 import {
   buildPromptArgs,
   CliProcessError,
   createSpawnOptions,
+  launchInteractive,
   runOnce,
 } from "../src/runtime/launcher";
 
@@ -41,6 +43,25 @@ describe("CLI launcher", () => {
       shell: true,
       windowsHide: true,
     });
+  });
+
+  test("launches an adapter with the scanned executable path", () => {
+    const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
+    let launched: { file: string; args: readonly string[] } | undefined;
+
+    launchInteractive(adapters.codex, {
+      binPath: "/opt/bin/codex",
+      extraArgs: ["--json"],
+      dependencies: {
+        platform: "linux",
+        spawn: (file, args) => {
+          launched = { file, args };
+          return {} as ChildProcess;
+        },
+      },
+    });
+
+    expect(launched).toEqual({ file: "/opt/bin/codex", args: ["--json"] });
   });
 
   test("runOnce returns stdout and stderr on success with documented limits", async () => {

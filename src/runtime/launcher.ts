@@ -15,6 +15,7 @@ export interface LaunchProcessOptions {
 }
 
 export interface LaunchInteractiveOptions extends LaunchProcessOptions {
+  readonly binPath?: string;
   readonly extraArgs?: readonly string[];
   readonly dependencies?: Partial<LauncherDependencies>;
 }
@@ -113,7 +114,7 @@ export function launchInteractive(
   const dependencies = resolveDependencies(options.dependencies);
   const bin = typeof adapterOrPath === "string"
     ? adapterOrPath
-    : adapterOrPath.bin;
+    : options.binPath ?? adapterOrPath.bin;
   const baseArgs = typeof adapterOrPath === "string"
     ? []
     : adapterOrPath.interactiveArgs;
