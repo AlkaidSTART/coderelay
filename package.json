@@ -4,9 +4,28 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.3.0",
+    "ink-testing-library": "^4.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "commander": "^15.0.0",
+    "ink": "^7.1.1",
+    "react": "^19.3.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.2"
+  },
+  "scripts": {
+    "dev": "bun src/cli.tsx",
+    "start": "bun src/cli.tsx",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "bin": {
+    "coderelay": "./src/cli.tsx"
   }
 }

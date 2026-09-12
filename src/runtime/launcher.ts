@@ -1,0 +1,252 @@
+import { execFile, spawn } from "node:child_process";
+
+import type {
+  CliAdapter,
+  ExecFileRequestOptions,
+  ExecFileResult,
+  ExecFileRunner,
+  SpawnRequestOptions,
+  SpawnRunner,
+} from "../models/cli";
+
+export interface LaunchProcessOptions {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+export interface LaunchInteractiveOptions extends LaunchProcessOptions {
+  readonly binPath?: string;
+  readonly extraArgs?: readonly string[];
+  readonly dependencies?: Partial<LauncherDependencies>;
+}
+
+export interface LaunchPromptOptions extends LaunchProcessOptions {
+  readonly binPath?: string;
+  readonly extraArgs?: readonly string[];
+  readonly dependencies?: Partial<LauncherDependencies>;
+}
+
+export interface RunOnceOptions extends LaunchProcessOptions {
+  readonly timeoutMs?: number;
+  readonly maxBuffer?: number;
+  readonly dependencies?: Partial<LauncherDependencies>;
+}
+
+export interface RunOnceResult {
+  readonly ok: true;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly code: 0;
+  readonly signal: null;
+}
+
+export interface LauncherDependencies {
+  readonly spawn: SpawnRunner;
+  readonly execFile: ExecFileRunner;
+  readonly platform: NodeJS.Platform;
+}
+
+const execFileAsync: ExecFileRunner = (file, args, options = {}) =>
+  new Promise<ExecFileResult>((resolve, reject) => {
+    execFile(
+      file,
+      [...args],
+      { ...options, encoding: "utf8" },
+      (error, stdout, stderr) => {
+        const stdoutText = valueAsString(stdout);
+        const stderrText = valueAsString(stderr);
+
+        if (error) {
+          reject(
+            Object.assign(error, {
+              stdout: stdoutText,
+              stderr: stderrText,
+            }),
+          );
+          return;
+        }
+
+        resolve({ stdout: stdoutText, stderr: stderrText });
+      },
+    );
+  });
+
+const defaultSpawn: SpawnRunner = (file, args, options = {}) =>
+  spawn(file, [...args], options);
+
+const DEFAULT_DEPENDENCIES: LauncherDependencies = {
+  spawn: defaultSpawn,
+  execFile: execFileAsync,
+  platform: process.platform,
+};
+
+function resolveDependencies(
+  overrides?: Partial<LauncherDependencies>,
+): LauncherDependencies {
+  return { ...DEFAULT_DEPENDENCIES, ...overrides };
+}
+
+export function createSpawnOptions(
+  options: LaunchProcessOptions,
+  platform: NodeJS.Platform,
+): SpawnRequestOptions {
+  return {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    stdio: "inherit",
+    shell: platform === "win32",
+    windowsHide: platform === "win32",
+  };
+}
+
+export function buildPromptArgs(
+  adapter: CliAdapter,
+  prompt: string,
+  extraArgs: readonly string[] = [],
+): string[] {
+  return [...adapter.promptArgs(prompt), ...extraArgs];
+}
+
+export function launchInteractive(
+  adapterOrPath: CliAdapter | string,
+  options: LaunchInteractiveOptions = {},
+): ReturnType<SpawnRunner> {
+  const dependencies = resolveDependencies(options.dependencies);
+  const bin = typeof adapterOrPath === "string"
+    ? adapterOrPath
+    : options.binPath ?? adapterOrPath.bin;
+  const baseArgs = typeof adapterOrPath === "string"
+    ? []
+    : adapterOrPath.interactiveArgs;
+
+  return dependencies.spawn(
+    bin,
+    [...baseArgs, ...(options.extraArgs ?? [])],
+    createSpawnOptions(options, dependencies.platform),
+  );
+}
+
+export function launchWithPrompt(
+  adapter: CliAdapter,
+  prompt: string,
+  options: LaunchPromptOptions = {},
+): ReturnType<SpawnRunner> {
+  const dependencies = resolveDependencies(options.dependencies);
+  const bin = options.binPath ?? adapter.bin;
+
+  return dependencies.spawn(
+    bin,
+    buildPromptArgs(adapter, prompt, options.extraArgs),
+    createSpawnOptions(options, dependencies.platform),
+  );
+}
+
+function valueAsString(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value == null) {
+    return "";
+  }
+  return String(value);
+}
+
+export interface CliProcessErrorDetails {
+  readonly binPath: string;
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timedOut: boolean;
+}
+
+export class CliProcessError extends Error {
+  readonly binPath: string;
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timedOut: boolean;
+
+  constructor(
+    message: string,
+    details: CliProcessErrorDetails,
+    cause: unknown,
+  ) {
+    super(message, { cause });
+    this.name = "CliProcessError";
+    this.binPath = details.binPath;
+    this.code = details.code;
+    this.signal = details.signal;
+    this.stdout = details.stdout;
+    this.stderr = details.stderr;
+    this.timedOut = details.timedOut;
+  }
+}
+
+function processError(
+  binPath: string,
+  error: unknown,
+  timeoutMs: number,
+): CliProcessError {
+  const record =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)
+      : {};
+  const rawCode = record.code;
+  const code = typeof rawCode === "number" ? rawCode : null;
+  const signal =
+    typeof record.signal === "string"
+      ? (record.signal as NodeJS.Signals)
+      : null;
+  const timedOut = rawCode === "ETIMEDOUT";
+  const stdout = valueAsString(record.stdout);
+  const stderr = valueAsString(record.stderr);
+  const causeMessage = error instanceof Error ? error.message : String(error);
+  const message = timedOut
+    ? `CLI command timed out after ${timeoutMs}ms: ${binPath}`
+    : `CLI command failed${code === null ? "" : ` with exit code ${code}`}: ${causeMessage}`;
+
+  return new CliProcessError(
+    message,
+    {
+      binPath,
+      code,
+      signal,
+      stdout,
+      stderr,
+      timedOut,
+    },
+    error,
+  );
+}
+
+/** Execute a CLI once, returning output only for a successful zero exit. */
+export async function runOnce(
+  binPath: string,
+  args: readonly string[],
+  options: RunOnceOptions = {},
+): Promise<RunOnceResult> {
+  const dependencies = resolveDependencies(options.dependencies);
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const maxBuffer = options.maxBuffer ?? 10 * 1024 * 1024;
+  const execOptions: ExecFileRequestOptions = {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    timeout: timeoutMs,
+    maxBuffer,
+    windowsHide: true,
+    shell: dependencies.platform === "win32",
+  };
+
+  try {
+    const { stdout, stderr } = await dependencies.execFile(
+      binPath,
+      args,
+      execOptions,
+    );
+    return { ok: true, stdout, stderr, code: 0, signal: null };
+  } catch (error) {
+    throw processError(binPath, error, timeoutMs);
+  }
+}
