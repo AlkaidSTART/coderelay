@@ -1,5 +1,3 @@
-import { once } from "node:events";
-
 import { render, type Instance } from "ink";
 
 import { getCliAdapter } from "./agents/cli-adapters";
@@ -36,6 +34,28 @@ function tree() {
   );
 }
 
+function waitForChildExit(
+  child: ReturnType<typeof launchInteractive>,
+): Promise<[number | null, NodeJS.Signals | null]> {
+  return new Promise((resolve, reject) => {
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      cleanup();
+      resolve([code, signal]);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      child.off("exit", onExit);
+      child.off("error", onError);
+    };
+
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
 function mount(): void {
   app = render(tree(), { exitOnCtrlC: false });
 }
@@ -58,10 +78,7 @@ async function waitForSession(
           cwd: process.cwd(),
         });
 
-    const [code, signal] = (await once(child, "exit")) as [
-      number | null,
-      NodeJS.Signals | null,
-    ];
+    const [code, signal] = await waitForChildExit(child);
 
     return {
       id: request.id,
