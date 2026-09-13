@@ -69,11 +69,14 @@ export type ExecFileRunner = (
   options?: ExecFileRequestOptions,
 ) => Promise<ExecFileResult>;
 
+/** Per-fd stdio setting accepted by the Node `spawn` runner. */
+export type SpawnStdio = "inherit" | "pipe" | "ignore";
+
 /** Options accepted by the Node `spawn` runner used by the launcher. */
 export interface SpawnRequestOptions {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
-  readonly stdio?: "inherit";
+  readonly stdio?: SpawnStdio | [SpawnStdio, SpawnStdio, SpawnStdio];
   readonly shell?: boolean;
   readonly windowsHide?: boolean;
 }

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 
 import type { ChildProcess } from "node:child_process";
 import { createCliAdapters } from "../src/agents/cli-adapters";
@@ -7,8 +9,16 @@ import {
   CliProcessError,
   createSpawnOptions,
   launchInteractive,
+  launchWithPromptCaptured,
   runOnce,
 } from "../src/runtime/launcher";
+
+function fakeChild(): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  return child;
+}
 
 describe("CLI launcher", () => {
   test("builds prompt args from adapters and appends extra args", () => {
@@ -62,6 +72,80 @@ describe("CLI launcher", () => {
     });
 
     expect(launched).toEqual({ file: "/opt/bin/codex", args: ["--json"] });
+  });
+
+  test("launchWithPromptCaptured pipes output and resolves on close", async () => {
+    const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
+    const child = fakeChild();
+    let spawned:
+      | { file: string; args: readonly string[]; stdio: unknown }
+      | undefined;
+
+    const handle = launchWithPromptCaptured(adapters.claude, "do work", {
+      binPath: "/opt/bin/claude",
+      dependencies: {
+        platform: "linux",
+        spawn: (file, args, options) => {
+          spawned = { file, args, stdio: options?.stdio };
+          return child;
+        },
+      },
+    });
+
+    child.stdout?.emit("data", Buffer.from("partial "));
+    child.stdout?.emit("data", "result\n");
+    child.stderr?.emit("data", "warn\n");
+    child.emit("close", 0, null);
+
+    const result = await handle.done;
+
+    expect(spawned?.file).toBe("/opt/bin/claude");
+    expect(spawned?.args).toEqual(["-p", "do work"]);
+    expect(spawned?.stdio).toEqual(["ignore", "pipe", "pipe"]);
+    expect(result).toEqual({
+      code: 0,
+      signal: null,
+      stdout: "partial result\n",
+      stderr: "warn\n",
+    });
+  });
+
+  test("launchWithPromptCaptured resolves a null code on spawn error", async () => {
+    const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
+    const child = fakeChild();
+
+    const handle = launchWithPromptCaptured(adapters.codex, "do work", {
+      dependencies: {
+        platform: "linux",
+        spawn: () => child,
+      },
+    });
+
+    child.emit("error", new Error("spawn ENOENT"));
+
+    const result = await handle.done;
+
+    expect(result).toMatchObject({ code: null, signal: null });
+  });
+
+  test("launchWithPromptCaptured keeps only the output tail", async () => {
+    const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
+    const child = fakeChild();
+
+    const handle = launchWithPromptCaptured(adapters.codex, "do work", {
+      maxOutputChars: 4,
+      dependencies: {
+        platform: "linux",
+        spawn: () => child,
+      },
+    });
+
+    child.stdout?.emit("data", "abcdefgh");
+    child.emit("close", 0, null);
+
+    const result = await handle.done;
+
+    expect(result.stdout).toBe("efgh");
   });
 
   test("runOnce returns stdout and stderr on success with documented limits", async () => {

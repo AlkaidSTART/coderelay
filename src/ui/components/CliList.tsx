@@ -49,48 +49,62 @@ function compactVersion(version: string | null): string {
   return match ? match[0] : version;
 }
 
-function statusPath(cli: DetectedCli): string {
-  return cli.available ? abbreviatePath(cli.path) : "未检测到";
+function versionLabel(version: string | null): string {
+  const compact = compactVersion(version);
+  return compact === "—" ? "版本未知" : `v${compact}`;
+}
+
+function detailLine(cli: DetectedCli): string {
+  if (!cli.available) {
+    return `PATH 里找不到 ${cli.bin}`;
+  }
+
+  return `${versionLabel(cli.version)}  ·  ${abbreviatePath(cli.path)}`;
 }
 
 export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
   const ordered = CLI_IDS.map((id) => clis.find((cli) => cli.id === id)).filter(
     (cli): cli is DetectedCli => Boolean(cli),
   );
+  const selected = ordered[selectedIndex];
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      {ordered.map((cli, index) => {
-        const selected = index === selectedIndex;
-        const indicator = cli.available ? "●" : "○";
-        const indicatorColor = cli.available ? theme.ok : theme.muted;
-        const nameColor = selected ? theme.text : theme.muted;
-        const version = compactVersion(cli.version);
+      <Box marginBottom={1}>
+        <Text bold color={theme.text}>
+          这一棒交给谁？
+        </Text>
+      </Box>
 
-        return (
-          <Box key={cli.id} flexDirection="row">
-            <Text color={selected ? theme.accent : theme.muted}>
-              {selected ? "❯" : " "}
-            </Text>
-            <Text> </Text>
-            <Text color={indicatorColor}>{indicator}</Text>
-            <Text> </Text>
-            <Box width={14}>
-              <Text bold={selected} color={nameColor} wrap="truncate-end">
-                {cliDisplayName(cli.id)}
+      <Box flexDirection="row" flexWrap="wrap">
+        {ordered.map((cli, index) => {
+          const active = index === selectedIndex;
+          return (
+            <Box key={cli.id} flexDirection="row">
+              {index > 0 ? <Text>{"  "}</Text> : null}
+              <Text
+                bold={active}
+                backgroundColor={active ? theme.pinkTint : undefined}
+                color={active ? theme.pinkInk : theme.muted}
+              >
+                {" "}
+                <Text color={cli.available ? theme.ok : theme.alert}>
+                  {cli.available ? "●" : "○"}
+                </Text>
+                {` ${cliDisplayName(cli.id)} `}
               </Text>
             </Box>
-            <Box width={12} marginRight={1}>
-              <Text color={selected ? theme.text : theme.dim} wrap="truncate-end">
-                {version}
-              </Text>
-            </Box>
-            <Text color={theme.dim} wrap="truncate-end">
-              {statusPath(cli)}
-            </Text>
-          </Box>
-        );
-      })}
+          );
+        })}
+      </Box>
+
+      {selected ? (
+        <Box marginTop={1}>
+          <Text color={theme.dim} wrap="truncate-end">
+            {detailLine(selected)}
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
