@@ -39,6 +39,16 @@ function abbreviatePath(value: string, maxLength = 46): string {
   return `${withHome.slice(0, headLength)}…${withHome.slice(-tailLength)}`;
 }
 
+/** Reduce raw `--version` output to the bare version token when one is present. */
+function compactVersion(version: string | null): string {
+  if (!version) {
+    return "—";
+  }
+
+  const match = version.match(/\d+(?:\.\d+)+/);
+  return match ? match[0] : version;
+}
+
 function statusPath(cli: DetectedCli): string {
   return cli.available ? abbreviatePath(cli.path) : "未检测到";
 }
@@ -55,7 +65,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
         const indicator = cli.available ? "●" : "○";
         const indicatorColor = cli.available ? theme.ok : theme.muted;
         const nameColor = selected ? theme.text : theme.muted;
-        const version = cli.version ?? "—";
+        const version = compactVersion(cli.version);
 
         return (
           <Box key={cli.id} flexDirection="row">
@@ -70,7 +80,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
                 {cliDisplayName(cli.id)}
               </Text>
             </Box>
-            <Box width={20}>
+            <Box width={12} marginRight={1}>
               <Text color={selected ? theme.text : theme.dim} wrap="truncate-end">
                 {version}
               </Text>
