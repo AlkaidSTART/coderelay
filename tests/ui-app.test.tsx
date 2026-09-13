@@ -167,4 +167,79 @@ describe("App UI", () => {
     expect(instance.exits()).toBe(1);
     instance.cleanup();
   });
+
+  test("running prop shows the loading view and ctrl+c aborts", async () => {
+    let aborts = 0;
+    const instance = render(
+      <App
+        clis={CLIS}
+        running={{ id: "claude", prompt: "write tests", startedAt: Date.now() }}
+        onLaunch={() => {}}
+        onAbort={() => {
+          aborts += 1;
+        }}
+        onExit={() => {}}
+      />,
+    );
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("正在把任务交给");
+    expect(frame).toContain("Claude Code");
+    expect(frame).toContain("write tests");
+    expect(frame).toContain("▸ 执行");
+    expect(frame).toContain("中止任务");
+
+    instance.stdin.write("\u0003");
+    await nextTick();
+    expect(aborts).toBe(1);
+    instance.cleanup();
+  });
+
+  test("result screen renders captured CLI output", () => {
+    const instance = render(
+      <App
+        clis={CLIS}
+        session={{
+          id: "codex",
+          code: 0,
+          signal: null,
+          durationMs: 1200,
+          stdout: "hello\nworld\n",
+        }}
+        onLaunch={() => {}}
+        onExit={() => {}}
+      />,
+    );
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("✓ 成功");
+    expect(frame).toContain("输出 · 2 行");
+    expect(frame).toContain("hello");
+    expect(frame).toContain("world");
+    instance.cleanup();
+  });
+
+  test("failed result prefers stderr for the output block", () => {
+    const instance = render(
+      <App
+        clis={CLIS}
+        session={{
+          id: "pi",
+          code: 2,
+          signal: null,
+          durationMs: 300,
+          stdout: "partial",
+          stderr: "bad input",
+        }}
+        onLaunch={() => {}}
+        onExit={() => {}}
+      />,
+    );
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("× 失败");
+    expect(frame).toContain("stderr · 1 行");
+    expect(frame).toContain("bad input");
+    instance.cleanup();
+  });
 });

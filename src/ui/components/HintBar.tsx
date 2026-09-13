@@ -6,6 +6,7 @@ export type HintContext =
   | "scanning"
   | "picker"
   | "composer"
+  | "running"
   | "detail"
   | "result";
 
@@ -31,6 +32,7 @@ const HINTS: Readonly<
     { key: "tab", label: "交互模式" },
     { key: "esc", label: "返回" },
   ],
+  running: [{ key: "ctrl c", label: "中止任务" }],
   detail: [
     { key: "↵ / esc", label: "返回" },
     { key: "q", label: "退出" },
@@ -53,7 +55,7 @@ export function HintBar({ context }: HintBarProps) {
       {HINTS[context].map((hint, index) => (
         <Text key={hint.key}>
           {index > 0 ? <Text color={theme.line}>{"  ·  "}</Text> : null}
-          <Text color={theme.accent}>{hint.key}</Text>
+          <Text bold color={theme.text}>{hint.key}</Text>
           <Text color={theme.muted}> {hint.label}</Text>
         </Text>
       ))}

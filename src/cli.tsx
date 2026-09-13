@@ -1,12 +1,17 @@
 import { render, type Instance } from "ink";
+import type { ChildProcess } from "node:child_process";
 
 import { getCliAdapter } from "./agents/cli-adapters";
 import type { CliId, DetectedCli } from "./models/cli";
-import { launchInteractive, launchWithPrompt } from "./runtime/launcher";
+import {
+  launchInteractive,
+  launchWithPromptCaptured,
+} from "./runtime/launcher";
 import { scanCodingClis } from "./scanner/cli-scanner";
 import {
   App,
   type LaunchRequest,
+  type RunningTask,
   type SessionOutcome,
 } from "./ui/App";
 
@@ -14,6 +19,8 @@ let clis: DetectedCli[] = [];
 let isScanning = true;
 let initialId: CliId | undefined;
 let session: SessionOutcome | null = null;
+let running: RunningTask | null = null;
+let activeChild: ChildProcess | null = null;
 let app: Instance | undefined;
 
 function tree() {
@@ -23,8 +30,12 @@ function tree() {
       isScanning={isScanning}
       initialId={initialId}
       session={session}
+      running={running}
       onLaunch={(request) => {
         void launch(request);
+      }}
+      onAbort={() => {
+        activeChild?.kill("SIGTERM");
       }}
       onExit={() => {
         app?.unmount();
@@ -60,7 +71,11 @@ function mount(): void {
   app = render(tree(), { exitOnCtrlC: false });
 }
 
-async function waitForSession(
+/**
+ * 交互模式必须继承 stdio：Ink 先卸载，把终端完整交给 agent 的 REPL，
+ * 退出后重新挂载。此时拿不到结构化输出，结果屏只有退出状态。
+ */
+async function waitForInteractiveSession(
   request: LaunchRequest,
   detected: DetectedCli,
   adapter: ReturnType<typeof getCliAdapter>,
@@ -68,15 +83,10 @@ async function waitForSession(
   const startedAt = Date.now();
 
   try {
-    const child = request.mode === "prompt"
-      ? launchWithPrompt(adapter, request.prompt, {
-          binPath: detected.path,
-          cwd: process.cwd(),
-        })
-      : launchInteractive(adapter, {
-          binPath: detected.path,
-          cwd: process.cwd(),
-        });
+    const child = launchInteractive(adapter, {
+      binPath: detected.path,
+      cwd: process.cwd(),
+    });
 
     const [code, signal] = await waitForChildExit(child);
 
@@ -106,10 +116,50 @@ async function launch(request: LaunchRequest): Promise<void> {
   }
 
   const adapter = getCliAdapter(request.id);
-  app?.unmount();
-  session = await waitForSession(request, detected, adapter);
   initialId = request.id;
-  mount();
+
+  if (request.mode === "interactive") {
+    app?.unmount();
+    session = await waitForInteractiveSession(request, detected, adapter);
+    running = null;
+    mount();
+    return;
+  }
+
+  // 渲染层模式：UI 保持挂载，先切到加载层，子进程输出被捕获，
+  // 退出后由 result 屏渲染返回结果。ctrl c 通过 onAbort 中止任务。
+  const startedAt = Date.now();
+  running = { id: request.id, prompt: request.prompt, startedAt };
+  app?.rerender(tree());
+
+  try {
+    const handle = launchWithPromptCaptured(adapter, request.prompt, {
+      binPath: detected.path,
+      cwd: process.cwd(),
+    });
+    activeChild = handle.child;
+    const result = await handle.done;
+    session = {
+      id: request.id,
+      code: result.code,
+      signal: result.signal,
+      durationMs: Date.now() - startedAt,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  } catch {
+    session = {
+      id: request.id,
+      code: null,
+      signal: null,
+      durationMs: Date.now() - startedAt,
+    };
+  } finally {
+    activeChild = null;
+    running = null;
+  }
+
+  app?.rerender(tree());
 }
 
 mount();

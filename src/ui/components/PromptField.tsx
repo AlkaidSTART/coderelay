@@ -10,6 +10,10 @@ export interface PromptFieldProps {
   readonly isFocused: boolean;
 }
 
+/**
+ * 唯一一处圆角：输入框是页面上唯一真正“可以被写”的东西，
+ * 圆角让它看起来像一块能落笔的白板，而不是又一条列表行。
+ */
 export function PromptField({
   value,
   onChange,
@@ -17,15 +21,16 @@ export function PromptField({
   isFocused,
 }: PromptFieldProps) {
   return (
-    <Box paddingX={2}>
+    <Box flexDirection="column" paddingX={2}>
       <Box
-        width="100%"
         flexDirection="row"
         paddingX={1}
         paddingY={1}
-        backgroundColor={isFocused ? theme.panelActive : theme.panel}
+        backgroundColor={theme.panel}
+        borderStyle="round"
+        borderColor={isFocused ? theme.accent : theme.edge}
       >
-        <Text bold color={isFocused ? theme.accent : theme.dim}>
+        <Text bold={isFocused} color={isFocused ? theme.accent : theme.dim}>
           ❯{" "}
         </Text>
         <TextInput

@@ -86,16 +86,12 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
             flexDirection="column"
             marginBottom={index === ordered.length - 1 ? 0 : 1}
           >
-            <Box
-              width="100%"
-              flexDirection="row"
-              backgroundColor={selected ? theme.panelActive : undefined}
-            >
-              <Text color={selected ? theme.accent : theme.line}>
+            <Box flexDirection="row">
+              <Text bold={selected} color={selected ? theme.accent : theme.line}>
                 {selected ? "▌" : "│"}
               </Text>
               <Text> </Text>
-              <Text color={selected ? theme.text : theme.dim}>
+              <Text bold={selected} color={selected ? theme.text : theme.dim}>
                 {String(index + 1).padStart(2, "0")}
               </Text>
               <Text>{"  "}</Text>
@@ -109,7 +105,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
                 </Text>
               </Box>
               <Box flexGrow={1} />
-              <Text color={cli.available ? theme.ok : theme.muted}>
+              <Text color={cli.available ? theme.ok : theme.alert}>
                 {indicator}
               </Text>
               <Text color={selected ? theme.text : theme.muted}>
@@ -117,7 +113,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
                 {status}
               </Text>
             </Box>
-            <Box width="100%" paddingLeft={7}>
+            <Box paddingLeft={7}>
               <Text color={theme.dim} wrap="truncate-end">
                 {detailLine(cli)}
               </Text>

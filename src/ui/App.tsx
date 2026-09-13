@@ -1,15 +1,19 @@
+import { ThemeProvider as InkThemeProvider } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import type { CliId, DetectedCli } from "../models/cli";
+import { inkTheme } from "./ink-theme";
 import { theme } from "./theme";
 import { AppHeader } from "./components/AppHeader";
 import { CliList, cliDisplayName } from "./components/CliList";
 import { HintBar, type HintContext } from "./components/HintBar";
 import { PromptField } from "./components/PromptField";
+import { RunningView } from "./components/RunningView";
 import { ScanningView } from "./components/ScanningView";
 import { SessionResult } from "./components/SessionResult";
+import { StageBar, type Stage } from "./components/StageBar";
 
 export type LaunchRequest =
   | { readonly id: CliId; readonly mode: "prompt"; readonly prompt: string }
@@ -20,6 +24,15 @@ export interface SessionOutcome {
   readonly code: number | null;
   readonly signal: string | null;
   readonly durationMs: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}
+
+/** 正在执行的任务：加载层与位置层都靠它回答「现在是谁在跑」。 */
+export interface RunningTask {
+  readonly id: CliId;
+  readonly prompt: string;
+  readonly startedAt: number;
 }
 
 export interface AppProps {
@@ -27,11 +40,19 @@ export interface AppProps {
   readonly isScanning?: boolean;
   readonly initialId?: CliId;
   readonly session?: SessionOutcome | null;
+  readonly running?: RunningTask | null;
   readonly onLaunch: (request: LaunchRequest) => void;
+  readonly onAbort?: () => void;
   readonly onExit: () => void;
 }
 
-type Screen = "scanning" | "picker" | "composer" | "detail" | "result";
+type Screen =
+  | "scanning"
+  | "picker"
+  | "composer"
+  | "running"
+  | "detail"
+  | "result";
 
 function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): number {
   if (!initialId) {
@@ -59,12 +80,17 @@ export function App({
   isScanning = false,
   initialId,
   session = null,
+  running = null,
   onLaunch,
+  onAbort,
   onExit,
 }: AppProps) {
   const [screen, setScreen] = useState<Screen>(() => {
     if (isScanning) {
       return "scanning";
+    }
+    if (running) {
+      return "running";
     }
     return session ? "result" : "picker";
   });
@@ -79,8 +105,19 @@ export function App({
       return;
     }
 
-    setScreen((current) => current === "scanning" ? "picker" : current);
-  }, [isScanning]);
+    if (running) {
+      setScreen("running");
+      return;
+    }
+
+    setScreen((current) =>
+      current === "scanning" || current === "running"
+        ? session
+          ? "result"
+          : "picker"
+        : current,
+    );
+  }, [isScanning, running, session]);
 
   const selectedCli = clis[selectedIndex];
   const activeId = selectedCli?.id;
@@ -136,6 +173,15 @@ export function App({
 
   useInput(
     (input, key) => {
+      if (key.ctrl && input === "c") {
+        onAbort?.();
+      }
+    },
+    { isActive: screen === "running" },
+  );
+
+  useInput(
+    (input, key) => {
       if ((key.ctrl && input === "c") || input === "q") {
         onExit();
         return;
@@ -162,12 +208,38 @@ export function App({
     { isActive: screen === "result" },
   );
 
+  const stage: Stage =
+    screen === "scanning"
+      ? "scan"
+      : screen === "composer"
+        ? "compose"
+        : screen === "running"
+          ? "run"
+          : screen === "result"
+            ? "result"
+            : "select";
+  const focusId =
+    screen === "result" && session
+      ? session.id
+      : screen === "running" && running
+        ? running.id
+        : activeId;
+
   let hint: HintContext = "picker";
   let body: ReactNode;
 
   if (screen === "scanning") {
     hint = "scanning";
     body = <ScanningView />;
+  } else if (screen === "running" && running) {
+    hint = "running";
+    body = (
+      <RunningView
+        agentName={cliDisplayName(running.id)}
+        prompt={running.prompt}
+        startedAt={running.startedAt}
+      />
+    );
   } else if (screen === "composer" && activeId) {
     hint = "composer";
     body = (
@@ -175,13 +247,13 @@ export function App({
         <Box flexDirection="column" paddingX={2}>
           <Text>
             <Text color={theme.muted}>将任务交给 </Text>
-            <Text bold color={theme.accent}>
+            <Text bold color={theme.text}>
               {cliDisplayName(activeId)}
             </Text>
           </Text>
           <Text color={theme.dim}>写清目标和完成标准，接力会更稳。</Text>
         </Box>
-        <Box marginTop={1}>
+        <Box flexDirection="column" marginTop={1}>
           <PromptField
             value={prompt}
             onChange={setPrompt}
@@ -217,12 +289,19 @@ export function App({
   }
 
   return (
-    <Box flexDirection="column">
-      <AppHeader />
-      <Box marginTop={1}>{body}</Box>
-      <Box paddingX={2} marginTop={1}>
-        <HintBar context={hint} />
+    <InkThemeProvider theme={inkTheme}>
+      <Box width="100%" flexDirection="column" backgroundColor={theme.bg}>
+        <AppHeader />
+        <StageBar
+          stage={stage}
+          focus={focusId ? cliDisplayName(focusId) : undefined}
+          focusNote={screen === "detail" ? "未安装" : undefined}
+        />
+        <Box flexDirection="column" marginTop={1}>{body}</Box>
+        <Box paddingX={2} marginTop={1}>
+          <HintBar context={hint} />
+        </Box>
       </Box>
-    </Box>
+    </InkThemeProvider>
   );
 }

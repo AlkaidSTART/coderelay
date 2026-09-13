@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 
 import type {
   CliAdapter,
@@ -139,6 +140,101 @@ export function launchWithPrompt(
     buildPromptArgs(adapter, prompt, options.extraArgs),
     createSpawnOptions(options, dependencies.platform),
   );
+}
+
+export interface LaunchCapturedOptions extends LaunchProcessOptions {
+  readonly binPath?: string;
+  readonly extraArgs?: readonly string[];
+  readonly dependencies?: Partial<LauncherDependencies>;
+  /** 每路输出保留的尾部字符数，防止长任务把内存吃满。 */
+  readonly maxOutputChars?: number;
+}
+
+export interface CapturedLaunchResult {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export interface CapturedLaunchHandle {
+  readonly child: ChildProcess;
+  readonly done: Promise<CapturedLaunchResult>;
+}
+
+const DEFAULT_MAX_OUTPUT_CHARS = 20_000;
+
+function createCaptureOptions(
+  options: LaunchProcessOptions,
+  platform: NodeJS.Platform,
+): SpawnRequestOptions {
+  return {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: platform === "win32",
+    windowsHide: platform === "win32",
+  };
+}
+
+function appendTail(buffer: string, chunk: string, maxChars: number): string {
+  const merged = buffer + chunk;
+  return merged.length > maxChars * 2 ? merged.slice(-maxChars) : merged;
+}
+
+/**
+ * Launch a prompt-mode CLI with piped output so the UI can render the result
+ * itself. Resolves on `close` — after all stdio data has drained — with the
+ * tail of both streams; spawn failures resolve with a null code.
+ */
+export function launchWithPromptCaptured(
+  adapter: CliAdapter,
+  prompt: string,
+  options: LaunchCapturedOptions = {},
+): CapturedLaunchHandle {
+  const dependencies = resolveDependencies(options.dependencies);
+  const bin = options.binPath ?? adapter.bin;
+  const maxChars = options.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
+
+  const child = dependencies.spawn(
+    bin,
+    buildPromptArgs(adapter, prompt, options.extraArgs),
+    createCaptureOptions(options, dependencies.platform),
+  );
+
+  const done = new Promise<CapturedLaunchResult>((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const finish = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({
+        code,
+        signal,
+        stdout: stdout.slice(-maxChars),
+        stderr: stderr.slice(-maxChars),
+      });
+    };
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout = appendTail(stdout, chunk.toString(), maxChars);
+    });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr = appendTail(stderr, chunk.toString(), maxChars);
+    });
+    child.once("close", (code, signal) => {
+      finish(code, signal);
+    });
+    child.once("error", () => {
+      finish(null, null);
+    });
+  });
+
+  return { child, done };
 }
 
 function valueAsString(value: unknown): string {
