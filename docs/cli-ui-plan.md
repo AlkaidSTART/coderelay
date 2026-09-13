@@ -9,15 +9,17 @@ coderelay 面向频繁在多个编码 agent 之间切换的年轻开发者。视
 
 视觉 rationale：**用纯白画布 + 圆角描边玻璃板模拟液态玻璃台面；三色是信号灯不是装饰——粉只标「你在这」、蓝只标「可以动的东西」、绿只做单字符信号——每一屏里它们加起来不超过一小撮，彩色只出现在字符上，不铺任何色块底。**分隔与描边的灰取自 Apple 系统灰（systemGray4/3），保证「中性、分层、克制」的 macOS 质感。
 
-## 2. 页面流（既有状态机，未改动）
+## 2. 页面流
 
 ```text
-scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ──▶ result ──▶ picker
-                │            │                                            ▲
-                └── 未安装详情 ┘                                            └── esc / ↵
+scanning ──▶ picker ──▶ composer ──▶ running ──▶ result ──▶ picker
+                │            │   │    ▲            ▲
+                │            │   └─↵──┘ 捕获输出    │
+                │            └─tab───────────────┘ 继承 stdio，不经过渲染层
+                └── 未安装详情 ┘
 ```
 
-界面只调用既有扫描、适配器和启动 API。`binPath` 必须使用扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
+prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `ignore/pipe/pipe`，输出由 `launchWithPromptCaptured` 捕获尾部（默认 20k 字符/路），退出后由 result 屏渲染；等待期由 running 加载层兜住，`ctrl c` 通过 `onAbort` 向子进程发 SIGTERM 中止。tab 交互模式不变：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重新挂载。`binPath` 必须使用扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
 
 ## 3. 视觉 token（`src/ui/theme.ts`）
 
@@ -86,6 +88,13 @@ scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ─
 - 输入区见第 4 节：聚焦时描边转 `accent`、`❯` 变蓝——这是蓝色在 composer 的唯一出现。
 - 快捷键继续用 `↵` 执行、`tab` 交互、`esc` 返回。
 
+### running（加载层）
+
+- 结果还没回来时的唯一画面：Spinner（系统蓝）+「正在把任务交给 <Agent>，输出回来后在这里展示。」
+- 下一行以 `dim` 回显提交的任务全文，再下一行是蓝色加粗秒表（0.1s 步进），等待是可见的。
+- 位置层切到「执行」档，右侧焦点 `交给 · <Agent>`；快捷键只剩 `ctrl c` 中止任务。
+- 加载层允许非黑白配色：蓝（Spinner、秒表）加位置层的绿色 `✓`，就是三色在这一屏的全部出现。
+
 ### detail（未安装）
 
 - 不再只报“未检测到”，而是说明下一步：
@@ -98,6 +107,8 @@ scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ─
 
 - 位置层切到「结果」，右侧变成 `本次 · <Agent>`，说明这是刚刚跑完的那一棒。
 - 状态和描述使用真实任务语言：「跑完了这一棒，可以继续往下接。」
+- **渲染层**：prompt 模式跑完的输出在这里渲染——失败优先展示 stderr（`alert` 红），否则展示 stdout（`text`），成功时的 stderr 作为诊断信息展示；超过 12 行只留尾部并标注「最后 N 行」，行内超宽截断。
+- 交互模式拿不到结构化输出，结果屏保持三行状态结构、无输出块。
 - 成功的 `✓` 是系统绿——绿色第三次也是最后一次出现，语义始终是「就绪」。
 - 失败区分两类：无法启动 vs 提前退出，避免把所有非零退出混成一句“失败”。
 - 元数据收敛为 `exit <code> · <duration>s`。
@@ -109,9 +120,10 @@ scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ─
 | picker | `↑ ↓` / `k j` | 移动选中 |
 | picker | `↵` | 可用 → composer；不可用 → detail |
 | picker | `q` / `⌃C` | 退出 |
-| composer | `↵` | 带 prompt 启动 |
-| composer | `tab` | 交互模式启动 |
+| composer | `↵` | 带 prompt 启动（渲染层模式） |
+| composer | `tab` | 交互模式启动（继承 stdio） |
 | composer | `esc` | 返回 picker |
+| running | `⌃C` | 中止任务（SIGTERM），退出状态进入结果屏 |
 | detail / result | `↵` / `esc` | 返回 picker |
 | detail / result | `q` / `⌃C` | 退出 |
 
@@ -139,8 +151,8 @@ scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ─
 ## 9. 验收
 
 1. `bun test` 全绿，`bunx tsc --noEmit` 无错误，`git diff --check` 干净。
-2. 80 / 100 / 120 列终端下五屏无意外换行：scanning、picker、composer、detail、result；窄到 60 列时位置层自动分两行，其余内容仍不折断。
-3. picker 的 `↑↓` / `kj` / `↵` / `q`，composer 的 `↵` / `tab` / `esc`，detail/result 的 `↵` / `esc` / `q` 均可用。
+2. 80 / 100 / 120 列终端下六屏无意外换行：scanning、picker、composer、running、detail、result；窄到 60 列时位置层自动分两行，其余内容仍不折断。
+3. picker 的 `↑↓` / `kj` / `↵` / `q`，composer 的 `↵` / `tab` / `esc`，running 的 `⌃C`，detail/result 的 `↵` / `esc` / `q` 均可用。
 4. 移除颜色后，选中、可用性、当前位置、扫描、成功和失败仍能通过符号、字重和文案区分。
 5. 正文对比度不低于 4.5:1；`ok` 绿仅限单字符信号且 ≥ 3:1，状态由相邻文字共同表达；`line` / `edge` 只用于装饰性轨道与描边，状态不依赖它们。
 6. 数一遍三色：粉 ≤ 2 处/屏，蓝 ≤ 4 处/屏（选中标记 `▌` 1 处、聚焦输入框 2 处、Spinner 1 处），绿全部是单字符信号。

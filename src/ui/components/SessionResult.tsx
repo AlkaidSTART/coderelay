@@ -33,8 +33,8 @@ interface RenderedOutput {
 }
 
 /**
- * 渲染层的数据侧：失败优先展示 stderr，否则展示 stdout；
- * 都为空时返回空串，结果屏保持原来的三行结构。
+ * 渲染层的数据侧：失败优先展示 stderr，其次 stdout，
+ * 成功时 stderr 仍作为诊断信息展示；都为空则不渲染输出块。
  */
 function renderedOutput(session: SessionResultData): RenderedOutput | null {
   const stdout = session.stdout?.trim() ? session.stdout : "";
@@ -42,17 +42,23 @@ function renderedOutput(session: SessionResultData): RenderedOutput | null {
   const failed =
     session.signal !== null || (session.code !== null && session.code !== 0);
 
-  const text = failed && stderr ? stderr : stdout || stderr;
-  if (!text) {
+  const picked =
+    failed && stderr
+      ? { text: stderr, isError: true }
+      : stdout
+        ? { text: stdout, isError: false }
+        : stderr
+          ? { text: stderr, isError: true }
+          : null;
+  if (!picked) {
     return null;
   }
 
-  const all = text.replace(/\s+$/, "").split("\n");
-  const truncated = all.length > OUTPUT_TAIL_LINES;
+  const all = picked.text.replace(/\s+$/, "").split("\n");
   return {
     lines: all.slice(-OUTPUT_TAIL_LINES),
-    truncated,
-    isError: failed && Boolean(stderr) && !stdout,
+    truncated: all.length > OUTPUT_TAIL_LINES,
+    isError: picked.isError,
   };
 }
 
