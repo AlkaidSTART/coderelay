@@ -110,7 +110,7 @@ describe("App UI", () => {
     const instance = renderApp();
 
     for (let i = 0; i < 3; i += 1) {
-      instance.stdin.write("\u001B[B");
+      instance.stdin.write("\u001B[C");
       await nextTick();
     }
 
@@ -142,10 +142,10 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("moves with ↓ and enters composer, then accepts text input", async () => {
+  test("moves with → and enters composer, then accepts text input", async () => {
     const instance = renderApp();
 
-    instance.stdin.write("\u001B[B");
+    instance.stdin.write("\u001B[C");
     await nextTick();
     instance.stdin.write("\r");
     await nextTick();

@@ -129,14 +129,14 @@ export function App({
         return;
       }
 
-      if (key.upArrow || input === "k") {
+      if (key.leftArrow || input === "h") {
         setSelectedIndex((current) =>
           moveSelection(current, -1, clis.length),
         );
         return;
       }
 
-      if (key.downArrow || input === "j") {
+      if (key.rightArrow || input === "l") {
         setSelectedIndex((current) =>
           moveSelection(current, 1, clis.length),
         );

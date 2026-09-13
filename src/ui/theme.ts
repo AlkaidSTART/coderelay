@@ -16,7 +16,7 @@ export interface Theme {
   readonly line: string;
   /** 玻璃描边（位置层、未聚焦输入框，systemGray3）。 */
   readonly edge: string;
-  /** 系统绿：只做单字符信号（● 已就绪、✓ 成功），旁边必有文字。 */
+  /** 翠绿：只做单字符信号（● 已就绪、✓ 成功），旁边必有文字。 */
   readonly ok: string;
   readonly alert: string;
 }
@@ -32,6 +32,6 @@ export const theme = Object.freeze({
   dim: "#69696E",
   line: "#D1D1D6",
   edge: "#C7C7CC",
-  ok: "#248A3D",
+  ok: "#10B981",
   alert: "#D70015",
 } satisfies Theme);

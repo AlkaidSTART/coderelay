@@ -23,7 +23,7 @@ const HINTS: Readonly<
   Record<Exclude<HintContext, "scanning">, readonly Hint[]>
 > = {
   picker: [
-    { key: "↑↓", label: "移动" },
+    { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },
     { key: "q", label: "退出" },
   ],
