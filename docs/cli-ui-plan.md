@@ -1,123 +1,107 @@
-# coderelay CLI 界面规划（Ink）
+# coderelay CLI 界面设计（Ink）
 
-> 依赖已就绪：`ink@7`、`react@19`、`@inkjs/ui@2`，测试用 `ink-testing-library@4`。
-> 运行/验证一律使用 Bun：`bun test`、`bunx tsc --noEmit`。
+> 设计方向：**接力轨道 / live terminal**。一次 agent 调用不是弹窗，而是把任务交出去、跑完、再接回来的一棒。
+> 依赖：`ink@7`、`react@19`、`@inkjs/ui@2`。验证一律使用 Bun：`bun test`、`bunx tsc --noEmit`。
 
-## 1. 范围
+## 1. 产品与用户
 
-只做「界面层」：检测结果的呈现、选择、prompt 输入、启动与回到界面。
-扫描层 / 接入层 / 启动层已经完成，界面**只调用**以下既有 API，不得复制逻辑：
+coderelay 面向频繁在多个编码 agent 之间切换的年轻开发者。目标不是把终端做得“像网页”，而是让本地工具保留速度感、明确感和一点性格。
 
-| 能力 | API | 来源 |
-| --- | --- | --- |
-| 扫描本机 CLI | `scanCodingClis(options?)` → `DetectedCli[]` | `src/scanner/cli-scanner.ts` |
-| 宿主标记 | `detectHostAgent(env?)` | `src/scanner/cli-scanner.ts` |
-| 适配器元数据 | `getCliAdapter(id)` / `CLI_ADAPTERS` | `src/agents/cli-adapters.ts` |
-| 交互启动 | `launchInteractive(adapter, { binPath, cwd })` | `src/runtime/launcher.ts` |
-| 带 prompt 启动 | `launchWithPrompt(adapter, prompt, { binPath })` | `src/runtime/launcher.ts` |
+视觉 rationale：**把 agent 列表组织成带编号的轨道，用一条电光薄荷色、清楚的选中态和直白短句，让“交棒、跑完、继续接”成为界面的主叙事。**
 
-约束：`binPath` 必须传扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
+## 2. 页面流（既有状态机）
 
-## 2. 页面流（状态机）
-
-```
-scanning ──▶ picker ──▶ composer ──▶ (Ink 卸下) 子进程 stdio: inherit ──▶ result ──▶ picker
-                │            │                                                    ▲
-                └── 未安装详情 ┘                                                    └── esc / ↵
+```text
+scanning ──▶ picker ──▶ composer ──▶ 子进程继承 stdio ──▶ result ──▶ picker
+                │            │                                                ▲
+                └── 未安装详情 ┘                                                └── esc / ↵
 ```
 
-- `scanning`：Spinner + 「正在扫描本机编码代理」，扫描完成自动进入 `picker`。
-- `picker`：列出 codex / claude / pi / omp，显示可用状态、版本、路径（`~` 缩写）。
-  - `↑ ↓` / `k j` 移动，`↵` 进入 composer；不可用项 `↵` 显示安装提示；`q` / `⌃C` 退出。
-- `composer`：prompt 输入 + 启动方式。
-  - `↵` 带 prompt 启动（`launchWithPrompt`）；`tab` 纯交互启动（`launchInteractive`）；`esc` 返回。
-- `result`：会话结束卡片（exit code / signal / 耗时），`↵` 回到 picker，`q` 退出。
+界面只调用既有扫描、适配器和启动 API。`binPath` 必须使用扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
 
-## 3. 视觉规范（简约高级 · 高级黑）
+## 3. 视觉 token
 
 | Token | 值 | 用途 |
 | --- | --- | --- |
-| `bg` | `#050505` | 底色，`render(..., { })` 后由首屏留白承担，不铺满整屏 |
-| `panel` | `#0B0B0C` | 输入区、会话卡片底色 |
-| `line` | `#26262B` | 极细分隔线 |
-| `text` | `#F2F2F5` | 主文本 |
-| `muted` | `#77777F` | 次要信息、未安装项 |
-| `dim` | `#4A4A52` | 路径、占位符 |
-| `accent` | `#C8B892`（香槟）| 选中指示、强调；克制使用 |
-| `ok` | `#7FB79B` | 可用状态点 |
-| `warn` | `#C98B7A` | 失败状态 |
+| `bg` | `#080B10` | 深蓝黑主背景 |
+| `panel` | `#0E141D` | 输入块、静态面板 |
+| `panelActive` | `#12202A` | 当前行的低饱和轨道底 |
+| `line` | `#293747` | 非选中轨道、轻分隔 |
+| `text` | `#F5F8FC` | 标题、主文本 |
+| `muted` | `#9AA9BD` | 说明、未选中名称、状态 |
+| `dim` | `#7B8CA3` | 路径、序号、辅助信息 |
+| `accent` | `#42E8C6` | 品牌、选中轨道、快捷键 |
+| `ok` | `#70E5A6` | 已就绪、成功 |
+| `warn` | `#FFB36B` | 未安装、失败、信号中断 |
 
-排版原则：
-- 只用**细线 + 留白 + 字重对比**，不用重边框；区块之间最多一条 `line` 色细线。
-- 选中态 = 左侧 `❯` 指示 + 文本提亮，不用反色块、不用整行高亮底。
-- 状态点用 `●` / `○`，不用 emoji。
-- 全局留白：左右 2 列，标题与内容之间 1 行。
+颜色只负责强化，不单独承担状态含义。所有状态同时有形状或文字：
 
-### 输入框（重点：不要太方正）
-- 外层：`paddingX={2}`、`backgroundColor={panel}`，**不画四边框**。
-- 仅保留左右两条竖线（`borderStyle="round"` + `borderTop={false}` + `borderBottom={false}`，`borderColor={line}`），形成「软胶囊」观感而非方框。
-- 左侧提示符 `❯`（`accent`），占位符用 `dim`。
-- 聚焦时只把左右竖线提到 `accent`（或加一条极细上边框），不做整块反色。
-- 光标由 `@inkjs/ui` 的 `TextInput` 提供，保持原生编辑键位（含中文输入回显）。
+- 选中：`▌` + 提亮序数/名称 + `panelActive` 底；
+- 已就绪 / 未检测到：`●` / `○` + 状态文字；
+- 结果：`✓` / `×` / `!` + 成功 / 失败 / 被信号终止。
 
-## 4. 文件结构
+## 4. 各页面构成
 
-```
-src/cli.tsx                    # 入口：扫描 → render(App) → 启动生命周期接管
-src/ui/App.tsx                 # 状态机 + 键盘路由
-src/ui/theme.ts                # 上面的 token
-src/ui/components/AppHeader.tsx
-src/ui/components/CliList.tsx
-src/ui/components/PromptField.tsx
-src/ui/components/HintBar.tsx
-src/ui/components/ScanningView.tsx
-src/ui/components/SessionResult.tsx
-tests/ui-app.test.tsx          # ink-testing-library 驱动的界面测试
-```
+### scanning
 
-## 5. 启动生命周期（关键）
+- Spinner + 「正在扫描本机编码代理…」。
+- 副文案说明动作：「翻翻 PATH，看看谁已经就位。」
+- 用同样的 `01–04` 编号预演 agent 顺序，减少扫描完成后的结构跳变。
 
-Ink 与 `stdio: "inherit"` 不能同时占用终端，必须**先卸下界面再让子进程接管**：
+### picker
 
-```tsx
-const app = render(<App ... />);
-// App 请求启动时：
-app.unmount();                       // Ink 释放 stdin/stdout 并清除自己的帧
-const child = launchWithPrompt(adapter, prompt, { binPath: detected.path });
-const startedAt = Date.now();
-await once(child, "exit");           // exit / error 都要回到界面
-render(<App initialId={id} session={result} />);
-```
+- 标题是动作句：「这一棒交给谁？」
+- 每个 agent 是一条编号泳道，而不是卡片：
+  - 第一行：序号、名称、右侧可用状态；
+  - 第二行：版本与 `~` 缩写路径，未安装时直接说明 `PATH` 里缺少哪个 bin。
+- 当前泳道使用 `▌`、字重、文字亮度和低饱和底色共同标记。
 
-- 子进程退出（含非 0、被信号终止、spawn error）后必须重新渲染界面，不能把用户丢在 shell。
-- 交叉验证：`render` 返回值要保留在入口的闭包里，重进时复用「上次选中项」。
+### composer
 
-## 6. 键盘表
+- 主句：「将任务交给 <Agent>」；Agent 名使用 `accent` 加粗。
+- 一句实际帮助：「写清目标和完成标准，接力会更稳。」
+- 输入区是终端提示块：`❯` + 聚焦底色，不做边框胶囊。
+- 快捷键继续用 `↵` 执行、`tab` 交互、`esc` 返回。
+
+### detail（未安装）
+
+- 不再只报“未检测到”，而是说明下一步：
+  - 「<Agent> 还没就位」
+  - 「PATH 里找不到 <bin>。」
+  - 「安装后重新运行 coderelay，它会出现在这里。」
+
+### result
+
+- 状态和描述使用真实任务语言：「跑完了这一棒，可以继续往下接。」
+- 失败区分两类：无法启动 vs 提前退出，避免把所有非零退出混成一句“失败”。
+- 元数据收敛为 `exit <code> · <duration>s`。
+
+## 5. 键盘与行为契约
 
 | 场景 | 按键 | 行为 |
 | --- | --- | --- |
 | picker | `↑ ↓` / `k j` | 移动选中 |
-| picker | `↵` | 可用 → composer；不可用 → 安装提示 |
+| picker | `↵` | 可用 → composer；不可用 → detail |
 | picker | `q` / `⌃C` | 退出 |
 | composer | `↵` | 带 prompt 启动 |
-| composer | `tab` | 纯交互启动（忽略空 prompt） |
+| composer | `tab` | 交互模式启动 |
 | composer | `esc` | 返回 picker |
-| result | `↵` / `esc` | 回到 picker |
-| result | `q` | 退出 |
+| detail / result | `↵` / `esc` | 返回 picker |
+| detail / result | `q` / `⌃C` | 退出 |
 
-## 7. 测试
+`src/cli.tsx` 的生命周期不变：卸载 Ink → 子进程继承 stdio → 退出后重新挂载并保留上次选中项。
 
-- `App` 通过 props 注入 `clis`，不触发真实扫描；入口才调用 `scanCodingClis`。
-- 用例：
-  1. `scanning` 显示扫描文案；
-  2. 扫描完成后显示全部四项，未安装项为 `○`；
-  3. `↓` + `↵` 进入 composer，`TextInput` 收到输入；
-  4. `↵` 触发 `onLaunch({ mode: "prompt", prompt })`；`tab` 触发 `mode: "interactive"`；
-  5. `esc` 从 composer 回到 picker；`q` 触发 `onExit`。
-- 快照断言用 `lastFrame()` 文本包含关系，不做全帧快照（避免颜色/宽度抖动）。
+## 6. 刻意不做的设计
 
-## 8. 验收
+- 不用 emoji、霓虹发光、渐变背景或彩色徽章。
+- 不把所有内容塞进圆角卡片，不让每个区块等宽等高。
+- 不用装饰性英文 eyebrow、假数据或重复解释标题的微文案。
+- 不新增搜索、动画、声音、吉祥物等按键或能力；这些属于产品功能，需要先单独讨论。
+
+## 7. 验收
 
 1. `bun test` 全绿，`bunx tsc --noEmit` 无错误。
-2. `bun src/cli.tsx` 能扫描本机 CLI、进入 composer、启动真实 CLI 并在退出后回到界面。
-3. 界面满足：高级黑、细线留白、输入框非方框、中文文案。
+2. 80 列终端下五屏无意外换行：scanning、picker、composer、detail、result。
+3. picker 的 `↑↓` / `kj` / `↵` / `q`，composer 的 `↵` / `tab` / `esc`，detail/result 的 `↵` / `esc` / `q` 均可用。
+4. 移除颜色后，选中、可用性、扫描、成功和失败仍能通过符号、字重和文案区分。
+5. 正文对比度不低于 4.5:1；`line` 只用于装饰性轨道，状态不依赖它。

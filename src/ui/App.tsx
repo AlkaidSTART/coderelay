@@ -166,40 +166,47 @@ export function App({
   let body: ReactNode;
 
   if (screen === "scanning") {
+    hint = "scanning";
     body = <ScanningView />;
   } else if (screen === "composer" && activeId) {
     hint = "composer";
     body = (
       <Box flexDirection="column">
-        <Box paddingX={2}>
-          <Text color={theme.muted}>
-            将任务交给 {cliDisplayName(activeId)}
+        <Box flexDirection="column" paddingX={2}>
+          <Text>
+            <Text color={theme.muted}>将任务交给 </Text>
+            <Text bold color={theme.accent}>
+              {cliDisplayName(activeId)}
+            </Text>
           </Text>
+          <Text color={theme.dim}>写清目标和完成标准，接力会更稳。</Text>
         </Box>
-        <PromptField
-          value={prompt}
-          onChange={setPrompt}
-          onSubmit={(value) => {
-            const normalized = value.trim();
-            if (normalized) {
-              onLaunch({ id: activeId, mode: "prompt", prompt: normalized });
-            }
-          }}
-          isFocused
-        />
+        <Box marginTop={1}>
+          <PromptField
+            value={prompt}
+            onChange={setPrompt}
+            onSubmit={(value) => {
+              const normalized = value.trim();
+              if (normalized) {
+                onLaunch({ id: activeId, mode: "prompt", prompt: normalized });
+              }
+            }}
+            isFocused
+          />
+        </Box>
       </Box>
     );
   } else if (screen === "detail" && selectedCli) {
     hint = "detail";
     body = (
       <Box flexDirection="column" paddingX={2}>
-        <Text color={theme.text}>
-          未检测到 {cliDisplayName(selectedCli.id)}
+        <Text bold color={theme.text}>
+          {cliDisplayName(selectedCli.id)} 还没就位
         </Text>
-        <Text color={theme.muted}>
-          请先安装 {selectedCli.bin}，并确保它已加入 PATH。
+        <Text color={theme.muted}>PATH 里找不到 {selectedCli.bin}。</Text>
+        <Text color={theme.dim}>
+          安装后重新运行 coderelay，它会出现在这里。
         </Text>
-        <Text color={theme.dim}>安装后重新运行 coderelay 即可扫描。</Text>
       </Box>
     );
   } else if (screen === "result" && session) {
@@ -212,7 +219,7 @@ export function App({
   return (
     <Box flexDirection="column">
       <AppHeader />
-      {body}
+      <Box marginTop={1}>{body}</Box>
       <Box paddingX={2} marginTop={1}>
         <HintBar context={hint} />
       </Box>

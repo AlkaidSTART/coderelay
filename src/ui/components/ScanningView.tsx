@@ -26,12 +26,21 @@ export function ScanningView() {
       <Box flexDirection="column" paddingX={2}>
         <Box flexDirection="row">
           <Spinner type="dots" />
-          <Text color={theme.text}> 正在扫描本机编码代理…</Text>
+          <Text bold color={theme.text}>
+            {" "}
+            正在扫描本机编码代理…
+          </Text>
         </Box>
+        <Text color={theme.muted}>翻翻 PATH，看看谁已经就位。</Text>
+
         <Box flexDirection="column" marginTop={1}>
-          {CLI_IDS.map((id) => (
-            <Text key={id} color={theme.dim}>
-              ○ {cliDisplayName(id)} 等待检测
+          {CLI_IDS.map((id, index) => (
+            <Text key={id}>
+              <Text color={theme.dim}>
+                {String(index + 1).padStart(2, "0")}
+              </Text>
+              <Text color={theme.muted}>{"  "}{cliDisplayName(id)}</Text>
+              <Text color={theme.dim}>{"  等待检测"}</Text>
             </Text>
           ))}
         </Box>

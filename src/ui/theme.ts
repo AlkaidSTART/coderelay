@@ -1,6 +1,7 @@
 export interface Theme {
   readonly bg: string;
   readonly panel: string;
+  readonly panelActive: string;
   readonly line: string;
   readonly text: string;
   readonly muted: string;
@@ -11,13 +12,14 @@ export interface Theme {
 }
 
 export const theme = Object.freeze({
-  bg: "#050505",
-  panel: "#0B0B0C",
-  line: "#26262B",
-  text: "#F2F2F5",
-  muted: "#77777F",
-  dim: "#4A4A52",
-  accent: "#C8B892",
-  ok: "#7FB79B",
-  warn: "#C98B7A",
+  bg: "#080B10",
+  panel: "#0E141D",
+  panelActive: "#12202A",
+  line: "#293747",
+  text: "#F5F8FC",
+  muted: "#9AA9BD",
+  dim: "#7B8CA3",
+  accent: "#42E8C6",
+  ok: "#70E5A6",
+  warn: "#FFB36B",
 } satisfies Theme);

@@ -4,14 +4,12 @@ import { theme } from "../theme";
 
 export function AppHeader() {
   return (
-    <Box flexDirection="column" paddingX={2}>
-      <Text bold color={theme.text}>
-        CODERELAY
+    <Box flexDirection="row" paddingX={2} paddingTop={1}>
+      <Text bold color={theme.accent}>
+        coderelay
       </Text>
-      <Text color={theme.muted}>本地编码代理 · 扫描与接力</Text>
-      <Box marginTop={1}>
-        <Text color={theme.line}>{"─".repeat(64)}</Text>
-      </Box>
+      <Text color={theme.dim}>{"  /  "}</Text>
+      <Text color={theme.muted}>本地 agent 接力台</Text>
     </Box>
   );
 }

@@ -49,8 +49,17 @@ function compactVersion(version: string | null): string {
   return match ? match[0] : version;
 }
 
-function statusPath(cli: DetectedCli): string {
-  return cli.available ? abbreviatePath(cli.path) : "未检测到";
+function versionLabel(version: string | null): string {
+  const compact = compactVersion(version);
+  return compact === "—" ? "版本未知" : `v${compact}`;
+}
+
+function detailLine(cli: DetectedCli): string {
+  if (!cli.available) {
+    return `PATH 里找不到 ${cli.bin}`;
+  }
+
+  return `${versionLabel(cli.version)}  ·  ${abbreviatePath(cli.path)}`;
 }
 
 export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
@@ -60,34 +69,59 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
 
   return (
     <Box flexDirection="column" paddingX={2}>
+      <Box marginBottom={1}>
+        <Text bold color={theme.text}>
+          这一棒交给谁？
+        </Text>
+      </Box>
+
       {ordered.map((cli, index) => {
         const selected = index === selectedIndex;
         const indicator = cli.available ? "●" : "○";
-        const indicatorColor = cli.available ? theme.ok : theme.muted;
-        const nameColor = selected ? theme.text : theme.muted;
-        const version = compactVersion(cli.version);
+        const status = cli.available ? "已就绪" : "未检测到";
 
         return (
-          <Box key={cli.id} flexDirection="row">
-            <Text color={selected ? theme.accent : theme.muted}>
-              {selected ? "❯" : " "}
-            </Text>
-            <Text> </Text>
-            <Text color={indicatorColor}>{indicator}</Text>
-            <Text> </Text>
-            <Box width={14}>
-              <Text bold={selected} color={nameColor} wrap="truncate-end">
-                {cliDisplayName(cli.id)}
+          <Box
+            key={cli.id}
+            flexDirection="column"
+            marginBottom={index === ordered.length - 1 ? 0 : 1}
+          >
+            <Box
+              width="100%"
+              flexDirection="row"
+              backgroundColor={selected ? theme.panelActive : undefined}
+            >
+              <Text color={selected ? theme.accent : theme.line}>
+                {selected ? "▌" : "│"}
+              </Text>
+              <Text> </Text>
+              <Text color={selected ? theme.text : theme.dim}>
+                {String(index + 1).padStart(2, "0")}
+              </Text>
+              <Text>{"  "}</Text>
+              <Box width={16}>
+                <Text
+                  bold={selected}
+                  color={selected ? theme.text : theme.muted}
+                  wrap="truncate-end"
+                >
+                  {cliDisplayName(cli.id)}
+                </Text>
+              </Box>
+              <Box flexGrow={1} />
+              <Text color={cli.available ? theme.ok : theme.muted}>
+                {indicator}
+              </Text>
+              <Text color={selected ? theme.text : theme.muted}>
+                {" "}
+                {status}
               </Text>
             </Box>
-            <Box width={12} marginRight={1}>
-              <Text color={selected ? theme.text : theme.dim} wrap="truncate-end">
-                {version}
+            <Box width="100%" paddingLeft={7}>
+              <Text color={theme.dim} wrap="truncate-end">
+                {detailLine(cli)}
               </Text>
             </Box>
-            <Text color={theme.dim} wrap="truncate-end">
-              {statusPath(cli)}
-            </Text>
           </Box>
         );
       })}

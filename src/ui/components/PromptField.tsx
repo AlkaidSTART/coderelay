@@ -17,24 +17,25 @@ export function PromptField({
   isFocused,
 }: PromptFieldProps) {
   return (
-    <Box
-      paddingX={2}
-      backgroundColor={theme.panel}
-      borderStyle="round"
-      borderTop={false}
-      borderBottom={false}
-      borderLeft
-      borderRight
-      borderColor={isFocused ? theme.accent : theme.line}
-    >
-      <Text color={theme.accent}>❯ </Text>
-      <TextInput
-        defaultValue={value}
-        placeholder="描述你要交给 agent 的任务…"
-        onChange={onChange}
-        onSubmit={onSubmit}
-        isDisabled={!isFocused}
-      />
+    <Box paddingX={2}>
+      <Box
+        width="100%"
+        flexDirection="row"
+        paddingX={1}
+        paddingY={1}
+        backgroundColor={isFocused ? theme.panelActive : theme.panel}
+      >
+        <Text bold color={isFocused ? theme.accent : theme.dim}>
+          ❯{" "}
+        </Text>
+        <TextInput
+          defaultValue={value}
+          placeholder="写下任务，越具体越不容易跑偏…"
+          onChange={onChange}
+          onSubmit={onSubmit}
+          isDisabled={!isFocused}
+        />
+      </Box>
     </Box>
   );
 }
