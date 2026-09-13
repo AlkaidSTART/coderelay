@@ -201,7 +201,13 @@ export function App({
         return;
       }
 
-      if (key.return || key.escape) {
+      if (key.return) {
+        // 一直干活：结果屏 ↵ 直接把任务继续交给当前 agent。
+        setScreen(selectedCli?.available ? "composer" : "picker");
+        return;
+      }
+
+      if (key.escape) {
         setScreen("picker");
       }
     },
@@ -243,30 +249,18 @@ export function App({
   } else if (screen === "composer" && activeId) {
     hint = "composer";
     body = (
-      <Box flexDirection="column">
-        <Box flexDirection="column" paddingX={2}>
-          <Text>
-            <Text color={theme.muted}>将任务交给 </Text>
-            <Text bold color={theme.text}>
-              {cliDisplayName(activeId)}
-            </Text>
-          </Text>
-          <Text color={theme.dim}>写清目标和完成标准，接力会更稳。</Text>
-        </Box>
-        <Box flexDirection="column" marginTop={1}>
-          <PromptField
-            value={prompt}
-            onChange={setPrompt}
-            onSubmit={(value) => {
-              const normalized = value.trim();
-              if (normalized) {
-                onLaunch({ id: activeId, mode: "prompt", prompt: normalized });
-              }
-            }}
-            isFocused
-          />
-        </Box>
-      </Box>
+      <PromptField
+        agentName={cliDisplayName(activeId)}
+        value={prompt}
+        onChange={setPrompt}
+        onSubmit={(value) => {
+          const normalized = value.trim();
+          if (normalized) {
+            onLaunch({ id: activeId, mode: "prompt", prompt: normalized });
+          }
+        }}
+        isFocused
+      />
     );
   } else if (screen === "detail" && selectedCli) {
     hint = "detail";

@@ -66,6 +66,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
   const ordered = CLI_IDS.map((id) => clis.find((cli) => cli.id === id)).filter(
     (cli): cli is DetectedCli => Boolean(cli),
   );
+  const selected = ordered[selectedIndex];
 
   return (
     <Box flexDirection="column" paddingX={2}>
@@ -75,52 +76,35 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
         </Text>
       </Box>
 
-      {ordered.map((cli, index) => {
-        const selected = index === selectedIndex;
-        const indicator = cli.available ? "●" : "○";
-        const status = cli.available ? "已就绪" : "未检测到";
-
-        return (
-          <Box
-            key={cli.id}
-            flexDirection="column"
-            marginBottom={index === ordered.length - 1 ? 0 : 1}
-          >
-            <Box flexDirection="row">
-              <Text bold={selected} color={selected ? theme.accent : theme.line}>
-                {selected ? "▌" : "│"}
-              </Text>
-              <Text> </Text>
-              <Text bold={selected} color={selected ? theme.text : theme.dim}>
-                {String(index + 1).padStart(2, "0")}
-              </Text>
-              <Text>{"  "}</Text>
-              <Box width={16}>
-                <Text
-                  bold={selected}
-                  color={selected ? theme.text : theme.muted}
-                  wrap="truncate-end"
-                >
-                  {cliDisplayName(cli.id)}
-                </Text>
-              </Box>
-              <Box flexGrow={1} />
-              <Text color={cli.available ? theme.ok : theme.alert}>
-                {indicator}
-              </Text>
-              <Text color={selected ? theme.text : theme.muted}>
+      <Box flexDirection="row" flexWrap="wrap">
+        {ordered.map((cli, index) => {
+          const active = index === selectedIndex;
+          return (
+            <Box key={cli.id} flexDirection="row">
+              {index > 0 ? <Text>{"  "}</Text> : null}
+              <Text
+                bold={active}
+                backgroundColor={active ? theme.pinkTint : undefined}
+                color={active ? theme.pinkInk : theme.muted}
+              >
                 {" "}
-                {status}
+                <Text color={cli.available ? theme.ok : theme.alert}>
+                  {cli.available ? "●" : "○"}
+                </Text>
+                {` ${cliDisplayName(cli.id)} `}
               </Text>
             </Box>
-            <Box paddingLeft={7}>
-              <Text color={theme.dim} wrap="truncate-end">
-                {detailLine(cli)}
-              </Text>
-            </Box>
-          </Box>
-        );
-      })}
+          );
+        })}
+      </Box>
+
+      {selected ? (
+        <Box marginTop={1}>
+          <Text color={theme.dim} wrap="truncate-end">
+            {detailLine(selected)}
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

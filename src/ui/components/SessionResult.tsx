@@ -108,25 +108,37 @@ export function SessionResult({ session }: SessionResultProps) {
   const status = sessionStatus(session.id, session.code, session.signal);
   const duration = (session.durationMs / 1_000).toFixed(1);
   const output = renderedOutput(session);
-  const outputColor = output?.isError ? theme.alert : theme.text;
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Text bold color={status.color}>
-        {status.symbol} {status.label}
-      </Text>
-      <Text color={theme.text}>{status.description}</Text>
-      <Text color={theme.dim}>
-        exit {session.code ?? "—"}  ·  {duration}s
-      </Text>
+      <Box
+        flexDirection="column"
+        paddingX={1}
+        paddingY={1}
+        borderStyle="round"
+        borderColor={theme.edge}
+      >
+        <Text>
+          <Text bold color={status.color}>
+            {status.symbol}{" "}
+          </Text>
+          <Text bold color={theme.text}>
+            {status.label}
+          </Text>
+        </Text>
+        <Text color={theme.muted}>{status.description}</Text>
+        <Text color={theme.dim}>
+          exit {session.code ?? "—"}  ·  {duration}s
+        </Text>
+      </Box>
       {output ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} paddingLeft={1}>
           <Text color={output.isError ? theme.alert : theme.dim}>
             {output.isError ? "stderr" : "输出"} ·{" "}
             {output.truncated ? `最后 ${OUTPUT_TAIL_LINES} 行` : `${output.lines.length} 行`}
           </Text>
           {output.lines.map((line, index) => (
-            <Text key={index} color={outputColor} wrap="truncate-end">
+            <Text key={index} color={output.isError ? theme.alert : theme.text} wrap="truncate-end">
               {line === "" ? " " : line}
             </Text>
           ))}

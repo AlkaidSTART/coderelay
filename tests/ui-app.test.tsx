@@ -93,16 +93,52 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("renders all four CLIs and marks unavailable entries with ○", () => {
+  test("renders the horizontal CLI rail with chips and selected detail", () => {
     const instance = renderApp();
     const frame = instance.lastFrame() ?? "";
 
-    expect(frame).toContain("Codex");
-    expect(frame).toContain("Claude Code");
-    expect(frame).toContain("Pi");
-    expect(frame).toContain("OMP");
-    expect(frame).toContain("○");
-    expect(frame).toContain("未检测到");
+    expect(frame).toContain("这一棒交给谁？");
+    expect(frame).toContain("● Codex");
+    expect(frame).toContain("● Claude Code");
+    expect(frame).toContain("● Pi");
+    expect(frame).toContain("○ OMP");
+    expect(frame).toContain("v0.1.0");
+    instance.cleanup();
+  });
+
+  test("shows the focused CLI detail line while moving the rail", async () => {
+    const instance = renderApp();
+
+    for (let i = 0; i < 3; i += 1) {
+      instance.stdin.write("\u001B[B");
+      await nextTick();
+    }
+
+    expect(instance.lastFrame()).toContain("PATH 里找不到 omp");
+    instance.cleanup();
+  });
+
+  test("enter on result continues with the same CLI in composer", async () => {
+    const instance = render(
+      <App
+        clis={CLIS}
+        session={{
+          id: "codex",
+          code: 0,
+          signal: null,
+          durationMs: 1200,
+          stdout: "done\n",
+        }}
+        onLaunch={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await nextTick();
+    expect(instance.lastFrame()).toContain("✓ 成功");
+
+    instance.stdin.write("\r");
+    await nextTick();
+    expect(instance.lastFrame()).toContain("将任务交给 Codex");
     instance.cleanup();
   });
 

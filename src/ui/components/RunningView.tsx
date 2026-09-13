@@ -30,25 +30,33 @@ export function RunningView({ agentName, prompt, startedAt }: RunningViewProps) 
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Box flexDirection="row">
-        <Spinner type="dots" />
-        <Text> </Text>
-        <Text>
-          <Text color={theme.muted}>正在把任务交给 </Text>
-          <Text bold color={theme.text}>
-            {agentName}
+      <Box
+        flexDirection="column"
+        paddingX={1}
+        paddingY={1}
+        borderStyle="round"
+        borderColor={theme.edge}
+      >
+        <Box flexDirection="row">
+          <Spinner type="dots" />
+          <Text> </Text>
+          <Text>
+            <Text color={theme.muted}>正在把任务交给 </Text>
+            <Text bold color={theme.text}>
+              {agentName}
+            </Text>
+            <Text color={theme.muted}>，输出回来后在这里展示。</Text>
           </Text>
-          <Text color={theme.muted}>，输出回来后在这里展示。</Text>
+        </Box>
+        <Text color={theme.dim} wrap="truncate-end">
+          {prompt}
         </Text>
-      </Box>
-      <Text color={theme.dim} wrap="truncate-end">
-        {prompt}
-      </Text>
-      <Box flexDirection="row">
-        <Text bold color={theme.accent}>
-          {`${elapsed.toFixed(1)}s`}
-        </Text>
-        <Text color={theme.dim}> 已运行</Text>
+        <Box flexDirection="row">
+          <Text bold color={theme.accent}>
+            {`${elapsed.toFixed(1)}s`}
+          </Text>
+          <Text color={theme.dim}> 已运行</Text>
+        </Box>
       </Box>
     </Box>
   );

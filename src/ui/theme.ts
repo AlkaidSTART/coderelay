@@ -3,8 +3,10 @@ export interface Theme {
   readonly bg: string;
   /** 玻璃板：位置层、输入框，与 bg 同为纯白，靠圆角描边浮起。 */
   readonly panel: string;
-  /** 系统蓝：只标可交互的东西（选中标记、聚焦输入框、Spinner）。 */
+  /** 系统蓝：只标可交互的东西（聚焦输入框、Spinner）。 */
   readonly accent: string;
+  /** 珊瑚粉玻璃：选中 CLI 芯片的覆盖底色。 */
+  readonly pinkTint: string;
   readonly pinkInk: string;
   readonly text: string;
   readonly muted: string;
@@ -23,6 +25,7 @@ export const theme = Object.freeze({
   bg: "#FFFFFF",
   panel: "#FFFFFF",
   accent: "#0066CC",
+  pinkTint: "#FBE4ED",
   pinkInk: "#C81E4E",
   text: "#1D1D1F",
   muted: "#55555A",

@@ -38,7 +38,8 @@ const HINTS: Readonly<
     { key: "q", label: "退出" },
   ],
   result: [
-    { key: "↵ / esc", label: "回到选择" },
+    { key: "↵", label: "继续交给" },
+    { key: "esc", label: "重新选择" },
     { key: "q", label: "退出" },
   ],
 };
