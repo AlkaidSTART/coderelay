@@ -5,10 +5,9 @@ import { theme } from "../theme";
 export type HintContext =
   | "scanning"
   | "picker"
-  | "composer"
+  | "chat"
   | "running"
-  | "detail"
-  | "result";
+  | "detail";
 
 export interface HintBarProps {
   readonly context: HintContext;
@@ -27,19 +26,15 @@ const HINTS: Readonly<
     { key: "↵", label: "选择" },
     { key: "q", label: "退出" },
   ],
-  composer: [
-    { key: "↵", label: "执行任务" },
+  chat: [
+    { key: "↵", label: "发送" },
+    { key: "/model", label: "切换 agent" },
     { key: "tab", label: "交互模式" },
-    { key: "esc", label: "返回" },
+    { key: "esc", label: "选择 agent" },
   ],
   running: [{ key: "ctrl c", label: "中止任务" }],
   detail: [
     { key: "↵ / esc", label: "返回" },
-    { key: "q", label: "退出" },
-  ],
-  result: [
-    { key: "↵", label: "继续交给" },
-    { key: "esc", label: "重新选择" },
     { key: "q", label: "退出" },
   ],
 };

@@ -23,6 +23,11 @@ const FOCUS_LABEL: Readonly<Record<Stage, string>> = {
 
 /** 窄于这个宽度时，步骤和焦点分两行排，避免 Ink 把两者挤在一起换行。 */
 const STACK_BELOW = 64;
+/**
+ * 结果档步骤轨尾部的「→ 选择」回环提示约加宽 7 列：
+ * 带尾巴时步骤轨 + 焦点同行需要 ~81 列，再窄退回两行排布。
+ */
+const RESULT_STACK_BELOW = 82;
 
 export interface StageBarProps {
   readonly stage: Stage;
@@ -34,12 +39,16 @@ export interface StageBarProps {
 
 /**
  * 常驻位置层：一行回答「我在流程的哪一步、现在盯着哪个 agent」。
- * 状态不只靠颜色：当前步有 ▸、已走过的步有 ✓、右侧焦点带文字标签。
+ * 状态不只靠颜色：当前步有 ▸、已走过的步有 ✓、右侧焦点带文字标签；
+ * 结果档末尾追加「→ 选择」回环提示——接力从结果回到选择，交给下一棒。
  */
 export function StageBar({ stage, focus, focusNote }: StageBarProps) {
   const currentIndex = STEPS.findIndex((step) => step.id === stage);
   const { columns } = useWindowSize();
-  const stacked = Boolean(focus) && columns < STACK_BELOW;
+  // 回环提示跟在步骤轨后面，64 列以下整行放不下，直接隐藏。
+  const showLoop = stage === "result" && columns >= STACK_BELOW;
+  const stackBelow = showLoop ? RESULT_STACK_BELOW : STACK_BELOW;
+  const stacked = Boolean(focus) && columns < stackBelow;
 
   return (
     <Box
@@ -69,6 +78,12 @@ export function StageBar({ stage, focus, focusNote }: StageBarProps) {
               )}
             </Box>
           ))}
+          {showLoop ? (
+            <Text>
+              <Text color={theme.dim}>{" → "}</Text>
+              <Text color={theme.muted}>选择</Text>
+            </Text>
+          ) : null}
         </Box>
         {stacked ? null : <Box flexGrow={1} />}
         {focus ? (

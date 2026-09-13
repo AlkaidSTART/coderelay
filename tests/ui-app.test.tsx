@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 
 import type { DetectedCli } from "../src/models/cli";
+import type { SessionTurn } from "../src/models/session";
 import {
   App,
   type LaunchRequest,
-  type SessionOutcome,
+  type RunningTask,
 } from "../src/ui/App";
 
 const CLIS: DetectedCli[] = [
@@ -39,6 +40,21 @@ const CLIS: DetectedCli[] = [
   },
 ];
 
+function turn(overrides: Partial<SessionTurn> = {}): SessionTurn {
+  return {
+    id: 1,
+    sessionId: "session-1",
+    cliId: "codex",
+    prompt: "fix lint",
+    output: "hello\nworld",
+    exitCode: 0,
+    signal: null,
+    durationMs: 1200,
+    createdAt: 1_700_000_000_000,
+    ...overrides,
+  };
+}
+
 function nextTick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -53,12 +69,17 @@ function renderApp(
     clis: readonly DetectedCli[];
     isScanning: boolean;
     initialId: DetectedCli["id"];
-    session: SessionOutcome | null;
+    turns: readonly SessionTurn[];
+    running: RunningTask | null;
     onLaunch: (request: LaunchRequest) => void;
+    onAbort: () => void;
+    onNewSession: () => void;
     onExit: () => void;
   }> = {},
 ) {
   let launches: LaunchRequest[] = [];
+  let aborts = 0;
+  let newSessions = 0;
   let exits = 0;
 
   const instance = render(
@@ -66,10 +87,19 @@ function renderApp(
       clis={overrides.clis ?? CLIS}
       isScanning={overrides.isScanning ?? false}
       initialId={overrides.initialId}
-      session={overrides.session}
+      turns={overrides.turns ?? []}
+      running={overrides.running ?? null}
       onLaunch={(request) => {
         launches.push(request);
         overrides.onLaunch?.(request);
+      }}
+      onAbort={() => {
+        aborts += 1;
+        overrides.onAbort?.();
+      }}
+      onNewSession={() => {
+        newSessions += 1;
+        overrides.onNewSession?.();
       }}
       onExit={() => {
         exits += 1;
@@ -81,6 +111,8 @@ function renderApp(
   return {
     ...instance,
     launches: () => launches,
+    aborts: () => aborts,
+    newSessions: () => newSessions,
     exits: () => exits,
   };
 }
@@ -118,31 +150,7 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("enter on result continues with the same CLI in composer", async () => {
-    const instance = render(
-      <App
-        clis={CLIS}
-        session={{
-          id: "codex",
-          code: 0,
-          signal: null,
-          durationMs: 1200,
-          stdout: "done\n",
-        }}
-        onLaunch={() => {}}
-        onExit={() => {}}
-      />,
-    );
-    await nextTick();
-    expect(instance.lastFrame()).toContain("✓ 成功");
-
-    instance.stdin.write("\r");
-    await nextTick();
-    expect(instance.lastFrame()).toContain("将任务交给 Codex");
-    instance.cleanup();
-  });
-
-  test("moves with → and enters composer, then accepts text input", async () => {
+  test("moves with → and enters chat, then accepts text input", async () => {
     const instance = renderApp();
 
     instance.stdin.write("\u001B[C");
@@ -204,78 +212,188 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("running prop shows the loading view and ctrl+c aborts", async () => {
-    let aborts = 0;
-    const instance = render(
-      <App
-        clis={CLIS}
-        running={{ id: "claude", prompt: "write tests", startedAt: Date.now() }}
-        onLaunch={() => {}}
-        onAbort={() => {
-          aborts += 1;
-        }}
-        onExit={() => {}}
-      />,
-    );
+  test("submit clears the input so the next turn starts fresh", async () => {
+    const instance = renderApp();
 
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("正在把任务交给");
-    expect(frame).toContain("Claude Code");
-    expect(frame).toContain("write tests");
-    expect(frame).toContain("▸ 执行");
-    expect(frame).toContain("中止任务");
-
-    instance.stdin.write("\u0003");
+    instance.stdin.write("\r");
     await nextTick();
-    expect(aborts).toBe(1);
+    instance.stdin.write("do work");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.launches()).toEqual([
+      { id: "codex", mode: "prompt", prompt: "do work" },
+    ]);
+    expect(instance.lastFrame()).toContain("写下任务");
     instance.cleanup();
   });
 
-  test("result screen renders captured CLI output", () => {
-    const instance = render(
-      <App
-        clis={CLIS}
-        session={{
-          id: "codex",
-          code: 0,
-          signal: null,
-          durationMs: 1200,
-          stdout: "hello\nworld\n",
-        }}
-        onLaunch={() => {}}
-        onExit={() => {}}
-      />,
-    );
+  test("typing a slash shows the live command menu", async () => {
+    const instance = renderApp();
+
+    instance.stdin.write("\r");
+    await nextTick();
+    instance.stdin.write("/m");
+    await nextTick();
 
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("✓ 成功");
-    expect(frame).toContain("输出 · 2 行");
+    expect(frame).toContain("/model");
+    expect(frame).toContain("切换 agent");
+    instance.cleanup();
+  });
+
+  test("/model returns to the picker and keeps the session", async () => {
+    const instance = renderApp({ turns: [turn()] });
+
+    instance.stdin.write("\r");
+    await nextTick();
+    instance.stdin.write("/model");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.lastFrame()).toContain("这一棒交给谁？");
+    instance.cleanup();
+  });
+
+  test("/new starts a fresh session via the callback", async () => {
+    const instance = renderApp({ turns: [turn()] });
+
+    instance.stdin.write("\r");
+    await nextTick();
+    instance.stdin.write("/new");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.newSessions()).toBe(1);
+    instance.cleanup();
+  });
+
+  test("unknown slash command shows a notice", async () => {
+    const instance = renderApp();
+
+    instance.stdin.write("\r");
+    await nextTick();
+    instance.stdin.write("/foo");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.lastFrame()).toContain("未知命令");
+    instance.cleanup();
+  });
+
+  test("renders session turns with prompt, output tail and status", () => {
+    const instance = renderApp({
+      initialId: "codex",
+      turns: [
+        turn(),
+        turn({
+          id: 2,
+          cliId: "claude",
+          prompt: "继续",
+          output: "done",
+          exitCode: 0,
+          durationMs: 2400,
+        }),
+      ],
+    });
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("会话 · 2 轮");
+    expect(frame).toContain("fix lint");
     expect(frame).toContain("hello");
-    expect(frame).toContain("world");
+    expect(frame).toContain("✓ Codex · exit 0 · 1.2s");
+    expect(frame).toContain("✓ Claude Code · exit 0 · 2.4s");
     instance.cleanup();
   });
 
-  test("failed result prefers stderr for the output block", () => {
-    const instance = render(
-      <App
-        clis={CLIS}
-        session={{
-          id: "pi",
-          code: 2,
-          signal: null,
+  test("failed turn shows the signal status and red output", () => {
+    const instance = renderApp({
+      initialId: "pi",
+      turns: [
+        turn({
+          cliId: "pi",
+          prompt: "explode",
+          output: "bad input",
+          exitCode: 2,
           durationMs: 300,
-          stdout: "partial",
-          stderr: "bad input",
-        }}
-        onLaunch={() => {}}
-        onExit={() => {}}
-      />,
-    );
+        }),
+      ],
+    });
 
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("× 失败");
-    expect(frame).toContain("stderr · 1 行");
+    expect(frame).toContain("× Pi · exit 2 · 0.3s");
     expect(frame).toContain("bad input");
     instance.cleanup();
+  });
+
+  test("result stage shows the loop-back arrow pointing at selection", () => {
+    const instance = renderApp({ initialId: "codex", turns: [turn()] });
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("▸ 结果");
+    expect(frame).toMatch(/→\s*选择/);
+    instance.cleanup();
+  });
+
+  test("loop-back arrow only appears on the result stage", () => {
+    const picker = renderApp();
+    expect(picker.lastFrame() ?? "").not.toMatch(/→\s*选择/);
+    picker.cleanup();
+
+    const composing = renderApp({ initialId: "codex" });
+    expect(composing.lastFrame() ?? "").not.toMatch(/→\s*选择/);
+    composing.cleanup();
+
+    const runningChat = renderApp({
+      initialId: "codex",
+      turns: [turn()],
+      running: { id: "codex", prompt: "x", startedAt: Date.now() },
+    });
+    expect(runningChat.lastFrame() ?? "").not.toMatch(/→\s*选择/);
+    runningChat.cleanup();
+  });
+
+  test("running renders inside chat, keeps the input visible, ctrl+c aborts", () => {
+    const instance = renderApp({
+      initialId: "claude",
+      turns: [turn()],
+      running: {
+        id: "claude",
+        prompt: "write tests",
+        startedAt: Date.now(),
+      },
+    });
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("▸ 执行");
+    expect(frame).toContain("正在把任务交给");
+    expect(frame).toContain("write tests");
+    expect(frame).toContain("中止任务");
+    expect(frame).toContain("写下任务");
+
+    instance.stdin.write("\u0003");
+    instance.cleanup();
+  });
+
+  test("ctrl+c aborts while running and exits while idle", async () => {
+    const runningInstance = renderApp({
+      initialId: "claude",
+      running: { id: "claude", prompt: "x", startedAt: Date.now() },
+    });
+    runningInstance.stdin.write("\u0003");
+    await nextTick();
+    expect(runningInstance.aborts()).toBe(1);
+    expect(runningInstance.exits()).toBe(0);
+    runningInstance.cleanup();
+
+    const idleInstance = renderApp({ initialId: "claude" });
+    idleInstance.stdin.write("\u0003");
+    await nextTick();
+    expect(idleInstance.exits()).toBe(1);
+    idleInstance.cleanup();
   });
 });

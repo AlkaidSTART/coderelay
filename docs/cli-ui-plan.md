@@ -9,17 +9,29 @@ coderelay 面向频繁在多个编码 agent 之间切换的年轻开发者。视
 
 视觉 rationale：**用纯白画布 + 圆角描边玻璃板模拟液态玻璃台面；三色是信号灯不是装饰——粉只标「你在这」（唯一色块：选中的 CLI 芯片）、蓝只标「可以动的东西」、绿只做单字符信号——每一屏里它们加起来不超过一小撮。**分隔与描边的灰取自 Apple 系统灰（systemGray4/3），保证「中性、分层、克制」的 macOS 质感。
 
-## 2. 页面流
+## 2. 页面流与会话层
 
 ```text
-scanning ──▶ picker ──▶ composer ──▶ running ──▶ result ──▶ picker
-                │            │   │    ▲            ▲
-                │            │   └─↵──┘ 捕获输出    │
-                │            └─tab───────────────┘ 继承 stdio，不经过渲染层
+scanning ──▶ picker ──▶ chat（多轮对话区）──▶ picker
+                │            │  ▲   │
+                │            │  │   └─ tab：继承 stdio，不经过渲染层
+                │            │  └─ esc：回选择条
                 └── 未安装详情 ┘
 ```
 
-prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `ignore/pipe/pipe`，输出由 `launchWithPromptCaptured` 捕获尾部（默认 20k 字符/路），退出后由 result 屏渲染；等待期由 running 加载层兜住，`ctrl c` 通过 `onAbort` 向子进程发 SIGTERM 中止。tab 交互模式不变：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重新挂载。`binPath` 必须使用扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
+- chat 是常驻对话区：多轮输入、加载态、每轮输出都渲染在同一块圆角玻璃板里，输入框常驻板底——一轮结束立刻回到可输入状态。
+- prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `ignore/pipe/pipe`，输出由 `launchWithPromptCaptured` 捕获尾部（默认 20k 字符/路），退出后写入会话层并在对话板里渲染；`ctrl c` 通过 `onAbort` 向子进程发 SIGTERM 中止。
+- tab 交互模式不变：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重挂载回 chat；交互输出无法捕获，不写入会话层。
+- `binPath` 必须使用扫描得到的 `DetectedCli.path`，保证 PATH 未刷新时也能启动。
+
+### 会话层（SQLite）
+
+`src/session/store.ts` 用 Bun 内置 `bun:sqlite` 做存储层，库文件在 `<cwd>/.coderelay/sessions.db`（跟随仓库，跨 CLI 共享同一份事实）：
+
+- `sessions(id, cli_id, title, created_at, updated_at)`：会话元数据，`title` 取首条 prompt 前 60 字符；
+- `turns(id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at)`：每轮问答，`(session_id, id)` 上有索引。
+
+跨 CLI 同步不依赖各 CLI 的原生会话：`buildPromptWithContext`（`src/session/context.ts`）把历史轮次重组为 transcript（单轮输出留尾 1.5k 字符、总预算 8k，最旧的先丢弃）注入到新 prompt 之前——切换 agent（`/model`）后，新 CLI 也能接上此前所有轮次。
 
 ## 3. 视觉 token（`src/ui/theme.ts`）
 
@@ -41,7 +53,7 @@ prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `igno
 点缀 Rarity 预算（违反即视为回归）：
 
 - **粉**：品牌字 `code`、位置层当前步 `▸`、选中 CLI 芯片的粉底覆盖（全页唯一色块）；
-- **蓝**：聚焦输入框的描边 + `❯`、加载层 Spinner 与秒表；
+- **蓝**：聚焦输入框的描边 + `❯`、加载层 Spinner 与秒表、`/` 命令菜单的命令名；
 - **绿**：只以单字符出现——芯片内 `●` 已就绪、走过的步骤 `✓`、结果 `✓`，每个信号旁边必有文字标签；
 - 序号、agent 名、快捷键、焦点名一律中性（`text`/`muted`/`dim`），**不上色**。
 
@@ -60,8 +72,8 @@ prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `igno
 
 页面按「chrome — 对话区 — 按钮区」三个分区组织，分区之间靠留白和描边隔离：
 
-1. **位置层（`src/ui/components/StageBar.tsx`）**：一块横贯全宽的白色圆角玻璃条，回答「我在流程的哪一步、正盯着哪个 agent」。左侧步骤轨：当前步 `▸ 标签`（`pinkInk` + 加粗），已走过的步 `✓`（系统绿）+ `muted` 标签，未到的步保持 `muted` 无前缀；右侧焦点：`<标签> · <agent 名>`（agent 名中性加粗），未安装详情页附加 `（未安装）`（`alert` 色）。窄终端（< 64 列）自动两行排布。`detail` 屏幕语义上属于「选择」档，不单独加格。
-2. **对话区**：composer 和 running 共用一块圆角玻璃板（`edge` 描边，composer 聚焦时转 `accent`），说明文字、输入 `❯`、加载状态都在板内；结果屏则是一张 **macOS 通知卡**——圆角、中性描边、彩色符号（`✓` 绿 / `×` `!` 红）+ 加粗标题、`muted` 描述、`dim` 元数据，捕获的输出尾部渲染在卡片下方。对话区永远与按钮提示隔开：提示条在板外。
+1. **位置层（`src/ui/components/StageBar.tsx`）**：一块横贯全宽的白色圆角玻璃条，回答「我在流程的哪一步、正盯着哪个 agent」。左侧步骤轨：当前步 `▸ 标签`（`pinkInk` + 加粗），已走过的步 `✓`（系统绿）+ `muted` 标签，未到的步保持 `muted` 无前缀；右侧焦点：`<标签> · <agent 名>`（agent 名中性加粗），未安装详情页附加 `（未安装）`（`alert` 色）。结果档在步骤轨末尾追加回环提示 `→ 选择`（`dim` 箭头 + `muted` 标签，中性色不计入三色预算）——接力从结果回到选择，交给下一棒；64 列以下放不下就隐藏，带尾巴时步骤轨 + 焦点同行需要 ~82 列，再窄与焦点分两行。窄终端（< 64 列）自动两行排布。`detail` 屏幕语义上属于「选择」档，不单独加格。
+2. **对话区（`src/ui/components/ChatView.tsx`）**：一块圆角玻璃板承载多轮对话——历史轮次（`❯` prompt + 输出尾部 + `✓/×` 状态行）、加载态（Spinner + 秒表）、`/` 命令菜单、输入框全部在板内；输入框常驻板底，一轮结束立刻回到可输入状态。板内配色：成功 `✓` 绿、失败 `×` 与 stderr 红、秒表与命令名蓝。对话区永远与按钮提示隔开：提示条在板外。
 3. **选择条（`src/ui/components/CliList.tsx`）**：CLI 横向排列成一排芯片，选中芯片整块珊瑚粉覆盖，见第 5 节。
 
 头部（`AppHeader`）是浮在环境光上的文字，不铺玻璃板：`code`（`pinkInk`）+ `relay`（`text`），后接 `本地 agent 接力台`（`muted`）。
@@ -84,20 +96,14 @@ prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `igno
 - 芯片下方只显示选中项的一行细节：版本 + `~` 缩写路径，未安装时说明 `PATH` 里缺哪个 bin；
 - `←→` / `hl` 移动，`↵` 可用 → composer、不可用 → detail。
 
-### composer
+### chat（对话区）
 
-- 说明文字与输入同处一块圆角对话板：主句「将任务交给 <Agent>」（Agent 名中性加粗）、帮助句「写清目标和完成标准，接力会更稳。」、然后是 `❯` 输入行。
-- 聚焦时描边转 `accent`、`❯` 变蓝——这是蓝色在 composer 的唯一出现。
-- 上一轮的 prompt 会保留在输入框里，方便接着改。
-- 快捷键继续用 `↵` 执行、`tab` 交互、`esc` 返回。
-
-### running（加载层）
-
-- 结果还没回来时的唯一画面：Spinner（系统蓝）+「正在把任务交给 <Agent>，输出回来后在这里展示。」
-- 下一行以 `dim` 回显提交的任务全文，再下一行是蓝色加粗秒表（0.1s 步进），等待是可见的。
-- 加载层渲染在对话板内（`edge` 描边），与按钮提示隔开。
-- 位置层切到「执行」档，右侧焦点 `交给 · <Agent>`；快捷键只剩 `ctrl c` 中止任务。
-- 加载层允许非黑白配色：蓝（Spinner、秒表）加位置层的绿色 `✓`，就是三色在这一屏的全部出现。
+- 首轮进入时板内是两句引导：「将任务交给 <Agent>」「写清目标和完成标准，接力会更稳。输入 / 查看命令。」
+- 每完成一轮，板内追加一个轮次块：`❯ prompt`、输出尾部最多 3 行（失败为 `alert` 红）、状态行 `✓ Codex · exit 0 · 1.2s`（失败 `×` + 红）；长会话只渲染最后 8 轮，板首一行 `会话 · N 轮`。
+- running 时板内出现 Spinner（系统蓝）+「正在把任务交给 <Agent>」+ 蓝色秒表 + prompt 回显；输入框保留但禁用——任务不消失、输入不闪烁。
+- 输入 `/` 实时弹出命令菜单（蓝字命令名 + `dim` 描述）：`/model` 回选择条（会话保留）、`/new` 开新会话、`/help` 显示命令；未知命令给一行提示。
+- 提交后输入框立即清空并保持可输入——及时渲染下一轮。发送的 prompt 经 `buildPromptWithContext` 注入历史轮次后再交给 CLI。
+- 快捷键：`↵` 发送、`tab` 交互模式、`esc` 回选择条、`ctrl c` running 时中止 / 空闲时退出。
 
 ### detail（未安装）
 
@@ -117,29 +123,29 @@ prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `igno
 - 失败区分两类：无法启动 vs 提前退出，避免把所有非零退出混成一句“失败”。
 - 元数据收敛为 `exit <code> · <duration>s`。
 
-## 6. 键盘与行为契约（未改动）
+## 6. 键盘与行为契约
 
 | 场景 | 按键 | 行为 |
 | --- | --- | --- |
-| picker | `↑ ↓` / `k j` | 移动选中 |
-| picker | `↵` | 可用 → composer；不可用 → detail |
+| picker | `←→` / `h l` | 移动选中 |
+| picker | `↵` | 可用 → chat；不可用 → detail |
 | picker | `q` / `⌃C` | 退出 |
-| composer | `↵` | 带 prompt 启动（渲染层模式） |
-| composer | `tab` | 交互模式启动（继承 stdio） |
-| composer | `esc` | 返回 picker |
-| running | `⌃C` | 中止任务（SIGTERM），退出状态进入结果屏 |
-| result | `↵` | 继续交给当前 agent（回 composer，prompt 保留） |
-| result | `esc` | 回 picker 重新选择 |
+| chat | `↵` | 发送任务（渲染层模式）；`/` 开头的输入按命令处理 |
+| chat | `/model` | 切换 agent，会话上下文保留 |
+| chat | `/new` | 开始新会话 |
+| chat | `tab` | 交互模式启动（继承 stdio） |
+| chat | `esc` | 回 picker 重新选择 |
+| chat | `⌃C` | running 时中止任务（SIGTERM）；空闲时退出 |
 | detail | `↵` / `esc` | 返回 picker |
-| detail / result | `q` / `⌃C` | 退出 |
+| detail | `q` / `⌃C` | 退出 |
 
-`src/cli.tsx` 的生命周期不变：卸载 Ink → 子进程继承 stdio → 退出后重新挂载并保留上次选中项。
+prompt 模式下每轮结束由 `cli.tsx` 把 turn 写入 SQLite 并刷新对话板；交互模式结束后重挂载，带着 `initialId` 直接回到 chat。
 
 ## 7. 刻意不做的设计
 
 - 不用 emoji、霓虹发光、渐变背景、彩色徽章、阴影。
 - 点缀不越界：粉只覆盖选中的 CLI 芯片这一处色块、蓝不进序号/快捷键/agent 名、绿不做多字符装饰—— Rarity 预算见第 3 节，违反即视为回归。
-- 不把所有内容塞进圆角卡片：圆角玻璃只有位置层、对话板、结果通知卡三块；选择条用芯片，细节行靠留白分层。
+- 不把所有内容塞进圆角卡片：圆角玻璃只有位置层、对话板两块；选择条用芯片，轮次与细节行靠留白和描边分层。
 - 不用装饰性英文 eyebrow、假数据、重复解释标题的微文案。
 - 不做「假毛玻璃」：终端没有真正的背景模糊，所以不假装有——见第 8 节。
 - 不新增搜索、动画、声音、吉祥物、命令面板等按键或能力；这些属于产品功能，需要先单独讨论。
@@ -157,8 +163,8 @@ prompt 模式（↵）走渲染层：UI 保持挂载，子进程 stdio 为 `igno
 ## 9. 验收
 
 1. `bun test` 全绿，`bunx tsc --noEmit` 无错误，`git diff --check` 干净。
-2. 80 / 100 / 120 列终端下六屏无意外换行：scanning、picker、composer、running、detail、result；窄到 60 列时位置层自动分两行，其余内容仍不折断。
-3. picker 的 `←→` / `hl` / `↵` / `q`，composer 的 `↵` / `tab` / `esc`，running 的 `⌃C`，detail/result 的 `↵` / `esc` / `q` 均可用。
+2. 80 / 100 / 120 列终端下四屏无意外换行：scanning、picker、chat、detail；窄到 60 列时位置层自动分两行，其余内容仍不折断。
+3. picker 的 `←→` / `hl` / `↵` / `q`，chat 的 `↵` / `/model` / `/new` / `tab` / `esc`，chat running 中的 `⌃C`，detail 的 `↵` / `esc` / `q` 均可用。
 4. 移除颜色后，选中、可用性、当前位置、扫描、成功和失败仍能通过符号、字重和文案区分。
 5. 正文对比度不低于 4.5:1；`ok` 绿仅限单字符信号且 ≥ 3:1，状态由相邻文字共同表达；`line` / `edge` 只用于装饰性轨道与描边，状态不依赖它们。
-6. 数一遍三色：粉 ≤ 3 处/屏（品牌字、当前步 `▸`、选中芯片 1 块），蓝 ≤ 4 处/屏（聚焦输入框 2 处、Spinner 1 处、秒表 1 处），绿全部是单字符信号。
+6. 数一遍三色：粉 ≤ 3 处/屏（品牌字、当前步 `▸`、选中芯片 1 块），蓝集中在对话板（聚焦输入框 2 处、Spinner 1 处、秒表 1 处、命令菜单按行），绿全部是单字符信号。

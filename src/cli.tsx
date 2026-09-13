@@ -3,25 +3,36 @@ import type { ChildProcess } from "node:child_process";
 
 import { getCliAdapter } from "./agents/cli-adapters";
 import type { CliId, DetectedCli } from "./models/cli";
+import type { SessionTurn } from "./models/session";
 import {
   launchInteractive,
   launchWithPromptCaptured,
 } from "./runtime/launcher";
-import { scanCodingClis } from "./scanner/cli-scanner";
+import { buildPromptWithContext } from "./session/context";
 import {
-  App,
-  type LaunchRequest,
-  type RunningTask,
-  type SessionOutcome,
-} from "./ui/App";
+  createSessionStore,
+  defaultSessionDbPath,
+  type SessionStore,
+} from "./session/store";
+import { scanCodingClis } from "./scanner/cli-scanner";
+import { App, type LaunchRequest, type RunningTask } from "./ui/App";
 
 let clis: DetectedCli[] = [];
 let isScanning = true;
 let initialId: CliId | undefined;
-let session: SessionOutcome | null = null;
+let turns: readonly SessionTurn[] = [];
 let running: RunningTask | null = null;
 let activeChild: ChildProcess | null = null;
+let sessionId: string | null = null;
+let store: SessionStore | undefined;
 let app: Instance | undefined;
+
+function getStore(): SessionStore {
+  if (!store) {
+    store = createSessionStore(defaultSessionDbPath());
+  }
+  return store;
+}
 
 function tree() {
   return (
@@ -29,7 +40,7 @@ function tree() {
       clis={clis}
       isScanning={isScanning}
       initialId={initialId}
-      session={session}
+      turns={turns}
       running={running}
       onLaunch={(request) => {
         void launch(request);
@@ -37,7 +48,13 @@ function tree() {
       onAbort={() => {
         activeChild?.kill("SIGTERM");
       }}
+      onNewSession={() => {
+        sessionId = null;
+        turns = [];
+        app?.rerender(tree());
+      }}
       onExit={() => {
+        store?.close();
         app?.unmount();
         process.exit(0);
       }}
@@ -71,47 +88,12 @@ function mount(): void {
   app = render(tree(), { exitOnCtrlC: false });
 }
 
-/**
- * 交互模式必须继承 stdio：Ink 先卸载，把终端完整交给 agent 的 REPL，
- * 退出后重新挂载。此时拿不到结构化输出，结果屏只有退出状态。
- */
-async function waitForInteractiveSession(
-  request: LaunchRequest,
-  detected: DetectedCli,
-  adapter: ReturnType<typeof getCliAdapter>,
-): Promise<SessionOutcome> {
-  const startedAt = Date.now();
-
-  try {
-    const child = launchInteractive(adapter, {
-      binPath: detected.path,
-      cwd: process.cwd(),
-    });
-
-    const [code, signal] = await waitForChildExit(child);
-
-    return {
-      id: request.id,
-      code,
-      signal,
-      durationMs: Date.now() - startedAt,
-    };
-  } catch {
-    return {
-      id: request.id,
-      code: null,
-      signal: null,
-      durationMs: Date.now() - startedAt,
-    };
-  }
-}
-
 async function launch(request: LaunchRequest): Promise<void> {
   const detected = clis.find(
     (cli) => cli.id === request.id && cli.available,
   );
 
-  if (!detected) {
+  if (!detected || running) {
     return;
   }
 
@@ -119,41 +101,67 @@ async function launch(request: LaunchRequest): Promise<void> {
   initialId = request.id;
 
   if (request.mode === "interactive") {
+    // 交互模式必须继承 stdio：Ink 先卸载，把终端完整交给 agent 的
+    // REPL，退出后重挂载。交互输出无法捕获，不写入会话层。
     app?.unmount();
-    session = await waitForInteractiveSession(request, detected, adapter);
-    running = null;
+    try {
+      const child = launchInteractive(adapter, {
+        binPath: detected.path,
+        cwd: process.cwd(),
+      });
+      await waitForChildExit(child);
+    } catch {
+      // 启动失败不打断流程，回到界面由用户重试。
+    }
     mount();
     return;
   }
 
-  // 渲染层模式：UI 保持挂载，先切到加载层，子进程输出被捕获，
-  // 退出后由 result 屏渲染返回结果。ctrl c 通过 onAbort 中止任务。
+  // 渲染层模式：UI 保持挂载，输出被捕获后写入会话层（SQLite）。
+  // 跨 CLI 的上下文由 buildPromptWithContext 统一回放，切换 agent
+  // （/model）后新 CLI 也能接上此前所有轮次。
+  const sessionStore = getStore();
   const startedAt = Date.now();
+  let currentSessionId = sessionId;
+  if (!currentSessionId) {
+    currentSessionId = sessionStore
+      .createSession(request.id, request.prompt.slice(0, 60))
+      .id;
+    sessionId = currentSessionId;
+  }
+
+  const finalPrompt = buildPromptWithContext(
+    sessionStore.listTurns(currentSessionId),
+    request.prompt,
+  );
   running = { id: request.id, prompt: request.prompt, startedAt };
   app?.rerender(tree());
 
   try {
-    const handle = launchWithPromptCaptured(adapter, request.prompt, {
+    const handle = launchWithPromptCaptured(adapter, finalPrompt, {
       binPath: detected.path,
       cwd: process.cwd(),
     });
     activeChild = handle.child;
     const result = await handle.done;
-    session = {
-      id: request.id,
-      code: result.code,
+    const failed =
+      result.signal !== null ||
+      (result.code !== null && result.code !== 0);
+    const output =
+      failed && result.stderr.trim() ? result.stderr : result.stdout;
+
+    sessionStore.appendTurn({
+      sessionId: currentSessionId,
+      cliId: request.id,
+      prompt: request.prompt,
+      output,
+      exitCode: result.code,
       signal: result.signal,
       durationMs: Date.now() - startedAt,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
+    });
+    turns = sessionStore.listTurns(currentSessionId);
   } catch {
-    session = {
-      id: request.id,
-      code: null,
-      signal: null,
-      durationMs: Date.now() - startedAt,
-    };
+    // 启动或存储异常时不阻塞界面，回到输入态由用户重试。
   } finally {
     activeChild = null;
     running = null;
