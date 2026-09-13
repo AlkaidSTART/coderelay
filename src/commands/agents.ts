@@ -29,6 +29,7 @@ export interface AgentListEntry {
 
 export interface AgentCommandOptions {
   readonly cwd?: string;
+  readonly configPath?: string;
   readonly config?: Config;
   readonly scanner?: ScannerOptions;
 }
@@ -102,7 +103,7 @@ export async function runAgentsCommand(
   try {
     const loaded =
       options.config === undefined
-        ? await loadConfig({ cwd: options.cwd })
+        ? await loadConfig({ cwd: options.cwd, path: options.configPath })
         : { config: options.config };
     const detected = await scan(options.scanner);
     const entries = buildAgentList(
