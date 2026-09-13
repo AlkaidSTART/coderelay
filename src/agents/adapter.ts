@@ -39,13 +39,13 @@ export function createAgentAdapter(
         args.push("--model", buildOptions.model);
       }
 
+      args.push(...(buildOptions.extraArgs ?? []));
+
       if (buildOptions.prompt !== undefined) {
         args.push(...cli.promptArgs(buildOptions.prompt));
       } else {
         args.push(...cli.interactiveArgs);
       }
-
-      args.push(...(buildOptions.extraArgs ?? []));
       return args;
     },
   };

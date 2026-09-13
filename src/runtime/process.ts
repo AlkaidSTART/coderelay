@@ -52,8 +52,6 @@ export class ProcessError extends Error {
   }
 }
 
-const decoder = new TextDecoder();
-
 async function readStream(
   stream: ReadableStream<Uint8Array> | null | undefined,
   mirror: boolean,
@@ -64,6 +62,7 @@ async function readStream(
   }
 
   let output = "";
+  const decoder = new TextDecoder();
   for await (const chunk of stream) {
     const text = decoder.decode(chunk, { stream: true });
     output += text;
@@ -115,7 +114,7 @@ export async function runProcess(
   }
 
   const mirror = mode === "stream";
-  const [stdout, stderr, code, signalCode] = await Promise.all([
+  const [stdout, stderr, code] = await Promise.all([
     readStream(
       proc.stdout as ReadableStream<Uint8Array> | undefined,
       mirror,
@@ -127,8 +126,8 @@ export async function runProcess(
       (chunk) => process.stderr.write(chunk),
     ),
     proc.exited,
-    Promise.resolve(proc.signalCode),
   ]);
+  const signalCode = proc.signalCode;
 
   if (timer) {
     clearTimeout(timer);

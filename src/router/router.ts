@@ -114,7 +114,18 @@ export function buildRouteCandidates(
       continue;
     }
 
-    candidates.push(candidateForModel(config, agentId, undefined, defaultModel));
+    const fallbackModel =
+      defaultModel.agent === agentId && defaultModel.model
+        ? {
+            id: defaultModel.model,
+            strengths: [],
+            default: true,
+          }
+        : undefined;
+
+    candidates.push(
+      candidateForModel(config, agentId, fallbackModel, defaultModel),
+    );
   }
 
   return dedupeCandidates(candidates);
