@@ -39,6 +39,7 @@ export interface StageBarProps {
 
 /**
  * 常驻位置层：一行回答「我在流程的哪一步、现在盯着哪个 agent」。
+ * 不铺底色、不画边框——画面完全落在终端自己的背景上，只靠亮度分层；
  * 状态不只靠颜色：当前步有 ▸、已走过的步有 ✓、右侧焦点带文字标签；
  * 结果档末尾追加「→ 选择」回环提示——接力从结果回到选择，交给下一棒。
  */
@@ -52,52 +53,53 @@ export function StageBar({ stage, focus, focusNote }: StageBarProps) {
 
   return (
     <Box
-      flexDirection="column"
+      flexDirection={stacked ? "column" : "row"}
+      paddingX={2}
       marginTop={1}
-      marginX={2}
-      backgroundColor={theme.panel}
-      borderStyle="round"
-      borderColor={theme.edge}
     >
-      <Box flexDirection={stacked ? "column" : "row"} paddingX={1}>
-        <Box flexDirection="row">
-          {STEPS.map((step, index) => (
-            <Box key={step.id} flexDirection="row">
-              {index > 0 ? <Text color={theme.dim}>{"  ›  "}</Text> : null}
-              {index === currentIndex ? (
-                <Text bold color={theme.pinkInk}>
-                  {`▸ ${step.label}`}
-                </Text>
-              ) : index < currentIndex ? (
-                <Text>
-                  <Text color={theme.ok}>✓ </Text>
-                  <Text color={theme.muted}>{step.label}</Text>
-                </Text>
-              ) : (
-                <Text color={theme.muted}>{step.label}</Text>
-              )}
-            </Box>
-          ))}
-          {showLoop ? (
-            <Text>
-              <Text color={theme.dim}>{" → "}</Text>
-              <Text color={theme.muted}>选择</Text>
-            </Text>
-          ) : null}
-        </Box>
-        {stacked ? null : <Box flexGrow={1} />}
-        {focus ? (
-          <Text>
-            <Text color={theme.dim}>{`${FOCUS_LABEL[stage]} · `}</Text>
-            <Text bold color={theme.text}>
-              {focus}
-            </Text>
-            {focusNote ? (
-              <Text color={theme.alert}>{`（${focusNote}）`}</Text>
+      <Box flexDirection="row">
+        {STEPS.map((step, index) => (
+          <Box key={step.id} flexDirection="row">
+            {index > 0 ? (
+              <Text color={theme.muted}>
+                {" › "}
+              </Text>
             ) : null}
+            {index === currentIndex ? (
+              <Text bold color={theme.accent}>
+                {`▸ ${step.label}`}
+              </Text>
+            ) : index < currentIndex ? (
+              <Text>
+                <Text color={theme.ok}>✓ </Text>
+                <Text color={theme.muted}>{step.label}</Text>
+              </Text>
+            ) : (
+              <Text color={theme.muted}>
+                {step.label}
+              </Text>
+            )}
+          </Box>
+        ))}
+        {showLoop ? (
+          <Text>
+            <Text color={theme.muted}>
+              {" → "}
+            </Text>
+            <Text color={theme.muted}>选择</Text>
           </Text>
         ) : null}
       </Box>
+      {stacked ? null : <Box flexGrow={1} />}
+      {focus ? (
+        <Text>
+          <Text color={theme.muted}>{`${FOCUS_LABEL[stage]} · `}</Text>
+          <Text bold>{focus}</Text>
+          {focusNote ? (
+            <Text color={theme.alert}>{`（${focusNote}）`}</Text>
+          ) : null}
+        </Text>
+      ) : null}
     </Box>
   );
 }

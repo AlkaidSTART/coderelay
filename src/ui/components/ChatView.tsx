@@ -1,5 +1,5 @@
 import { Spinner, TextInput } from "@inkjs/ui";
-import { Box, Text } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import { useEffect, useRef, useState } from "react";
 
 import type { SessionTurn } from "../../models/session";
@@ -66,7 +66,7 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text>
-        <Text bold color={theme.muted}>
+        <Text bold color={theme.accent}>
           ❯{" "}
         </Text>
         <Text color={theme.text} wrap="truncate-end">
@@ -82,7 +82,7 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
           {line === "" ? " " : line}
         </Text>
       ))}
-      <Text color={failed ? theme.alert : theme.dim}>
+      <Text color={failed ? theme.alert : theme.muted}>
         {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
         {turn.signal ? ` · ${turn.signal}` : ""}
       </Text>
@@ -91,8 +91,9 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
 }
 
 /**
- * 对话区：多轮对话住在一块圆角玻璃板里，输入框常驻板底——
- * 一轮结束立刻回到可输入状态；running 时输入框保留但禁用。
+ * 对话区：不铺底色、不画边框，直接用终端自己的背景——
+ * 多轮对话按顺序往下排，输入框常驻在末尾，一轮结束立刻回到可输入状态；
+ * running 时输入框保留但禁用。
  */
 export function ChatView({
   agentName,
@@ -110,6 +111,7 @@ export function ChatView({
   // TextInput 非受控：挂载时捕获一次种子值，之后内部状态是唯一事实，
   // 重挂载（key 变化）永远从空串开始，避免与父组件的清空 setState 竞态。
   const [initialPrompt] = useState(prompt);
+  const { columns } = useWindowSize();
   const tail = turns.slice(-TURN_TAIL);
   const idle = running === null;
 
@@ -133,77 +135,77 @@ export function ChatView({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Box
-        flexDirection="column"
-        paddingX={1}
-        paddingY={1}
-        borderStyle="round"
-        borderColor={theme.edge}
-      >
-        {tail.length > 0 ? (
-          <Text color={theme.dim}>{`会话 · ${turns.length} 轮`}</Text>
-        ) : (
-          <>
+      {tail.length > 0 ? (
+        <Text color={theme.muted}>
+          {`会话 · ${turns.length} 轮`}
+        </Text>
+      ) : (
+        <>
+          <Text>
+            <Text color={theme.muted}>将任务交给 </Text>
+            <Text bold>{agentName}</Text>
+          </Text>
+          <Text color={theme.muted}>
+            写清目标和完成标准，接力会更稳。输入 / 查看命令。
+          </Text>
+        </>
+      )}
+
+      {tail.map((turn) => (
+        <TurnBlock key={turn.id} turn={turn} />
+      ))}
+
+      {running ? (
+        <>
+          <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
+            <Spinner type="dots" />
+            <Text> </Text>
             <Text>
-              <Text color={theme.muted}>将任务交给 </Text>
-              <Text bold color={theme.text}>
-                {agentName}
-              </Text>
+              <Text color={theme.muted}>正在把任务交给 </Text>
+              <Text bold>{running.agentName}</Text>
             </Text>
-            <Text color={theme.dim}>
-              写清目标和完成标准，接力会更稳。输入 / 查看命令。
-            </Text>
-          </>
-        )}
-
-        {tail.map((turn) => (
-          <TurnBlock key={turn.id} turn={turn} />
-        ))}
-
-        {running ? (
-          <>
-            <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
-              <Spinner type="dots" />
-              <Text> </Text>
-              <Text>
-                <Text color={theme.muted}>正在把任务交给 </Text>
-                <Text bold color={theme.text}>
-                  {running.agentName}
-                </Text>
-              </Text>
-              <Text bold color={theme.accent}>
-                {` ${elapsed.toFixed(1)}s`}
-              </Text>
-            </Box>
-            <Text color={theme.dim} wrap="truncate-end">
-              {running.prompt}
-            </Text>
-          </>
-        ) : null}
-
-        {commands.map((command) => (
-          <Text key={command.name}>
             <Text bold color={theme.accent}>
-              {command.name}
+              {` ${elapsed.toFixed(1)}s`}
             </Text>
-            <Text color={theme.dim}>{`  ${command.description}`}</Text>
+          </Box>
+          <Text color={theme.muted} wrap="truncate-end">
+            {running.prompt}
           </Text>
-        ))}
-        {notice ? <Text color={theme.dim}>{notice}</Text> : null}
+        </>
+      ) : null}
 
-        <Box flexDirection="row" marginTop={1}>
-          <Text bold={idle} color={idle ? theme.accent : theme.dim}>
-            ❯{" "}
+      {commands.map((command) => (
+        <Text key={command.name}>
+          <Text bold color={theme.accent}>
+            {command.name}
           </Text>
-          <TextInput
-            key={submitNonce}
-            defaultValue={initialPrompt}
-            placeholder="写下任务，/ 查看命令…"
-            onChange={handleChange}
-            onSubmit={handleSubmit}
-            isDisabled={!idle}
-          />
-        </Box>
+          <Text color={theme.muted}>{`  ${command.description}`}</Text>
+        </Text>
+      ))}
+      {notice ? (
+        <Text color={theme.muted}>
+          {notice}
+        </Text>
+      ) : null}
+
+      <Box marginTop={1}>
+        <Text color={theme.muted}>
+          {"─".repeat(Math.max(8, columns - 4))}
+        </Text>
+      </Box>
+
+      <Box flexDirection="row">
+        <Text bold={idle} color={idle ? theme.accent : theme.muted}>
+          {"❯ "}
+        </Text>
+        <TextInput
+          key={submitNonce}
+          defaultValue={initialPrompt}
+          placeholder="写下任务，/ 查看命令…"
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          isDisabled={!idle}
+        />
       </Box>
     </Box>
   );

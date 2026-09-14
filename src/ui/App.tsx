@@ -265,7 +265,7 @@ export function App({
           {cliDisplayName(selectedCli.id)} 还没就位
         </Text>
         <Text color={theme.muted}>PATH 里找不到 {selectedCli.bin}。</Text>
-        <Text color={theme.dim}>
+        <Text color={theme.muted}>
           安装后重新运行 coderelay，它会出现在这里。
         </Text>
       </Box>
@@ -276,12 +276,8 @@ export function App({
 
   return (
     <InkThemeProvider theme={inkTheme}>
-      <Box
-        width="100%"
-        minHeight={rows}
-        flexDirection="column"
-        backgroundColor={theme.bg}
-      >
+      {/* 不铺底色：整屏都用终端自己的背景，避免面板色和终端主题打架。 */}
+      <Box width="100%" minHeight={rows} flexDirection="column">
         <AppHeader />
         <StageBar
           stage={stage}
@@ -289,6 +285,8 @@ export function App({
           focusNote={screen === "detail" ? "未安装" : undefined}
         />
         <Box flexDirection="column" marginTop={1}>{body}</Box>
+        {/* 弹簧把键位条顶到窗口最后一行，画面因此始终铺满整屏。 */}
+        <Box flexGrow={1} />
         <Box paddingX={2} marginTop={1}>
           <HintBar context={hint} />
         </Box>

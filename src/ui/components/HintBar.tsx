@@ -39,10 +39,13 @@ const HINTS: Readonly<
   ],
 };
 
+/** 底部键位条：常驻在窗口最后一行，不参与滚动内容。 */
 export function HintBar({ context }: HintBarProps) {
   if (context === "scanning") {
     return (
-      <Text color={theme.dim}>扫描完成后自动进入选择，稍等一下。</Text>
+      <Text color={theme.muted}>
+        扫描完成后自动进入选择，稍等一下。
+      </Text>
     );
   }
 
@@ -50,9 +53,13 @@ export function HintBar({ context }: HintBarProps) {
     <Box flexDirection="row">
       {HINTS[context].map((hint, index) => (
         <Text key={hint.key}>
-          {index > 0 ? <Text color={theme.line}>{"  ·  "}</Text> : null}
-          <Text bold color={theme.text}>{hint.key}</Text>
-          <Text color={theme.muted}> {hint.label}</Text>
+          {index > 0 ? (
+            <Text color={theme.muted}>
+              {"  ·  "}
+            </Text>
+          ) : null}
+          <Text bold>{hint.key}</Text>
+          <Text color={theme.muted}>{` ${hint.label}`}</Text>
         </Text>
       ))}
     </Box>

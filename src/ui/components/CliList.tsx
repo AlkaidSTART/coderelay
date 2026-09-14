@@ -81,17 +81,22 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
           const active = index === selectedIndex;
           return (
             <Box key={cli.id} flexDirection="row">
-              {index > 0 ? <Text>{"  "}</Text> : null}
+              {index > 0 ? <Text>{"   "}</Text> : null}
+              {/* 选中项不只靠颜色：前缀 ▸ + 加粗，无色终端里也能看出焦点。 */}
               <Text
                 bold={active}
-                backgroundColor={active ? theme.pinkTint : undefined}
-                color={active ? theme.pinkInk : theme.muted}
+                color={active ? theme.accent : theme.muted}
               >
-                {" "}
+                {active ? "▸ " : "  "}
+              </Text>
+              <Text
+                bold={active}
+                color={active ? theme.accent : theme.muted}
+              >
                 <Text color={cli.available ? theme.ok : theme.alert}>
                   {cli.available ? "●" : "○"}
                 </Text>
-                {` ${cliDisplayName(cli.id)} `}
+                {` ${cliDisplayName(cli.id)}`}
               </Text>
             </Box>
           );
@@ -100,7 +105,7 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
 
       {selected ? (
         <Box marginTop={1}>
-          <Text color={theme.dim} wrap="truncate-end">
+          <Text color={theme.muted} wrap="truncate-end">
             {detailLine(selected)}
           </Text>
         </Box>

@@ -1,37 +1,31 @@
+/**
+ * 终端原生主题：界面不铺任何底色，前景色只用 ANSI 命名色。
+ * 具体色值交给终端自己的配色方案（深色/浅色主题都不用改代码），
+ * 层次靠字重 + muted 灰度来分，而不是靠色块；
+ * 全界面不用 dimColor —— faint 会把 gray 压到 ~2:1 对比度，
+ * 深浅两套调色板下都糊成一团，正是「发灰发阴」的来源。
+ */
 export interface Theme {
-  /** 纯白画布：整个界面只有一层白，大面积永远是白底黑字。 */
-  readonly bg: string;
-  /** 玻璃板：位置层、输入框，与 bg 同为纯白，靠圆角描边浮起。 */
-  readonly panel: string;
-  /** 系统蓝：只标可交互的东西（聚焦输入框、Spinner）。 */
-  readonly accent: string;
-  /** 珊瑚粉玻璃：选中 CLI 芯片的覆盖底色。 */
-  readonly pinkTint: string;
-  readonly pinkInk: string;
-  readonly text: string;
+  /** 主文字：undefined = 不指定颜色，直接继承终端默认前景色。 */
+  readonly text: string | undefined;
+  /** 次级文字：状态行、标签、说明。 */
   readonly muted: string;
-  /** 只用在 bg / panel 上。 */
-  readonly dim: string;
-  /** 装饰性轨道与分隔线（systemGray4）。 */
-  readonly line: string;
-  /** 玻璃描边（位置层、未聚焦输入框，systemGray3）。 */
-  readonly edge: string;
-  /** 翠绿：只做单字符信号（● 已就绪、✓ 成功），旁边必有文字。 */
+  /** 交互强调：光标、可选项、命令名。 */
+  readonly accent: string;
+  /** 品牌色：code 前缀。 */
+  readonly brand: string;
+  /** 单字符状态信号：● 已就绪、✓ 成功。 */
   readonly ok: string;
+  /** 失败信号：○ 未安装、× 失败，以及失败回合的输出正文。 */
   readonly alert: string;
 }
 
 export const theme = Object.freeze({
-  bg: "#FFFFFF",
-  panel: "#FFFFFF",
-  accent: "#0066CC",
-  pinkTint: "#FBE4ED",
-  pinkInk: "#C81E4E",
-  text: "#1D1D1F",
-  muted: "#55555A",
-  dim: "#69696E",
-  line: "#D1D1D6",
-  edge: "#C7C7CC",
-  ok: "#10B981",
-  alert: "#D70015",
+  text: undefined,
+  muted: "gray",
+  accent: "cyan",
+  brand: "magenta",
+  ok: "green",
+  // 失败输出是成段正文，用 brightRed：深底 4.17:1 / 浅底 4.27:1；纯 red 在深底只有 2.85:1。
+  alert: "redBright",
 } satisfies Theme);

@@ -32,7 +32,9 @@ export function createCliAdapters(
       configDir: path.join(homeDir, ".codex"),
       versionArgs: DEFAULT_VERSION_ARGS,
       interactiveArgs: Object.freeze([]),
-      promptArgs: (prompt: string) => [prompt],
+      // 非交互模式必须走 exec 子命令：裸 `codex <prompt>` 是交互式 TUI，
+      // 在 capture 模式下 stdin 不是终端，会直接报 "stdin is not a terminal"。
+      promptArgs: (prompt: string) => ["exec", prompt],
     }),
     claude: Object.freeze({
       id: "claude",

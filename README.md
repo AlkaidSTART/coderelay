@@ -32,18 +32,29 @@ coderelay 会扫描本机已安装的编码 Agent CLI（Codex、Claude Code、pi
 
 ## 快速开始
 
+全局安装后，在任意目录直接敲 `coderelay` 就会全屏接管终端：
+
+```bash
+npm i -g @alkaidstart/coderelay
+
+coderelay
+```
+
+不带参数进入交互式 TUI（扫描 → 选择 → 写任务 → 执行 → 结果），带参数则直接把任务路由给最合适的 Agent：
+
+```bash
+coderelay run "重构 src/router 里的评分逻辑，补齐类型"
+```
+
+从源码跑：
+
 ```bash
 git clone https://github.com/AlkaidSTART/coderelay.git
 cd coderelay && bun install
 
-# 交互式 TUI
 bun run dev
-
-# 把一个任务路由给最合适的 Agent
 bun run dev run "重构 src/router 里的评分逻辑，补齐类型"
 ```
-
-配合 `bun link` 注册 bin 后，下文示例可以直接写成 `coderelay run ...`。
 
 ## 命令
 

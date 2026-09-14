@@ -37,3 +37,5 @@ docs/*
 # scratch space
 .tmp
 AGENTS.md
+# 本地会话数据（SQLite）
+.coderelay/
