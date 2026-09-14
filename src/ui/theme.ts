@@ -18,8 +18,25 @@ export interface Theme {
   readonly ok: string;
   /** 失败信号：○ 未安装、× 失败，以及失败回合的输出正文。 */
   readonly alert: string;
+  /** 点缀色块：键帽、当前步、选中项。 */
+  readonly chip: {
+    /** 珊瑚粉：选中项——「这一棒交给它」。 */
+    readonly rose: string;
+    /** 薄荷青：键帽——「这里能按」。 */
+    readonly aqua: string;
+    /** 奶油白：位置层当前步——「你在这」。 */
+    readonly cream: string;
+    /** 三块浅底共用的字色。 */
+    readonly ink: string;
+  };
 }
 
+/**
+ * 三枚点缀色只作「浅底色块 + 深色字」的小面积出现（键帽、当前步、选中项）：
+ * 这类浅色当纯前景用，在浅色终端上会直接糊掉；底色和字色成对指定后
+ * 不管终端是深是浅都自洽。色块面积始终是一个词，不铺面板、不做背景。
+ * NO_COLOR 下色块整体退化为普通文字，符号与字重仍完整表达状态。
+ */
 export const theme = Object.freeze({
   text: undefined,
   muted: "gray",
@@ -28,4 +45,11 @@ export const theme = Object.freeze({
   ok: "green",
   // 失败输出是成段正文，用 brightRed：深底 4.17:1 / 浅底 4.27:1；纯 red 在深底只有 2.85:1。
   alert: "redBright",
+  chip: Object.freeze({
+    rose: "#F7ADAD",
+    aqua: "#CCFBFA",
+    cream: "#FDF6ED",
+    // 浅底上的字色：近黑，在 #F7ADAD / #CCFBFA / #FDF6ED 上都在 9:1 以上。
+    ink: "#1D1D1F",
+  }),
 } satisfies Theme);

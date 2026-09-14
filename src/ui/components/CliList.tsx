@@ -82,21 +82,23 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
           return (
             <Box key={cli.id} flexDirection="row">
               {index > 0 ? <Text>{"   "}</Text> : null}
-              {/* 选中项不只靠颜色：前缀 ▸ + 加粗，无色终端里也能看出焦点。 */}
-              <Text
-                bold={active}
-                color={active ? theme.accent : theme.muted}
-              >
-                {active ? "▸ " : "  "}
-              </Text>
-              <Text
-                bold={active}
-                color={active ? theme.accent : theme.muted}
-              >
-                <Text color={cli.available ? theme.ok : theme.alert}>
-                  {cli.available ? "●" : "○"}
+              {/* 选中项不只靠颜色：▸ + 加粗 + 珊瑚粉色块，无色终端里也能看出焦点。 */}
+              <Text backgroundColor={active ? theme.chip.rose : undefined}>
+                <Text
+                  bold={active}
+                  color={active ? theme.chip.ink : theme.muted}
+                >
+                  {active ? "▸ " : "  "}
                 </Text>
-                {` ${cliDisplayName(cli.id)}`}
+                <Text
+                  bold={active}
+                  color={active ? theme.chip.ink : theme.muted}
+                >
+                  <Text color={cli.available ? theme.ok : theme.alert}>
+                    {cli.available ? "●" : "○"}
+                  </Text>
+                  {` ${cliDisplayName(cli.id)}`}
+                </Text>
               </Text>
             </Box>
           );

@@ -39,7 +39,10 @@ const HINTS: Readonly<
   ],
 };
 
-/** 底部键位条：常驻在窗口最后一行，不参与滚动内容。 */
+/**
+ * 底部键位条：常驻在窗口最后一行，不参与滚动内容。
+ * 键帽是薄荷青点缀——「这里能按」；键帽不加内边距，避免挤爆窄终端。
+ */
 export function HintBar({ context }: HintBarProps) {
   if (context === "scanning") {
     return (
@@ -58,7 +61,9 @@ export function HintBar({ context }: HintBarProps) {
               {"  ·  "}
             </Text>
           ) : null}
-          <Text bold>{hint.key}</Text>
+          <Text bold backgroundColor={theme.chip.aqua} color={theme.chip.ink}>
+            {hint.key}
+          </Text>
           <Text color={theme.muted}>{` ${hint.label}`}</Text>
         </Text>
       ))}
