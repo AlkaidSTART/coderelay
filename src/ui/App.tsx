@@ -1,5 +1,5 @@
 import { ThemeProvider as InkThemeProvider } from "@inkjs/ui";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useWindowSize } from "ink";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -88,6 +88,8 @@ export function App({
   );
   const [prompt, setPrompt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  // 备用屏里没有终端滚动条，根节点占满窗口，画面才会像全屏应用而不是命令输出。
+  const { rows } = useWindowSize();
 
   useEffect(() => {
     if (isScanning) {
@@ -274,7 +276,12 @@ export function App({
 
   return (
     <InkThemeProvider theme={inkTheme}>
-      <Box width="100%" flexDirection="column" backgroundColor={theme.bg}>
+      <Box
+        width="100%"
+        minHeight={rows}
+        flexDirection="column"
+        backgroundColor={theme.bg}
+      >
         <AppHeader />
         <StageBar
           stage={stage}

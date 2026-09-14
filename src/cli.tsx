@@ -86,7 +86,7 @@ function waitForChildExit(
 }
 
 function mount(): void {
-  app = render(tree(), { exitOnCtrlC: false });
+  app = render(tree(), { exitOnCtrlC: false, alternateScreen: true });
 }
 
 async function launch(request: LaunchRequest): Promise<void> {
