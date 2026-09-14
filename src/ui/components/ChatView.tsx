@@ -1,4 +1,4 @@
-import { Spinner, TextInput } from "@inkjs/ui";
+import { TextInput } from "@inkjs/ui";
 import { Box, Text, useWindowSize } from "ink";
 import { useEffect, useRef, useState } from "react";
 
@@ -10,6 +10,10 @@ import { cliDisplayName } from "./CliList";
 const TURN_TAIL = 8;
 /** 每轮输出最多渲染的行数。 */
 const TURN_OUTPUT_LINES = 3;
+/** 等待动画：粒子蛇沿八格轨道往返，不表达真实进度。 */
+const WAIT_SNAKE_CELLS = 8;
+const WAIT_SNAKE_FPS = 7;
+const WAIT_SNAKE_PARTICLES = ["◆", "●", "•", "·"] as const;
 
 export interface RunningState {
   readonly agentName: string;
@@ -53,6 +57,33 @@ function useElapsedSeconds(startedAt: number | null): number {
   }, [startedAt]);
 
   return elapsed;
+}
+
+function waitingSnakeFrame(elapsed: number): string {
+  const firstHead = WAIT_SNAKE_PARTICLES.length - 1;
+  const lastHead = WAIT_SNAKE_CELLS - 1;
+  const span = lastHead - firstHead;
+  const phase = Math.floor(elapsed * WAIT_SNAKE_FPS) % (span * 2);
+  const movingRight = phase <= span;
+  const head = movingRight ? firstHead + phase : lastHead - (phase - span);
+  const cells = Array.from({ length: WAIT_SNAKE_CELLS }, () => " ");
+
+  WAIT_SNAKE_PARTICLES.forEach((particle, offset) => {
+    const position = movingRight ? head - offset : head + offset;
+    if (position >= 0 && position < WAIT_SNAKE_CELLS) {
+      cells[position] = particle;
+    }
+  });
+
+  return cells.join("");
+}
+
+function WaitingSnake({ elapsed }: { readonly elapsed: number }) {
+  return (
+    <Text bold color={theme.accent}>
+      {waitingSnakeFrame(elapsed)}
+    </Text>
+  );
 }
 
 function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
@@ -157,12 +188,14 @@ export function ChatView({
 
       {running ? (
         <>
+          {/* CLI 流式事件暂不接入：运行中只显示等待占位，进程返回后由 TurnBlock 渲染结果。 */}
           <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
-            <Spinner type="dots" />
+            <WaitingSnake elapsed={elapsed} />
             <Text> </Text>
             <Text>
-              <Text color={theme.muted}>正在把任务交给 </Text>
+              <Text color={theme.muted}>等待 </Text>
               <Text bold>{running.agentName}</Text>
+              <Text color={theme.muted}> 的回复…</Text>
             </Text>
             <Text bold color={theme.accent}>
               {` ${elapsed.toFixed(1)}s`}

@@ -97,7 +97,10 @@ export function StageBar({ stage, focus, focusNote }: StageBarProps) {
       {stacked ? null : <Box flexGrow={1} />}
       {focus ? (
         <Text>
-          <Text color={theme.muted}>{`${FOCUS_LABEL[stage]} · `}</Text>
+          <Text color={FOCUS_LABEL[stage] === "当前" ? theme.brand : theme.muted}>
+            {FOCUS_LABEL[stage]}
+          </Text>
+          <Text color={theme.muted}>{" · "}</Text>
           <Text bold>{focus}</Text>
           {focusNote ? (
             <Text color={theme.alert}>{`（${focusNote}）`}</Text>

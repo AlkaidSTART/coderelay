@@ -79,39 +79,42 @@ export function CliList({ clis, selectedIndex = 0 }: CliListProps) {
       <Box flexDirection="row" flexWrap="wrap">
         {ordered.map((cli, index) => {
           const active = index === selectedIndex;
+          const label = `${cli.available ? "●" : "○"} ${cliDisplayName(cli.id)}`;
+          const underlineWidth = label.length;
+
           return (
-            <Box key={cli.id} flexDirection="row">
-              {index > 0 ? <Text>{"   "}</Text> : null}
-              {/* 选中项不只靠颜色：▸ + 加粗 + 珊瑚粉色块，无色终端里也能看出焦点。 */}
-              <Text backgroundColor={active ? theme.chip.rose : undefined}>
-                <Text
-                  bold={active}
-                  color={active ? theme.chip.ink : theme.muted}
-                >
-                  {active ? "▸ " : "  "}
+            <Box
+              key={cli.id}
+              flexDirection="column"
+              marginRight={index < ordered.length - 1 ? 3 : 0}
+            >
+              {/* 选中态固定只占一行，切换时不会改变标签宽度或挤动相邻项。 */}
+              <Text>
+                <Text color={cli.available ? theme.ok : theme.alert}>
+                  {cli.available ? "●" : "○"}
                 </Text>
-                <Text
-                  bold={active}
-                  color={active ? theme.chip.ink : theme.muted}
-                >
-                  <Text color={cli.available ? theme.ok : theme.alert}>
-                    {cli.available ? "●" : "○"}
-                  </Text>
+                <Text bold={active} color={active ? theme.text : theme.muted}>
                   {` ${cliDisplayName(cli.id)}`}
                 </Text>
+              </Text>
+              {/* 只给当前项画下划线，其余项保留等宽空白，避免切换时整行跳动。 */}
+              <Text color={theme.accent}>
+                {active ? "─".repeat(underlineWidth) : " ".repeat(underlineWidth)}
               </Text>
             </Box>
           );
         })}
       </Box>
 
-      {selected ? (
-        <Box marginTop={1}>
+      <Box marginTop={1} height={1}>
+        {selected ? (
           <Text color={theme.muted} wrap="truncate-end">
             {detailLine(selected)}
           </Text>
-        </Box>
-      ) : null}
+        ) : (
+          <Text> </Text>
+        )}
+      </Box>
     </Box>
   );
 }
