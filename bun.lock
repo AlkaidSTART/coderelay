@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "coderelay",
+      "name": "@alkaidstart/coderelay",
       "dependencies": {
         "@inkjs/ui": "^2.0.0",
         "commander": "^15.0.0",
