@@ -1,7 +1,6 @@
 /**
- * 终端原生主题：界面不铺任何底色，前景色只用 ANSI 命名色。
- * 具体色值交给终端自己的配色方案（深色/浅色主题都不用改代码），
- * 层次靠字重 + muted 灰度来分，而不是靠色块；
+ * 终端原生主题：界面不铺整屏底色，中性文字用 ANSI 命名色跟随终端配色，
+ * 点缀色才用固定粉彩值；层次靠字重 + muted 灰度来分，而不是靠大面积色块。
  * 全界面不用 dimColor —— faint 会把 gray 压到 ~2:1 对比度，
  * 深浅两套调色板下都糊成一团，正是「发灰发阴」的来源。
  */
@@ -42,7 +41,8 @@ export const theme = Object.freeze({
   muted: "gray",
   accent: "cyan",
   brand: "magenta",
-  ok: "green",
+  // 状态灯与成功信号：薄荷绿，和粉彩点缀同一族色。
+  ok: "#BBF1D2",
   // 失败输出是成段正文，用 brightRed：深底 4.17:1 / 浅底 4.27:1；纯 red 在深底只有 2.85:1。
   alert: "redBright",
   chip: Object.freeze({
