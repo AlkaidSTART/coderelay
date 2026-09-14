@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { render, type Instance } from "ink";
 import type { ChildProcess } from "node:child_process";
 

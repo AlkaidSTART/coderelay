@@ -1,8 +1,12 @@
 {
   "name": "coderelay",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "files": [
+    "src",
+    "index.ts"
+  ],
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.3.0",
