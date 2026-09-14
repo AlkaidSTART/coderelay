@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { render, type Instance } from "ink";
 import type { ChildProcess } from "node:child_process";
 
@@ -85,7 +86,7 @@ function waitForChildExit(
 }
 
 function mount(): void {
-  app = render(tree(), { exitOnCtrlC: false });
+  app = render(tree(), { exitOnCtrlC: false, alternateScreen: true });
 }
 
 async function launch(request: LaunchRequest): Promise<void> {

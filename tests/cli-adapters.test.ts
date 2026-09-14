@@ -36,7 +36,7 @@ describe("CLI adapters", () => {
   test("builds prompt arguments for all four CLIs", () => {
     const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
 
-    expect(adapters.codex.promptArgs("hello")).toEqual(["hello"]);
+    expect(adapters.codex.promptArgs("hello")).toEqual(["exec", "hello"]);
     expect(adapters.claude.promptArgs("hello")).toEqual(["-p", "hello"]);
     expect(adapters.pi.promptArgs("hello")).toEqual(["-p", "hello"]);
     expect(adapters.omp.promptArgs("hello")).toEqual(["-p", "hello"]);

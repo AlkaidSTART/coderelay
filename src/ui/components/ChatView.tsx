@@ -1,5 +1,5 @@
-import { Spinner, TextInput } from "@inkjs/ui";
-import { Box, Text } from "ink";
+import { TextInput } from "@inkjs/ui";
+import { Box, Text, useWindowSize } from "ink";
 import { useEffect, useRef, useState } from "react";
 
 import type { SessionTurn } from "../../models/session";
@@ -10,6 +10,15 @@ import { cliDisplayName } from "./CliList";
 const TURN_TAIL = 8;
 /** 每轮输出最多渲染的行数。 */
 const TURN_OUTPUT_LINES = 3;
+/** 等待动画：粒子蛇沿响应式轨道往返，不表达真实进度。 */
+const WAIT_SNAKE_MIN_CELLS = 10;
+const WAIT_SNAKE_MAX_CELLS = 32;
+const WAIT_SNAKE_RESERVED_COLUMNS = 36;
+const WAIT_SNAKE_FPS = 8;
+const WAIT_SNAKE_PARTICLES = ["◆", "●", "•", "·"] as const;
+const WAIT_SNAKE_COLOR = "#D4F6FF";
+/** CLI 回复正文统一使用的米白色。 */
+const CLI_RESPONSE_COLOR = "#FFEBD8";
 
 export interface RunningState {
   readonly agentName: string;
@@ -55,6 +64,46 @@ function useElapsedSeconds(startedAt: number | null): number {
   return elapsed;
 }
 
+function waitingSnakeCells(columns: number): number {
+  return Math.max(
+    WAIT_SNAKE_MIN_CELLS,
+    Math.min(WAIT_SNAKE_MAX_CELLS, columns - WAIT_SNAKE_RESERVED_COLUMNS),
+  );
+}
+
+function waitingSnakeFrame(elapsed: number, cells: number): string {
+  const firstHead = WAIT_SNAKE_PARTICLES.length - 1;
+  const lastHead = cells - 1;
+  const span = lastHead - firstHead;
+  const phase = Math.floor(elapsed * WAIT_SNAKE_FPS) % (span * 2);
+  const movingRight = phase <= span;
+  const head = movingRight ? firstHead + phase : lastHead - (phase - span);
+  const track = Array.from({ length: cells }, () => " ");
+
+  WAIT_SNAKE_PARTICLES.forEach((particle, offset) => {
+    const position = movingRight ? head - offset : head + offset;
+    if (position >= 0 && position < cells) {
+      track[position] = particle;
+    }
+  });
+
+  return track.join("");
+}
+
+function WaitingSnake({
+  elapsed,
+  columns,
+}: {
+  readonly elapsed: number;
+  readonly columns: number;
+}) {
+  return (
+    <Text bold color={WAIT_SNAKE_COLOR}>
+      {waitingSnakeFrame(elapsed, waitingSnakeCells(columns))}
+    </Text>
+  );
+}
+
 function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
   const failed =
     turn.signal !== null || (turn.exitCode !== null && turn.exitCode !== 0);
@@ -65,34 +114,39 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text>
-        <Text bold color={theme.muted}>
-          ❯{" "}
+      <Box width="100%" justifyContent="flex-end">
+        <Text>
+          <Text bold color={theme.accent}>
+            ❯{" "}
+          </Text>
+          <Text color={theme.text} wrap="truncate-end">
+            {turn.prompt}
+          </Text>
         </Text>
-        <Text color={theme.text} wrap="truncate-end">
-          {turn.prompt}
-        </Text>
-      </Text>
+      </Box>
       {lines.map((line, index) => (
         <Text
           key={index}
-          color={failed ? theme.alert : theme.text}
+          color={CLI_RESPONSE_COLOR}
           wrap="truncate-end"
         >
           {line === "" ? " " : line}
         </Text>
       ))}
-      <Text color={failed ? theme.alert : theme.dim}>
-        {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
-        {turn.signal ? ` · ${turn.signal}` : ""}
-      </Text>
+      <Box width="100%" justifyContent="flex-end">
+        <Text color={failed ? theme.alert : theme.muted}>
+          {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
+          {turn.signal ? ` · ${turn.signal}` : ""}
+        </Text>
+      </Box>
     </Box>
   );
 }
 
 /**
- * 对话区：多轮对话住在一块圆角玻璃板里，输入框常驻板底——
- * 一轮结束立刻回到可输入状态；running 时输入框保留但禁用。
+ * 对话区：不铺底色、不画边框，直接用终端自己的背景——
+ * 多轮对话按顺序往下排，输入框常驻在末尾，一轮结束立刻回到可输入状态；
+ * running 时输入框保留但禁用。
  */
 export function ChatView({
   agentName,
@@ -110,6 +164,7 @@ export function ChatView({
   // TextInput 非受控：挂载时捕获一次种子值，之后内部状态是唯一事实，
   // 重挂载（key 变化）永远从空串开始，避免与父组件的清空 setState 竞态。
   const [initialPrompt] = useState(prompt);
+  const { columns } = useWindowSize();
   const tail = turns.slice(-TURN_TAIL);
   const idle = running === null;
 
@@ -133,77 +188,81 @@ export function ChatView({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Box
-        flexDirection="column"
-        paddingX={1}
-        paddingY={1}
-        borderStyle="round"
-        borderColor={theme.edge}
-      >
-        {tail.length > 0 ? (
-          <Text color={theme.dim}>{`会话 · ${turns.length} 轮`}</Text>
-        ) : (
-          <>
+      {tail.length > 0 ? (
+        <Text color={theme.muted}>
+          {`会话 · ${turns.length} 轮`}
+        </Text>
+      ) : (
+        <>
+          <Text>
+            <Text color={theme.muted}>将任务交给 </Text>
+            <Text bold>{agentName}</Text>
+          </Text>
+          <Text color={theme.muted}>
+            写清目标和完成标准，接力会更稳。输入 / 查看命令。
+          </Text>
+        </>
+      )}
+
+      {tail.map((turn) => (
+        <TurnBlock key={turn.id} turn={turn} />
+      ))}
+
+      {running ? (
+        <>
+          {/* CLI 流式事件暂不接入：运行中只显示等待占位，进程返回后由 TurnBlock 渲染结果。 */}
+          <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
+            <WaitingSnake elapsed={elapsed} columns={columns} />
+            <Text> </Text>
             <Text>
-              <Text color={theme.muted}>将任务交给 </Text>
-              <Text bold color={theme.text}>
-                {agentName}
-              </Text>
+              <Text color={theme.muted}>等待 </Text>
+              <Text bold>{running.agentName}</Text>
+              <Text color={theme.muted}> 的回复…</Text>
             </Text>
-            <Text color={theme.dim}>
-              写清目标和完成标准，接力会更稳。输入 / 查看命令。
+            <Text bold color={theme.accent}>
+              {` ${elapsed.toFixed(1)}s`}
             </Text>
-          </>
-        )}
-
-        {tail.map((turn) => (
-          <TurnBlock key={turn.id} turn={turn} />
-        ))}
-
-        {running ? (
-          <>
-            <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
-              <Spinner type="dots" />
-              <Text> </Text>
-              <Text>
-                <Text color={theme.muted}>正在把任务交给 </Text>
-                <Text bold color={theme.text}>
-                  {running.agentName}
-                </Text>
-              </Text>
-              <Text bold color={theme.accent}>
-                {` ${elapsed.toFixed(1)}s`}
-              </Text>
-            </Box>
-            <Text color={theme.dim} wrap="truncate-end">
+          </Box>
+          <Box width="100%" justifyContent="flex-end">
+            <Text color={theme.muted} wrap="truncate-end">
               {running.prompt}
             </Text>
-          </>
-        ) : null}
+          </Box>
+        </>
+      ) : null}
 
-        {commands.map((command) => (
-          <Text key={command.name}>
-            <Text bold color={theme.accent}>
-              {command.name}
-            </Text>
-            <Text color={theme.dim}>{`  ${command.description}`}</Text>
+      {commands.map((command) => (
+        <Text key={command.name}>
+          <Text bold color={theme.accent}>
+            {command.name}
           </Text>
-        ))}
-        {notice ? <Text color={theme.dim}>{notice}</Text> : null}
+          <Text color={theme.muted}>{`  ${command.description}`}</Text>
+        </Text>
+      ))}
+      {notice ? (
+        <Text color={theme.muted}>
+          {notice}
+        </Text>
+      ) : null}
 
-        <Box flexDirection="row" marginTop={1}>
-          <Text bold={idle} color={idle ? theme.accent : theme.dim}>
-            ❯{" "}
-          </Text>
-          <TextInput
-            key={submitNonce}
-            defaultValue={initialPrompt}
-            placeholder="写下任务，/ 查看命令…"
-            onChange={handleChange}
-            onSubmit={handleSubmit}
-            isDisabled={!idle}
-          />
-        </Box>
+      <Box marginTop={1}>
+        <Text color={theme.muted}>
+          {"─".repeat(Math.max(8, columns - 4))}
+        </Text>
+      </Box>
+
+      <Box flexDirection="row">
+        <Text bold={idle} color={idle ? theme.accent : theme.muted}>
+          {"❯ "}
+        </Text>
+        <TextInput
+          key={submitNonce}
+          defaultValue={initialPrompt}
+          placeholder="写下任务，/ 查看命令…"
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          isDisabled={!idle}
+        />
       </Box>
     </Box>
   );

@@ -24,7 +24,10 @@ describe("CLI launcher", () => {
   test("builds prompt args from adapters and appends extra args", () => {
     const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
 
-    expect(buildPromptArgs(adapters.codex, "do work")).toEqual(["do work"]);
+    expect(buildPromptArgs(adapters.codex, "do work")).toEqual([
+      "exec",
+      "do work",
+    ]);
     expect(buildPromptArgs(adapters.claude, "do work", ["--json"])).toEqual([
       "-p",
       "do work",

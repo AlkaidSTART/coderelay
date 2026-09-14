@@ -125,7 +125,7 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("renders the horizontal CLI rail with chips and selected detail", () => {
+  test("renders the horizontal CLI rail with one underline and selected detail", () => {
     const instance = renderApp();
     const frame = instance.lastFrame() ?? "";
 
@@ -135,6 +135,7 @@ describe("App UI", () => {
     expect(frame).toContain("● Pi");
     expect(frame).toContain("○ OMP");
     expect(frame).toContain("v0.1.0");
+    expect(frame.match(/─+/g)).toHaveLength(1);
     instance.cleanup();
   });
 
@@ -146,7 +147,9 @@ describe("App UI", () => {
       await nextTick();
     }
 
-    expect(instance.lastFrame()).toContain("PATH 里找不到 omp");
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("PATH 里找不到 omp");
+    expect(frame.match(/─+/g)).toEqual(["─────"]);
     instance.cleanup();
   });
 
@@ -304,8 +307,9 @@ describe("App UI", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("会话 · 2 轮");
     expect(frame).toContain("fix lint");
+    expect(frame).toMatch(/\s{20,}❯ fix lint/);
     expect(frame).toContain("hello");
-    expect(frame).toContain("✓ Codex · exit 0 · 1.2s");
+    expect(frame).toMatch(/\s{20,}✓ Codex · exit 0 · 1\.2s/);
     expect(frame).toContain("✓ Claude Code · exit 0 · 2.4s");
     instance.cleanup();
   });
@@ -357,7 +361,7 @@ describe("App UI", () => {
     runningChat.cleanup();
   });
 
-  test("running renders inside chat, keeps the input visible, ctrl+c aborts", () => {
+  test("running shows a waiting placeholder, keeps the input visible, ctrl+c aborts", () => {
     const instance = renderApp({
       initialId: "claude",
       turns: [turn()],
@@ -370,8 +374,10 @@ describe("App UI", () => {
 
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("▸ 执行");
-    expect(frame).toContain("正在把任务交给");
+    expect(frame).toContain("等待 Claude Code 的回复");
+    expect(frame).toMatch(/[◆●•·]{4}/);
     expect(frame).toContain("write tests");
+    expect(frame).toMatch(/\s{20,}write tests/);
     expect(frame).toContain("中止任务");
     expect(frame).toContain("写下任务");
 
