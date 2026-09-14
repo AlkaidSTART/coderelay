@@ -41,8 +41,8 @@ export const theme = Object.freeze({
   muted: "gray",
   accent: "cyan",
   brand: "#F5CBCB",
-  // 状态灯与成功信号：薄荷绿，和粉彩点缀同一族色。
-  ok: "#BBF1D2",
+  // 状态灯与成功信号：暖橙色。
+  ok: "#FF9E20",
   // 失败输出是成段正文，用 brightRed：深底 4.17:1 / 浅底 4.27:1；纯 red 在深底只有 2.85:1。
   alert: "redBright",
   chip: Object.freeze({

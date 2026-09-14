@@ -307,8 +307,9 @@ describe("App UI", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("会话 · 2 轮");
     expect(frame).toContain("fix lint");
+    expect(frame).toMatch(/\s{20,}❯ fix lint/);
     expect(frame).toContain("hello");
-    expect(frame).toContain("✓ Codex · exit 0 · 1.2s");
+    expect(frame).toMatch(/\s{20,}✓ Codex · exit 0 · 1\.2s/);
     expect(frame).toContain("✓ Claude Code · exit 0 · 2.4s");
     instance.cleanup();
   });
@@ -376,6 +377,7 @@ describe("App UI", () => {
     expect(frame).toContain("等待 Claude Code 的回复");
     expect(frame).toMatch(/[◆●•·]{4}/);
     expect(frame).toContain("write tests");
+    expect(frame).toMatch(/\s{20,}write tests/);
     expect(frame).toContain("中止任务");
     expect(frame).toContain("写下任务");
 

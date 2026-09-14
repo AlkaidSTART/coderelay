@@ -10,10 +10,15 @@ import { cliDisplayName } from "./CliList";
 const TURN_TAIL = 8;
 /** 每轮输出最多渲染的行数。 */
 const TURN_OUTPUT_LINES = 3;
-/** 等待动画：粒子蛇沿八格轨道往返，不表达真实进度。 */
-const WAIT_SNAKE_CELLS = 8;
-const WAIT_SNAKE_FPS = 7;
+/** 等待动画：粒子蛇沿响应式轨道往返，不表达真实进度。 */
+const WAIT_SNAKE_MIN_CELLS = 10;
+const WAIT_SNAKE_MAX_CELLS = 32;
+const WAIT_SNAKE_RESERVED_COLUMNS = 36;
+const WAIT_SNAKE_FPS = 8;
 const WAIT_SNAKE_PARTICLES = ["◆", "●", "•", "·"] as const;
+const WAIT_SNAKE_COLOR = "#D4F6FF";
+/** CLI 回复正文统一使用的米白色。 */
+const CLI_RESPONSE_COLOR = "#FFEBD8";
 
 export interface RunningState {
   readonly agentName: string;
@@ -59,29 +64,42 @@ function useElapsedSeconds(startedAt: number | null): number {
   return elapsed;
 }
 
-function waitingSnakeFrame(elapsed: number): string {
+function waitingSnakeCells(columns: number): number {
+  return Math.max(
+    WAIT_SNAKE_MIN_CELLS,
+    Math.min(WAIT_SNAKE_MAX_CELLS, columns - WAIT_SNAKE_RESERVED_COLUMNS),
+  );
+}
+
+function waitingSnakeFrame(elapsed: number, cells: number): string {
   const firstHead = WAIT_SNAKE_PARTICLES.length - 1;
-  const lastHead = WAIT_SNAKE_CELLS - 1;
+  const lastHead = cells - 1;
   const span = lastHead - firstHead;
   const phase = Math.floor(elapsed * WAIT_SNAKE_FPS) % (span * 2);
   const movingRight = phase <= span;
   const head = movingRight ? firstHead + phase : lastHead - (phase - span);
-  const cells = Array.from({ length: WAIT_SNAKE_CELLS }, () => " ");
+  const track = Array.from({ length: cells }, () => " ");
 
   WAIT_SNAKE_PARTICLES.forEach((particle, offset) => {
     const position = movingRight ? head - offset : head + offset;
-    if (position >= 0 && position < WAIT_SNAKE_CELLS) {
-      cells[position] = particle;
+    if (position >= 0 && position < cells) {
+      track[position] = particle;
     }
   });
 
-  return cells.join("");
+  return track.join("");
 }
 
-function WaitingSnake({ elapsed }: { readonly elapsed: number }) {
+function WaitingSnake({
+  elapsed,
+  columns,
+}: {
+  readonly elapsed: number;
+  readonly columns: number;
+}) {
   return (
-    <Text bold color={theme.accent}>
-      {waitingSnakeFrame(elapsed)}
+    <Text bold color={WAIT_SNAKE_COLOR}>
+      {waitingSnakeFrame(elapsed, waitingSnakeCells(columns))}
     </Text>
   );
 }
@@ -96,27 +114,31 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text>
-        <Text bold color={theme.accent}>
-          ❯{" "}
+      <Box width="100%" justifyContent="flex-end">
+        <Text>
+          <Text bold color={theme.accent}>
+            ❯{" "}
+          </Text>
+          <Text color={theme.text} wrap="truncate-end">
+            {turn.prompt}
+          </Text>
         </Text>
-        <Text color={theme.text} wrap="truncate-end">
-          {turn.prompt}
-        </Text>
-      </Text>
+      </Box>
       {lines.map((line, index) => (
         <Text
           key={index}
-          color={failed ? theme.alert : theme.text}
+          color={CLI_RESPONSE_COLOR}
           wrap="truncate-end"
         >
           {line === "" ? " " : line}
         </Text>
       ))}
-      <Text color={failed ? theme.alert : theme.muted}>
-        {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
-        {turn.signal ? ` · ${turn.signal}` : ""}
-      </Text>
+      <Box width="100%" justifyContent="flex-end">
+        <Text color={failed ? theme.alert : theme.muted}>
+          {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
+          {turn.signal ? ` · ${turn.signal}` : ""}
+        </Text>
+      </Box>
     </Box>
   );
 }
@@ -190,7 +212,7 @@ export function ChatView({
         <>
           {/* CLI 流式事件暂不接入：运行中只显示等待占位，进程返回后由 TurnBlock 渲染结果。 */}
           <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
-            <WaitingSnake elapsed={elapsed} />
+            <WaitingSnake elapsed={elapsed} columns={columns} />
             <Text> </Text>
             <Text>
               <Text color={theme.muted}>等待 </Text>
@@ -201,9 +223,11 @@ export function ChatView({
               {` ${elapsed.toFixed(1)}s`}
             </Text>
           </Box>
-          <Text color={theme.muted} wrap="truncate-end">
-            {running.prompt}
-          </Text>
+          <Box width="100%" justifyContent="flex-end">
+            <Text color={theme.muted} wrap="truncate-end">
+              {running.prompt}
+            </Text>
+          </Box>
         </>
       ) : null}
 
