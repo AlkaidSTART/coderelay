@@ -131,7 +131,7 @@ describe("App UI", () => {
 
     expect(frame).toContain("先选个开场方式？");
     expect(frame).toContain("手动选择");
-    expect(frame).toContain("自动进入对话");
+    expect(frame).toContain("自动路由");
     expect(frame).toContain("自己挑用哪个 CLI 干活");
     instance.cleanup();
   });

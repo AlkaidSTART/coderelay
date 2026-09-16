@@ -53,7 +53,7 @@ function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): numb
   return index >= 0 ? index : 0;
 }
 
-const MODES: readonly string[] = ["手动选择", "自动进入对话"];
+const MODES: readonly string[] = ["手动选择", "自动路由"];
 
 function moveSelection(
   current: number,
@@ -132,7 +132,7 @@ export function App({
         return;
       }
 
-      // 自动：跳过手动选择，直接用第一个可用 CLI 进入对话。
+      // 自动路由：根据任务并结合本机 CLI 自动选择合适的 CLI（当前先用首个可用直进对话）。
       const autoIndex = clis.findIndex((cli) => cli.available);
       if (autoIndex >= 0) {
         setSelectedIndex(autoIndex);
@@ -275,7 +275,6 @@ export function App({
   let body: ReactNode;
 
   const autoCli = clis.find((cli) => cli.available);
-  const autoName = autoCli ? cliDisplayName(autoCli.id) : undefined;
 
   if (screen === "scanning") {
     hint = "scanning";
@@ -314,8 +313,8 @@ export function App({
         <Box marginTop={1} height={1}>
           <Text color={theme.muted} wrap="truncate-end">
             {modeIndex === 1
-              ? autoName
-                ? `跳过选择，直接用 ${autoName} 对话`
+              ? autoCli
+                ? "根据任务并结合本机 CLI 自动选择合适的 CLI"
                 : "暂无可用 CLI，先手动看看"
               : "自己挑用哪个 CLI 干活"}
           </Text>
