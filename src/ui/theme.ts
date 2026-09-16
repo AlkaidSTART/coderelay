@@ -1,12 +1,16 @@
 /**
- * 终端原生主题：界面不铺整屏底色，中性文字用 ANSI 命名色跟随终端配色，
- * 点缀色才用固定粉彩值；层次靠字重 + muted 灰度来分，而不是靠大面积色块。
- * 全界面不用 dimColor —— faint 会把 gray 压到 ~2:1 对比度，
- * 深浅两套调色板下都糊成一团，正是「发灰发阴」的来源。
+ * 固定浅色主题：整屏白底 + 固定深色字，不跟随终端配色。
+ * 底色由根节点铺满（见 App.tsx）；前景色必须逐个显式指定——
+ * Ink 的 backgroundColor 会经 context 继承给后代 Text，前景色不会，
+ * 漏掉一处就会在深色终端里变成白字白底。
+ * 层次靠字重 + muted 灰度来分，而不是靠大面积色块。
+ * 全界面不用 dimColor —— faint 会把中性灰压到 ~2:1 对比度，糊成一团。
  */
 export interface Theme {
-  /** 主文字：undefined = 不指定颜色，直接继承终端默认前景色。 */
-  readonly text: string | undefined;
+  /** 整屏底色。 */
+  readonly bg: string;
+  /** 主文字：白底上的近黑。 */
+  readonly text: string;
   /** 次级文字：状态行、标签、说明。 */
   readonly muted: string;
   /** 交互强调：光标、可选项、命令名。 */
@@ -23,7 +27,7 @@ export interface Theme {
     readonly rose: string;
     /** 薄荷青：键帽——「这里能按」。 */
     readonly aqua: string;
-    /** 奶油白：位置层当前步——「你在这」。 */
+    /** 奶油色：位置层当前步——「你在这」；白底上仍要看得见边界。 */
     readonly cream: string;
     /** 三块浅底共用的字色。 */
     readonly ink: string;
@@ -32,24 +36,29 @@ export interface Theme {
 
 /**
  * 三枚点缀色只作「浅底色块 + 深色字」的小面积出现（键帽、当前步、选中项）：
- * 这类浅色当纯前景用，在浅色终端上会直接糊掉；底色和字色成对指定后
- * 不管终端是深是浅都自洽。色块面积始终是一个词，不铺面板、不做背景。
+ * 色块保持浅粉彩、字色统一近黑，白底上才有边界。
+ * 色块面积始终是一个词，不铺面板、不做背景。
  * NO_COLOR 下色块整体退化为普通文字，符号与字重仍完整表达状态。
  */
 export const theme = Object.freeze({
-  text: undefined,
-  muted: "gray",
-  accent: "cyan",
-  brand: "#F5CBCB",
-  // 状态灯与成功信号：暖橙色。
-  ok: "#FF9E20",
-  // 失败输出是成段正文，用 brightRed：深底 4.17:1 / 浅底 4.27:1；纯 red 在深底只有 2.85:1。
-  alert: "redBright",
+  bg: "#FFFFFF",
+  // 白底上的近黑：对比度 16:1。
+  text: "#1D1D1F",
+  // 中性灰：白底 8.3:1，够暗又不抢主文字。
+  muted: "#55555A",
+  // 强调蓝：白底 5.6:1。
+  accent: "#0066CC",
+  // 品牌红：白底 6.4:1。
+  brand: "#C81E4E",
+  // 状态灯与成功信号：白底 5.1:1 的深绿。
+  ok: "#0B7A3E",
+  // 失败输出是成段正文：白底 5.3:1 的深红。
+  alert: "#D70015",
   chip: Object.freeze({
     rose: "#F7ADAD",
     aqua: "#CCFBFA",
-    cream: "#FDF6ED",
-    // 浅底上的字色：近黑，在 #F7ADAD / #CCFBFA / #FDF6ED 上都在 9:1 以上。
+    cream: "#F7E6CB",
+    // 浅底上的字色：近黑，在 #F7ADAD / #CCFBFA / #F7E6CB 上都在 9:1 以上。
     ink: "#1D1D1F",
   }),
 } satisfies Theme);

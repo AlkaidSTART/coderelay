@@ -16,9 +16,9 @@ const WAIT_SNAKE_MAX_CELLS = 32;
 const WAIT_SNAKE_RESERVED_COLUMNS = 36;
 const WAIT_SNAKE_FPS = 8;
 const WAIT_SNAKE_PARTICLES = ["◆", "●", "•", "·"] as const;
-const WAIT_SNAKE_COLOR = "#D4F6FF";
-/** CLI 回复正文统一使用的米白色。 */
-const CLI_RESPONSE_COLOR = "#FFEBD8";
+const WAIT_SNAKE_COLOR = theme.accent;
+/** CLI 回复正文统一使用主文字色。 */
+const CLI_RESPONSE_COLOR = theme.text;
 
 export interface RunningState {
   readonly agentName: string;
@@ -144,7 +144,7 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
 }
 
 /**
- * 对话区：不铺底色、不画边框，直接用终端自己的背景——
+ * 对话区：不铺底色、不画边框，白底由根节点统一铺——
  * 多轮对话按顺序往下排，输入框常驻在末尾，一轮结束立刻回到可输入状态；
  * running 时输入框保留但禁用。
  */
@@ -196,7 +196,9 @@ export function ChatView({
         <>
           <Text>
             <Text color={theme.muted}>将任务交给 </Text>
-            <Text bold>{agentName}</Text>
+            <Text bold color={theme.text}>
+              {agentName}
+            </Text>
           </Text>
           <Text color={theme.muted}>
             写清目标和完成标准，接力会更稳。输入 / 查看命令。
@@ -216,7 +218,9 @@ export function ChatView({
             <Text> </Text>
             <Text>
               <Text color={theme.muted}>等待 </Text>
-              <Text bold>{running.agentName}</Text>
+              <Text bold color={theme.text}>
+                {running.agentName}
+              </Text>
               <Text color={theme.muted}> 的回复…</Text>
             </Text>
             <Text bold color={theme.accent}>

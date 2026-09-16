@@ -10,7 +10,9 @@ export function ScanningView() {
     <Box flexDirection="column" paddingX={2}>
       <Box flexDirection="row">
         <Spinner type="dots" />
-        <Text bold>{" "}正在扫描本机编码代理…</Text>
+        <Text bold color={theme.text}>
+          {" "}正在扫描本机编码代理…
+        </Text>
       </Box>
       <Text color={theme.muted}>翻翻 PATH，看看谁已经就位。</Text>
 

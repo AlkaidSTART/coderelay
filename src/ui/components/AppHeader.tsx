@@ -8,7 +8,9 @@ export function AppHeader() {
       <Text bold color={theme.brand}>
         code
       </Text>
-      <Text bold>relay</Text>
+      <Text bold color={theme.text}>
+        relay
+      </Text>
       <Text color={theme.muted}>{"  ·  "}</Text>
       <Text color={theme.muted}>本地 agent 接力台</Text>
     </Box>
