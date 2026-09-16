@@ -253,7 +253,7 @@ describe("App UI", () => {
     second.cleanup();
   });
 
-  test("esc returns to picker and q exits", async () => {
+  test("esc walks back one screen at a time and ctrl+c exits", async () => {
     const instance = renderApp();
 
     instance.stdin.write("\r");
@@ -266,9 +266,39 @@ describe("App UI", () => {
     await afterEscapeFlush();
     expect(instance.lastFrame()).toContain("Claude Code");
 
-    instance.stdin.write("q");
+    instance.stdin.write("");
+    await afterEscapeFlush();
+    expect(instance.lastFrame()).toContain("先选个开场方式？");
+    expect(instance.exits()).toBe(0);
+
+    instance.stdin.write("");
     await nextTick();
     expect(instance.exits()).toBe(1);
+    instance.cleanup();
+  });
+
+  test("q is no longer an exit key", async () => {
+    const instance = renderApp();
+
+    instance.stdin.write("q");
+    await nextTick();
+
+    expect(instance.exits()).toBe(0);
+    expect(instance.lastFrame()).toContain("先选个开场方式？");
+    instance.cleanup();
+  });
+
+  test("esc aborts a running task instead of quitting", async () => {
+    const instance = renderApp({
+      initialId: "claude",
+      running: { id: "claude", prompt: "x", startedAt: Date.now() },
+    });
+
+    instance.stdin.write("");
+    await afterEscapeFlush();
+
+    expect(instance.aborts()).toBe(1);
+    expect(instance.exits()).toBe(0);
     instance.cleanup();
   });
 

@@ -289,10 +289,19 @@ export function App({
     }
 
     // 扫描完成后：有未决 CLI 就落到激活页，否则回原有模式页。
-    setScreen((current) =>
-      current === "scanning" ? (phase === "activating" ? "activating" : "mode") : current,
-    );
-  }, [isScanning, phase]);
+    setScreen((current) => {
+      if (current === "scanning") {
+        return phase === "activating" ? "activating" : "mode";
+      }
+      // 激活流程结束（保存或 Esc 取消）后必须离开激活屏，否则没有任何
+      // useInput 处于激活状态，界面会卡死。回到进来的地方：/activate 从
+      // 对话区进，首次确认从首屏进。
+      if (current === "activating" && phase !== "activating") {
+        return initialId ? "chat" : "mode";
+      }
+      return current;
+    });
+  }, [isScanning, phase, initialId]);
 
   // 调用方切换进入激活流程（首次确认或 /activate）时，重建草稿并把光标落到首个可切换行。
   useEffect(() => {
@@ -328,7 +337,8 @@ export function App({
 
   useInput(
     (input, key) => {
-      if ((key.ctrl && input === "c") || input === "q") {
+      // 首屏没有上一层，所以 Esc 在这里不做事；退出统一收敛到 ctrl+c。
+      if (key.ctrl && input === "c") {
         onExit();
         return;
       }
@@ -367,8 +377,14 @@ export function App({
 
   useInput(
     (input, key) => {
-      if ((key.ctrl && input === "c") || input === "q") {
+      if (key.ctrl && input === "c") {
         onExit();
+        return;
+      }
+
+      if (key.escape) {
+        // Esc 是返回键：CLI 列表的上一层是模式选择。
+        setScreen("mode");
         return;
       }
 
@@ -419,6 +435,33 @@ export function App({
         return;
       }
 
+      if (key.escape) {
+        // Esc 是返回键，返回动作随相位变化：激活/模型选择各有专属 useInput
+        // 处理取消，这里让位避免两个 hook 重复触发；探测中取消探测；
+        // 执行中中止任务回到输入态；空闲时退回 CLI 列表。
+        if (
+          activationActive ||
+          effectivePhase === "activating" ||
+          effectivePhase === "selecting"
+        ) {
+          return;
+        }
+        if (effectivePhase === "probing") {
+          onCancelSelecting?.();
+          return;
+        }
+        if (
+          running ||
+          effectivePhase === "starting" ||
+          effectivePhase === "running"
+        ) {
+          onAbort?.();
+          return;
+        }
+        setScreen("picker");
+        return;
+      }
+
       if (
         running ||
         effectivePhase === "starting" ||
@@ -428,13 +471,6 @@ export function App({
         activationActive
       ) {
         // 任务执行/探测/选择/激活中不响应导航，避免开出新任务。
-        return;
-      }
-
-      if (key.escape) {
-        // selecting 阶段由独立的 useInput 处理 Esc（取消选择）；
-        // 此处执行/探测/选择中已提前返回，走到这里直接回 picker。
-        setScreen("picker");
         return;
       }
 
@@ -569,7 +605,7 @@ export function App({
 
   useInput(
     (input, key) => {
-      if ((key.ctrl && input === "c") || input === "q") {
+      if (key.ctrl && input === "c") {
         onExit();
         return;
       }
