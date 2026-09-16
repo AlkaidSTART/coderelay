@@ -276,8 +276,13 @@ export function App({
 
   return (
     <InkThemeProvider theme={inkTheme}>
-      {/* 不铺底色：整屏都用终端自己的背景，避免面板色和终端主题打架。 */}
-      <Box width="100%" minHeight={rows} flexDirection="column">
+      {/* 整屏铺白底：不再让画面颜色随终端主题变化。 */}
+      <Box
+        width="100%"
+        minHeight={rows}
+        flexDirection="column"
+        backgroundColor={theme.bg}
+      >
         <AppHeader />
         <StageBar
           stage={stage}
