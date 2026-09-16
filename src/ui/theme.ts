@@ -1,19 +1,22 @@
 /**
- * 固定浅色主题：整屏白底 + 固定深色字，不跟随终端配色。
- * 底色由根节点铺满（见 App.tsx）；前景色必须逐个显式指定——
- * Ink 的 backgroundColor 会经 context 继承给后代 Text，前景色不会，
- * 漏掉一处就会在深色终端里变成白字白底。
+ * 终端自适应主题：不铺底色，跟随终端原生配色。
+ * 之前是「强制白底」方案——根节点铺 backgroundColor 让整屏变白，
+ * 但 Ink 只给有字符的格子刷底色，空行、行尾留白、flexGrow 弹簧区
+ * 都没有字符，终端底色就从这些缝隙里漏出来，永远铺不满。
+ * 所以底色直接交给终端：全界面零 backgroundColor，点缀也不用底色块，
+ * 前景色只用「深浅终端都可读」的颜色，主文字直接用终端默认前景。
  * 层次靠字重 + muted 灰度来分，而不是靠大面积色块。
  * 全界面不用 dimColor —— faint 会把中性灰压到 ~2:1 对比度，糊成一团。
  */
 export interface Theme {
-  /** 整屏底色。 */
-  readonly bg: string;
-  /** 主文字：白底上的近黑。 */
-  readonly text: string;
-  /** 次级文字：状态行、标签、说明。 */
+  /**
+   * 主文字：不指定（undefined），用终端默认前景，深浅终端都可读。
+   * 传给 Ink 的 color 时 undefined 即「不染色」。
+   */
+  readonly text?: string;
+  /** 次级文字：状态行、标签、说明。gray 深浅底都可见。 */
   readonly muted: string;
-  /** 交互强调：光标、可选项、命令名。 */
+  /** 交互强调：光标、可选项、命令名。亮蓝深浅底都可读。 */
   readonly accent: string;
   /** 品牌色：code 前缀。 */
   readonly brand: string;
@@ -21,13 +24,13 @@ export interface Theme {
   readonly ok: string;
   /** 失败信号：○ 未安装、× 失败，以及失败回合的输出正文。 */
   readonly alert: string;
-  /** 点缀色块：键帽、当前步、选中项。 */
+  /** 点缀色（保留，未用于底色）：键帽、当前步、选中项。 */
   readonly chip: {
     /** 珊瑚粉：选中项——「这一棒交给它」。 */
     readonly rose: string;
     /** 薄荷青：键帽——「这里能按」。 */
     readonly aqua: string;
-    /** 奶油色：位置层当前步——「你在这」；白底上仍要看得见边界。 */
+    /** 奶油色：位置层当前步——「你在这」。 */
     readonly cream: string;
     /** 三块浅底共用的字色。 */
     readonly ink: string;
@@ -35,25 +38,26 @@ export interface Theme {
 }
 
 /**
- * 三枚点缀色只作「浅底色块 + 深色字」的小面积出现（键帽、当前步、选中项）：
- * 色块保持浅粉彩、字色统一近黑，白底上才有边界。
- * 色块面积始终是一个词，不铺面板、不做背景。
- * NO_COLOR 下色块整体退化为普通文字，符号与字重仍完整表达状态。
+ * 前景只用 ANSI 命名色（终端按自身深浅主题保证可读），不用固定 hex：
+ * 固定 hex 在深 / 浅某一种终端下必然翻车（黑字黑底或白字白底）。
+ * chip 三色目前保留 token 但不再用于任何 backgroundColor：
+ * 固定浅底色块在深色终端下是两块异色，看着像漏底，所以点缀改用
+ * 前景色 + 加粗表达（当前步 ▸ 加粗、键帽强调色加粗、选中项下划线）。
+ * NO_COLOR 下符号与字重仍完整表达状态。
  */
 export const theme = Object.freeze({
-  bg: "#FFFFFF",
-  // 白底上的近黑：对比度 16:1。
-  text: "#1D1D1F",
-  // 中性灰：白底 8.3:1，够暗又不抢主文字。
-  muted: "#55555A",
-  // 强调蓝：白底 5.6:1。
-  accent: "#0066CC",
-  // 品牌红：白底 6.4:1。
-  brand: "#C81E4E",
-  // 状态灯与成功信号：白底 5.1:1 的深绿。
-  ok: "#0B7A3E",
-  // 失败输出是成段正文：白底 5.3:1 的深红。
-  alert: "#D70015",
+  // 主文字不染色：终端默认前景，深浅通吃。
+  text: undefined,
+  // 中性灰：深底 / 浅底都可见，又不抢主文字。
+  muted: "gray",
+  // 亮蓝：标准 blue 在深底太暗、标准 cyan 在浅底太淡，bright 蓝两边都可读。
+  accent: "blueBright",
+  // 品红：bold 品牌字在深浅底都可读。
+  brand: "magenta",
+  // 标准绿：只用于 ● ✓ 单字符信号，深浅底都可读。
+  ok: "green",
+  // 标准红：深浅底对比度都在 4:1 左右。
+  alert: "red",
   chip: Object.freeze({
     rose: "#F7ADAD",
     aqua: "#CCFBFA",
