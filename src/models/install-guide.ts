@@ -354,3 +354,30 @@ export function installPlatformFor(
   }
   return "linux";
 }
+
+/**
+ * Copy-ready install lines for one CLI on one platform, newest channel first.
+ * These are printed only — coderelay never runs an install command, edits
+ * PATH, or pipes a remote script into a shell.
+ */
+export function installHintLines(
+  cliId: CliId,
+  platform: InstallPlatform,
+  limit = 3,
+): readonly string[] {
+  const guide = INSTALL_GUIDES[cliId];
+  const entries = installEntriesFor(cliId, platform).slice(0, limit);
+  const verify = guide.entries[0]?.verify ?? `${cliId} --version`;
+
+  return [
+    ...entries.map((entry) => {
+      const channel = entry.prerequisites
+        ? `${entry.source}（需要 ${entry.prerequisites}）`
+        : entry.source;
+      const note = entry.note ? `  // ${entry.note}` : "";
+      return `${channel}: ${entry.command}${note}`;
+    }),
+    `验证: ${verify}`,
+    `文档: ${guide.docs}`,
+  ];
+}

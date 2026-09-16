@@ -5,6 +5,7 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "/model", description: "切换 agent，会话上下文保留" },
+  { name: "/activate", description: "启用或禁用 CLI，保存到配置" },
   { name: "/new", description: "开始新会话，清空上下文" },
   { name: "/help", description: "显示可用命令" },
 ];

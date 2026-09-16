@@ -5,9 +5,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { CliId, DetectedCli } from "../models/cli";
 import type { SessionTurn } from "../models/session";
+import type { ActivationOption } from "../config/activation";
 import type { ModelOption, ProbeDisplay } from "../agents/model-catalog";
 import { inkTheme } from "./ink-theme";
 import { theme } from "./theme";
+import {
+  ActivationView,
+  isSelectable as isActivationSelectable,
+  moveCursor as moveActivationCursor,
+  type ActivationMode,
+} from "./components/ActivationView";
 import { AppHeader } from "./components/AppHeader";
 import { ChatView } from "./components/ChatView";
 import { CliList, cliDisplayName } from "./components/CliList";
@@ -24,10 +31,11 @@ export type LaunchRequest =
   | { readonly id: CliId; readonly mode: "prompt"; readonly prompt: string }
   | { readonly id: CliId; readonly mode: "interactive" };
 
-/** 统一执行状态机：idle/probing/selecting/starting/running/completed/failed/aborted。 */
+/** 统一执行状态机：idle/probing/activating/selecting/starting/running/completed/failed/aborted。 */
 export type AgentPhase =
   | "idle"
   | "probing"
+  | "activating"
   | "selecting"
   | "starting"
   | "running"
@@ -66,6 +74,12 @@ export interface AppProps {
   readonly phase?: AgentPhase;
   /** probing 阶段四 CLI 独立状态。 */
   readonly probes?: readonly ProbeDisplay[];
+  /** activating 阶段的行；缺省或为空时不进入激活屏。 */
+  readonly activationOptions?: readonly ActivationOption[];
+  /** activating 阶段是本机首次确认（confirm）还是 /activate 管理（manage）。 */
+  readonly activationMode?: ActivationMode;
+  readonly onSaveActivation?: (options: readonly ActivationOption[]) => void;
+  readonly onCancelActivation?: () => void;
   /** selecting 阶段统一候选。 */
   readonly modelOptions?: readonly ModelOption[];
   /** selecting 阶段已选项下标（受控于调用方时传入）。 */
@@ -76,9 +90,14 @@ export interface AppProps {
   readonly onCancelSelecting?: () => void;
   /** /model 统一模型选择器入口（提供时优先于旧 picker 屏）。 */
   readonly onRequestModelSelector?: () => void;
+  /** /activate 激活管理页入口。 */
+  readonly onRequestActivationManager?: () => void;
 }
 
-type Screen = "scanning" | "mode" | "picker" | "chat" | "detail";
+type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
+
+/** 模型选择器分两步：先定 CLI，再看该 CLI 自己的模型。 */
+type ModelPickStep = "cli" | "model";
 
 function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): number {
   if (!initialId) {
@@ -144,16 +163,24 @@ export function App({
   onExit,
   phase,
   probes,
+  activationOptions,
+  activationMode = "confirm",
+  onSaveActivation,
+  onCancelActivation,
   modelOptions,
   selectedModelIndex,
   lastResult,
   onSelectModel,
   onCancelSelecting,
   onRequestModelSelector,
+  onRequestActivationManager,
 }: AppProps) {
   const [screen, setScreen] = useState<Screen>(() => {
     if (isScanning) {
       return "scanning";
+    }
+    if (phase === "activating") {
+      return "activating";
     }
     // 交互模式结束后重挂载：带着 initialId 直接回到对话区继续干活。
     return initialId ? "chat" : "mode";
@@ -162,6 +189,19 @@ export function App({
     selectedIndexFor(clis, initialId),
   );
   const [modelCursor, setModelCursor] = useState(0);
+  // 受控下标意味着调用方已经替用户定好了 CLI，直接落在模型步。
+  const initialPickStep: ModelPickStep =
+    selectedModelIndex !== undefined ? "model" : "cli";
+  const [modelPickStep, setModelPickStep] = useState<ModelPickStep>(
+    initialPickStep,
+  );
+  const [pickedCliId, setPickedCliId] = useState<CliId | undefined>(
+    initialPickStep === "model" ? clis[selectedModelIndex ?? 0]?.id : undefined,
+  );
+  const [activationDraft, setActivationDraft] = useState<
+    readonly ActivationOption[] | undefined
+  >(undefined);
+  const [activationCursor, setActivationCursor] = useState(0);
   const effectivePhase: AgentPhase =
     phase ?? (running ? "running" : "idle");
 
@@ -171,11 +211,28 @@ export function App({
       setModelCursor(selectedModelIndex);
     }
   }, [selectedModelIndex]);
-  const optionCount = modelOptions?.length ?? 0;
+
+  const modelPickOptions = modelOptions ?? [];
+  const optionCount = modelPickOptions.length;
   const clampedCursor =
     optionCount === 0
       ? 0
       : Math.min(Math.max(modelCursor, 0), optionCount - 1);
+
+  // 选择器第一步只列 CLI：显式选中的那个，否则跟随当前活跃 CLI。
+  const pickCliIndex =
+    pickedCliId !== undefined
+      ? clis.findIndex((cli) => cli.id === pickedCliId)
+      : selectedIndex;
+  const pickProbe = probes?.find((probe) => probe.cliId === pickedCliId);
+  // 第二步只列当前 CLI 自己的模型：config 不能把别的 CLI 的模型注进来。
+  const cliModelOptions = pickedCliId
+    ? modelPickOptions.filter((option) => option.cliId === pickedCliId)
+    : [];
+
+  const activationRows = activationDraft ?? activationOptions ?? [];
+  const activationActive = effectivePhase === "activating" && activationRows.length > 0;
+
   const [modeIndex, setModeIndex] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -188,8 +245,37 @@ export function App({
       return;
     }
 
-    setScreen((current) => current === "scanning" ? "mode" : current);
-  }, [isScanning]);
+    // 扫描完成后：有未决 CLI 就落到激活页，否则回原有模式页。
+    setScreen((current) =>
+      current === "scanning" ? (phase === "activating" ? "activating" : "mode") : current,
+    );
+  }, [isScanning, phase]);
+
+  // 调用方切换进入激活流程（首次确认或 /activate）时，重建草稿并把光标落到首个可切换行。
+  useEffect(() => {
+    if (effectivePhase !== "activating" || !activationOptions) {
+      return;
+    }
+    setActivationDraft(activationOptions);
+    setActivationCursor(
+      activationOptions.findIndex((option) => option.available),
+    );
+  }, [effectivePhase, activationOptions]);
+
+  // 每次进入选择态都把两步选择器复位：调用方给了受控下标就直落模型步，
+  // 否则从 CLI 步开始，保证下次 /model 不会沿用上一次的 CLI。
+  useEffect(() => {
+    if (effectivePhase !== "selecting") {
+      return;
+    }
+    if (selectedModelIndex !== undefined) {
+      setModelPickStep("model");
+      setPickedCliId(clis[selectedModelIndex]?.id);
+      return;
+    }
+    setModelPickStep("cli");
+    setPickedCliId(undefined);
+  }, [effectivePhase, selectedModelIndex, clis]);
 
   const selectedCli = clis[selectedIndex];
   const activeId = selectedCli?.id;
@@ -273,6 +359,8 @@ export function App({
           onCancelSelecting?.();
         } else if (effectivePhase === "selecting") {
           return;
+        } else if (effectivePhase === "activating") {
+          return;
         } else if (
           effectivePhase === "starting" ||
           effectivePhase === "running" ||
@@ -290,9 +378,10 @@ export function App({
         effectivePhase === "starting" ||
         effectivePhase === "running" ||
         effectivePhase === "probing" ||
-        effectivePhase === "selecting"
+        effectivePhase === "selecting" ||
+        activationActive
       ) {
-        // 任务执行/探测/选择中不响应导航，避免开出新任务。
+        // 任务执行/探测/选择/激活中不响应导航，避免开出新任务。
         return;
       }
 
@@ -313,41 +402,126 @@ export function App({
   useInput(
     (input, key) => {
       if (key.ctrl && input === "c") {
-        onCancelSelecting?.();
+        onCancelActivation?.();
         return;
       }
 
       if (key.escape) {
-        onCancelSelecting?.();
-        return;
-      }
-
-      const options = modelOptions ?? [];
-      if (options.length === 0) {
+        onCancelActivation?.();
         return;
       }
 
       if (key.upArrow || input === "k") {
-        setModelCursor(
-          (current) => (current - 1 + options.length) % options.length,
+        setActivationCursor((current) =>
+          moveActivationCursor(activationRows, current, -1),
         );
         return;
       }
 
       if (key.downArrow || input === "j") {
-        setModelCursor((current) => (current + 1) % options.length);
+        setActivationCursor((current) =>
+          moveActivationCursor(activationRows, current, 1),
+        );
+        return;
+      }
+
+      if (input === " " || key.tab) {
+        // 未安装的 CLI 不能激活：切换它只会写下一个执行时必然失败的状态。
+        if (!isActivationSelectable(activationRows, activationCursor)) {
+          return;
+        }
+        setActivationDraft((current) =>
+          (current ?? activationRows).map((option, index) =>
+            index === activationCursor
+              ? { ...option, enabled: !option.enabled }
+              : option,
+          ),
+        );
         return;
       }
 
       if (key.return) {
-        const option = options[clampedCursor];
+        onSaveActivation?.(activationRows);
+      }
+    },
+    { isActive: activationActive },
+  );
+
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === "c") {
+        onCancelSelecting?.();
+        return;
+      }
+
+      if (key.escape) {
+        // 第二步退回第一步；第一步才真正取消整个选择。
+        if (modelPickStep === "model") {
+          setModelPickStep("cli");
+          return;
+        }
+        onCancelSelecting?.();
+        return;
+      }
+
+      if (modelPickStep === "cli") {
+        if (key.upArrow || input === "k" || key.downArrow || input === "j") {
+          const delta = key.upArrow || input === "k" ? -1 : 1;
+          const selectable = clis
+            .map((cli, index) => (cli.available ? index : -1))
+            .filter((index) => index >= 0);
+          if (selectable.length === 0) {
+            return;
+          }
+          const current = Math.max(selectable.indexOf(pickCliIndex), 0);
+          const next =
+            (current + delta + selectable.length) % selectable.length;
+          const target = clis[selectable[next] ?? 0];
+          if (target) {
+            setSelectedIndex(selectable[next] ?? 0);
+            setPickedCliId(target.id);
+          }
+          return;
+        }
+
+        if (key.return) {
+          const target = clis[pickCliIndex];
+          if (target?.available) {
+            setPickedCliId(target.id);
+            setModelPickStep("model");
+            setModelCursor(0);
+          }
+          return;
+        }
+        return;
+      }
+
+      if (cliModelOptions.length === 0) {
+        return;
+      }
+
+      if (key.upArrow || input === "k") {
+        setModelCursor(
+          (current) =>
+            (current - 1 + cliModelOptions.length) % cliModelOptions.length,
+        );
+        return;
+      }
+
+      if (key.downArrow || input === "j") {
+        setModelCursor((current) => (current + 1) % cliModelOptions.length);
+        return;
+      }
+
+      if (key.return) {
+        const option = cliModelOptions[clampedCursor];
         // 不可用候选不可提交：停留在选择器由用户另选。
         if (option?.available) {
           onSelectModel?.(option);
         }
       }
     },
-    { isActive: effectivePhase === "selecting" },
+    { isActive: effectivePhase === "selecting" && activationRows.length === 0 },
   );
 
   useInput(
@@ -387,10 +561,14 @@ export function App({
         const command = matches[0];
         if (command?.name === "/model") {
           if (onRequestModelSelector) {
+            setModelPickStep("cli");
+            setPickedCliId(undefined);
             onRequestModelSelector();
           } else {
             setScreen("picker");
           }
+        } else if (command?.name === "/activate") {
+          onRequestActivationManager?.();
         } else if (command?.name === "/new") {
           onNewSession?.();
         } else if (command?.name === "/help") {
@@ -429,6 +607,15 @@ export function App({
   if (screen === "scanning") {
     hint = "scanning";
     body = <ScanningView />;
+  } else if (activationActive) {
+    hint = "activating";
+    body = (
+      <ActivationView
+        mode={activationMode}
+        options={activationRows}
+        cursor={activationCursor}
+      />
+    );
   } else if (screen === "mode") {
     hint = "mode";
     body = (
@@ -471,28 +658,51 @@ export function App({
         </Box>
       </Box>
     );
-  } else if (screen === "chat" && activeId) {
-    hint = running ? "running" : "chat";
-    const phaseBanner: ReactNode =
-      effectivePhase === "probing" && probes ? (
-        <Box flexDirection="column" paddingX={2} marginBottom={1}>
+  } else if (effectivePhase === "selecting" && modelOptions) {
+    hint = "chat";
+    body =
+      modelPickStep === "cli" ? (
+        <Box flexDirection="column" paddingX={2}>
           <Text bold color={theme.text}>
-            正在探测本机模型…
+            选择 CLI（↑↓ 移动，Enter 进入，Esc 取消）
           </Text>
-          {probes.map((probe) => (
-            <Text key={probe.cliId} color={theme.muted}>
-              {cliDisplayName(probe.cliId)}：{probeStatusText(probe)}
-            </Text>
-          ))}
+          {clis.map((cli, index) => {
+            const probe = probes?.find((item) => item.cliId === cli.id);
+            const focused = index === pickCliIndex && cli.available;
+            const state = probe
+              ? probeStatusText(probe)
+              : cli.available
+                ? "已找到"
+                : "未安装";
+            return (
+              <Text key={cli.id}>
+                <Text color={theme.accent}>{focused ? "❯ " : "  "}</Text>
+                <Text
+                  bold={focused}
+                  color={cli.available ? theme.text : theme.muted}
+                >
+                  {cliDisplayName(cli.id)}
+                </Text>
+                <Text color={theme.muted}>{`  ${state}`}</Text>
+              </Text>
+            );
+          })}
         </Box>
-      ) : effectivePhase === "selecting" && modelOptions ? (
-        <Box flexDirection="column" paddingX={2} marginBottom={1}>
+      ) : (
+        <Box flexDirection="column" paddingX={2}>
           <Text bold color={theme.text}>
-            选择 CLI + 模型（↑↓ 移动，Enter 确认，Esc 取消）
+            选择模型 ·{" "}
+            {pickedCliId ? cliDisplayName(pickedCliId) : ""}
+            {pickProbe && pickProbe.status !== "found"
+              ? `：${probeStatusText(pickProbe)}`
+              : ""}
+            （↑↓ 移动，Enter 确认，Esc 返回）
           </Text>
-          {modelOptions.map((option, index) => {
+          {cliModelOptions.length === 0 ? (
+            <Text color={theme.alert}>该 CLI 没有探测到可用模型。</Text>
+          ) : null}
+          {cliModelOptions.map((option, index) => {
             const cursor = index === clampedCursor;
-            const marker = cursor ? "❯" : " ";
             const state = option.available
               ? ""
               : `（不可用${option.reason ? `：${option.reason}` : ""}）`;
@@ -508,24 +718,28 @@ export function App({
                     : theme.muted
                 }
               >
-                {marker} {cliDisplayName(option.cliId)}:{option.modelId}{" "}
-                {option.label}
+                {cursor ? "❯" : " "} {option.modelId} {option.label}
                 {option.isDefault ? " [默认]" : ""}
                 {capabilityTags(option)}
                 {state}
               </Text>
             );
           })}
-          {(probes ?? [])
-            .filter(
-              (probe) =>
-                probe.status !== "found" && probe.status !== "scanning",
-            )
-            .map((probe) => (
-              <Text key={`probe-${probe.cliId}`} color={theme.muted}>
-                {cliDisplayName(probe.cliId)}：{probeStatusText(probe)}
-              </Text>
-            ))}
+        </Box>
+      );
+  } else if (screen === "chat" && activeId) {
+    hint = running ? "running" : "chat";
+    const phaseBanner: ReactNode =
+      effectivePhase === "probing" && probes ? (
+        <Box flexDirection="column" paddingX={2} marginBottom={1}>
+          <Text bold color={theme.text}>
+            正在探测本机模型…
+          </Text>
+          {probes.map((probe) => (
+            <Text key={probe.cliId} color={theme.muted}>
+              {cliDisplayName(probe.cliId)}：{probeStatusText(probe)}
+            </Text>
+          ))}
         </Box>
       ) : effectivePhase === "starting" && running ? (
         <Box paddingX={2} marginBottom={1}>

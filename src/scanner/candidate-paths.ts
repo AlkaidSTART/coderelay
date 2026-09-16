@@ -188,3 +188,26 @@ export function dedupePaths(
   }
   return result;
 }
+
+/** PATH entries for `platform` (`;` on Windows, `:` everywhere else). */
+export function pathEntries(
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv = {},
+): readonly string[] {
+  return (env.PATH ?? "")
+    .split(platform === "win32" ? ";" : ":")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+/** Would the current shell find an executable placed in `dir`? */
+export function isDirOnPath(
+  dir: string,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv = {},
+): boolean {
+  const target = normalizeForCompare(dir, platform);
+  return pathEntries(platform, env).some(
+    (entry) => normalizeForCompare(entry, platform) === target,
+  );
+}

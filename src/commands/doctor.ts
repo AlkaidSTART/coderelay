@@ -1,9 +1,32 @@
+import { homedir } from "node:os";
+import path from "node:path";
+
 import { isAgentId } from "../agents/registry";
 import { loadConfig } from "../config/loader";
 import type { Config } from "../config/schema";
-import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
+import {
+  CLI_IDS,
+  cliCandidates,
+  cliDiagnostics,
+  cliLaunchTarget,
+  cliRuntime,
+  cliSource,
+  type CliCandidate,
+  type CliId,
+  type DetectedCli,
+} from "../models/cli";
+import {
+  installHintLines,
+  installPlatformFor,
+  type InstallPlatform,
+} from "../models/install-guide";
 import { parseModelRef } from "../models/types";
 import { resolveCommand } from "../runtime/process";
+import {
+  isDirOnPath,
+  standardInstallDirs,
+  userInstallDirs,
+} from "../scanner/candidate-paths";
 import { scanCodingClis, type ScannerOptions } from "../scanner/cli-scanner";
 
 export type DoctorStatus = "ok" | "warn" | "error";
@@ -12,6 +35,8 @@ export interface DoctorCheck {
   readonly name: string;
   readonly status: DoctorStatus;
   readonly message: string;
+  /** Extra indented lines: remediation, install commands, candidate lists. */
+  readonly details?: readonly string[];
 }
 
 export interface DoctorReport {
@@ -30,17 +55,32 @@ export interface DoctorCommandDependencies {
   readonly scan?: (options?: ScannerOptions) => Promise<DetectedCli[]>;
   readonly resolve?: (command: string) => string | null;
   readonly write?: (text: string) => void;
+  readonly platform?: NodeJS.Platform;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly homeDir?: string;
 }
 
 export interface BuildDoctorReportOptions {
   readonly configPath?: string | null;
   readonly resolve?: (command: string) => string | null;
+  readonly platform?: NodeJS.Platform;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly homeDir?: string;
 }
 
 interface AgentAvailability {
   readonly available: boolean;
   readonly path: string | null;
   readonly version: string | null;
+  /** `config.agents[id].command` overrides detection entirely. */
+  readonly fromConfig: boolean;
+}
+
+interface DoctorEnvironment {
+  readonly platform: NodeJS.Platform;
+  readonly env: NodeJS.ProcessEnv;
+  readonly homeDir: string;
+  readonly installPlatform: InstallPlatform;
 }
 
 function hasModel(agent: Config["agents"][string], model: string): boolean {
@@ -79,6 +119,7 @@ function availabilityFor(
       available: resolved !== null,
       path: resolved ?? configuredCommand,
       version: detectedCli?.path === resolved ? detectedCli.version : null,
+      fromConfig: true,
     };
   }
 
@@ -87,10 +128,265 @@ function availabilityFor(
       available: true,
       path: detectedCli.path,
       version: detectedCli.version,
+      fromConfig: false,
     };
   }
 
-  return { available: false, path: null, version: null };
+  return { available: false, path: null, version: null, fromConfig: false };
+}
+
+function platformLabel(platform: NodeJS.Platform): string {
+  if (platform === "darwin") {
+    return "macOS";
+  }
+  if (platform === "win32") {
+    return "Windows";
+  }
+  if (platform === "linux") {
+    return "Linux";
+  }
+  return platform;
+}
+
+function shellLabel(
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+): string {
+  if (platform === "win32") {
+    return env.PSModulePath ? "PowerShell" : "cmd";
+  }
+  const shell = env.SHELL?.trim();
+  if (!shell) {
+    return "sh";
+  }
+  const parts = shell.split(/[\\/]/);
+  return parts[parts.length - 1] || shell;
+}
+
+function envDirName(value: string, platform: NodeJS.Platform): string {
+  const split = platform === "win32" ? path.win32 : path.posix;
+  return split.dirname(value);
+}
+
+function candidateLabel(candidate: CliCandidate): string {
+  return candidate.runtime === "wsl"
+    ? `${candidate.path} (wsl: ${candidate.distro ?? "默认发行版"})`
+    : `${candidate.path} (${candidate.source})`;
+}
+
+function environmentCheck(environment: DoctorEnvironment): DoctorCheck {
+  const origin = environment.platform === "win32" ? "原生 Windows" : "本机 shell";
+  return {
+    name: "environment",
+    status: "ok",
+    message: `${platformLabel(environment.platform)} · ${shellLabel(
+      environment.platform,
+      environment.env,
+    )} · ${origin}`,
+  };
+}
+
+function pathCheck(environment: DoctorEnvironment): DoctorCheck {
+  const dirs = [
+    ...userInstallDirs(
+      environment.platform,
+      environment.homeDir,
+      environment.env,
+    ),
+    ...standardInstallDirs(environment.platform, environment.homeDir),
+  ];
+  const unique: string[] = [];
+  for (const entry of dirs) {
+    if (!unique.includes(entry.dir)) {
+      unique.push(entry.dir);
+    }
+  }
+
+  const onPath = unique.filter((dir) =>
+    isDirOnPath(dir, environment.platform, environment.env),
+  );
+  if (onPath.length > 0) {
+    return {
+      name: "PATH",
+      status: "ok",
+      message: `包含常见安装目录：${onPath.join(", ")}`,
+    };
+  }
+
+  return {
+    name: "PATH",
+    status: "warn",
+    message: "未包含任何常见 CLI 安装目录",
+    details: [
+      "已检查的目录：",
+      ...unique.map((dir) => `  ${dir}`),
+      "安装后终端仍找不到命令时，把其中一个目录加入 PATH 并重新打开终端。",
+    ],
+  };
+}
+
+/** WSL is only meaningful on native Windows. */
+function wslCheck(
+  environment: DoctorEnvironment,
+  detected: readonly DetectedCli[],
+): DoctorCheck | null {
+  if (environment.platform !== "win32") {
+    return null;
+  }
+
+  const distros: string[] = [];
+  let observed: string | null = null;
+  for (const cli of detected) {
+    for (const candidate of cliCandidates(cli)) {
+      if (candidate.runtime === "wsl" && candidate.distro) {
+        if (!distros.includes(candidate.distro)) {
+          distros.push(candidate.distro);
+        }
+      }
+    }
+    for (const diagnostic of cliDiagnostics(cli)) {
+      if (diagnostic.message.toLowerCase().includes("wsl") && !observed) {
+        observed = diagnostic.message;
+      }
+    }
+  }
+
+  if (distros.length > 0) {
+    return {
+      name: "WSL",
+      status: "ok",
+      message: `发现发行版：${distros.join(", ")}`,
+    };
+  }
+
+  return {
+    name: "WSL",
+    status: "warn",
+    message: observed ?? "未检测到 WSL 发行版",
+    details: [
+      "原生 Windows 未安装 CLI 时，可以在 WSL 内安装；coderelay 会通过 wsl.exe 启动它。",
+    ],
+  };
+}
+
+/**
+ * One CLI check, distinguishing the states a user has to act on differently:
+ * missing, installed but invisible to this shell, discoverable but
+ * un-probeable, and reachable only through WSL.
+ */
+function cliCheck(
+  id: CliId,
+  availability: AgentAvailability,
+  required: boolean,
+  detectedCli: DetectedCli | undefined,
+  environment: DoctorEnvironment,
+): DoctorCheck {
+  const name = `cli ${id}`;
+  const candidates = detectedCli ? cliCandidates(detectedCli) : [];
+  const diagnostics = detectedCli
+    ? cliDiagnostics(detectedCli).map((diagnostic) => diagnostic.message)
+    : [];
+  const hints = installHintLines(id, environment.installPlatform);
+
+  if (!availability.available) {
+    // An explicit `agents.<id>.command` is authoritative: if it did not
+    // resolve, the config points at something that is not there.
+    if (availability.fromConfig) {
+      return {
+        name,
+        status: "error",
+        message: `配置的 command 不存在：${availability.path ?? ""}`,
+        details: [
+          "修正 config 中的 agents." + id + ".command，或删除它改用自动探测。",
+        ],
+      };
+    }
+
+    const status: DoctorStatus = required ? "error" : "warn";
+    if (candidates.length > 0) {
+      return {
+        name,
+        status,
+        message: `发现 ${candidates.length} 个候选，但都不可启动`,
+        details: [
+          ...candidates.map((candidate) => `  ${candidateLabel(candidate)}`),
+          ...diagnostics,
+          "安装方式（复制到终端执行，coderelay 不会代跑）：",
+          ...hints.map((line) => `  ${line}`),
+        ],
+      };
+    }
+
+    return {
+      name,
+      status,
+      message: required
+        ? "未安装（当前配置需要它）"
+        : "未安装（可选）",
+      details: [
+        ...diagnostics,
+        "安装方式（复制到终端执行，coderelay 不会代跑）：",
+        ...hints.map((line) => `  ${line}`),
+      ],
+    };
+  }
+
+  if (availability.fromConfig) {
+    return {
+      name,
+      status: "ok",
+      message: `config 指定 · ${availability.path ?? ""}`,
+    };
+  }
+
+  const where = availability.path ?? "";
+  const runtime = detectedCli ? cliRuntime(detectedCli) : "local";
+  const source = detectedCli ? cliSource(detectedCli) : "path";
+
+  if (runtime === "wsl") {
+    const distro = detectedCli?.distro ?? "默认发行版";
+    return {
+      name,
+      status: "warn",
+      message: `仅在 WSL:${distro} 中可用 · ${where}`,
+      details: [
+        `当前 shell 是原生 ${platformLabel(environment.platform)}，无法直接调用 ${id}；coderelay 会通过 wsl.exe -d ${distro} 启动它。`,
+        ...diagnostics,
+      ],
+    };
+  }
+
+  if (availability.version === null) {
+    return {
+      name,
+      status: "warn",
+      message: `可发现但版本探测失败 · ${where}`,
+      details: [
+        "该 CLI 可能未完整安装，或 --version 需要交互；请先在终端手动确认。",
+        ...diagnostics,
+      ],
+    };
+  }
+
+  const dir = where ? envDirName(where, environment.platform) : "";
+  if (dir && !isDirOnPath(dir, environment.platform, environment.env)) {
+    return {
+      name,
+      status: "warn",
+      message: `已安装但不在当前 PATH · ${availability.version} · ${where}`,
+      details: [
+        `把 ${dir} 加入 PATH 并重新打开终端，就能在终端直接调用 ${id}。`,
+        ...diagnostics,
+      ],
+    };
+  }
+
+  return {
+    name,
+    status: "ok",
+    message: `${availability.version} · ${where} · ${source}`,
+    ...(diagnostics.length > 0 ? { details: diagnostics } : {}),
+  };
 }
 
 function validateRules(
@@ -181,6 +477,12 @@ export function buildDoctorReport(
 ): DoctorReport {
   const resolve = options.resolve ?? resolveCommand;
   const checks: DoctorCheck[] = [];
+  const environment: DoctorEnvironment = {
+    platform: options.platform ?? process.platform,
+    env: options.env ?? process.env,
+    homeDir: options.homeDir ?? homedir(),
+    installPlatform: installPlatformFor(options.platform ?? process.platform),
+  };
 
   checks.push(
     options.configPath
@@ -195,6 +497,13 @@ export function buildDoctorReport(
           message: "no config file found; using built-in defaults",
         },
   );
+
+  checks.push(environmentCheck(environment));
+  checks.push(pathCheck(environment));
+  const wsl = wslCheck(environment, detected);
+  if (wsl) {
+    checks.push(wsl);
+  }
 
   const defaultAgent = config.defaultAgent;
   if (!isAgentId(defaultAgent)) {
@@ -249,22 +558,15 @@ export function buildDoctorReport(
     const availability = availabilityFor(id, config, detected, resolve);
     const required = requiredAgents.has(id);
 
-    if (availability.available) {
-      checks.push({
-        name: `cli ${id}`,
-        status: "ok",
-        message: availability.version ?? availability.path ?? "available",
-      });
-      continue;
-    }
-
-    checks.push({
-      name: `cli ${id}`,
-      status: required ? "error" : "warn",
-      message: required
-        ? "required by the current config but not found"
-        : "not installed (optional)",
-    });
+    checks.push(
+      cliCheck(
+        id,
+        availability,
+        required,
+        detected.find((item) => item.id === id),
+        environment,
+      ),
+    );
   }
 
   if (config.defaultModel) {
@@ -313,7 +615,10 @@ export function buildDoctorReport(
 
 export function formatDoctorReport(report: DoctorReport): string {
   return report.checks
-    .map((check) => `${check.status.padEnd(5)} ${check.name}: ${check.message}`)
+    .flatMap((check) => [
+      `${check.status.padEnd(5)} ${check.name}: ${check.message}`,
+      ...(check.details ?? []).map((line) => `      ${line}`),
+    ])
     .join("\n");
 }
 
@@ -333,6 +638,9 @@ export async function runDoctorCommand(
     const report = buildDoctorReport(loaded.config, detected, {
       configPath: loaded.path,
       resolve: dependencies.resolve,
+      platform: dependencies.platform,
+      env: dependencies.env,
+      homeDir: dependencies.homeDir,
     });
     write(`${formatDoctorReport(report)}\n`);
     return report.ok ? 0 : 1;

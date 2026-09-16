@@ -8,12 +8,26 @@ import { promisify } from "node:util";
 import {
   CLI_DEFINITIONS,
   DEFAULT_VERSION_ARGS,
-  type CliId,
+  type CliCandidate,
+  type CliDefinition,
+  type CliDiagnostic,
+  type CliSource,
   type DetectedCli,
   type ExecFileRequestOptions,
   type ExecFileRunner,
   type HostAgent,
 } from "../models/cli";
+import {
+  candidatePathsInDir,
+  classifySource,
+  dedupePaths,
+  type InstallDir,
+  isDirOnPath,
+  standardInstallDirs,
+  userInstallDirs,
+} from "./candidate-paths";
+import { probeVersion } from "./version-probe";
+import { scanWslClis, type WslCliLocation, type WslScanResult } from "./wsl";
 
 export type FileAccess = (path: string, mode?: number) => Promise<void>;
 
@@ -26,6 +40,13 @@ export interface ScannerOptions {
   readonly resolveTimeoutMs?: number;
   readonly versionTimeoutMs?: number;
   readonly versionArgs?: readonly (readonly string[])[];
+  /**
+   * Probe WSL for CLIs. Defaults to on for native Windows only — WSL paths
+   * must never be treated as launchable from another platform.
+   */
+  readonly probeWsl?: boolean;
+  /** Overridable for tests; WSL is normally reached as `wsl.exe`. */
+  readonly wslBin?: string;
 }
 
 interface ResolvedScannerOptions {
@@ -37,6 +58,8 @@ interface ResolvedScannerOptions {
   readonly resolveTimeoutMs: number;
   readonly versionTimeoutMs: number;
   readonly versionArgs: readonly (readonly string[])[];
+  readonly probeWsl: boolean;
+  readonly wslBin: string | undefined;
 }
 
 const execFileAsync = promisify(execFile);
@@ -56,25 +79,89 @@ const defaultExecFile: ExecFileRunner = async (file, args, options = {}) => {
 function resolveScannerOptions(
   options: ScannerOptions = {},
 ): ResolvedScannerOptions {
+  const platform = options.platform ?? process.platform;
   return {
     execFile: options.execFile ?? defaultExecFile,
     access: options.access ?? access,
-    platform: options.platform ?? process.platform,
+    platform,
     homeDir: options.homeDir ?? homedir(),
     env: options.env ?? process.env,
     resolveTimeoutMs: options.resolveTimeoutMs ?? 3_000,
     versionTimeoutMs: options.versionTimeoutMs ?? 5_000,
     versionArgs: options.versionArgs ?? DEFAULT_VERSION_ARGS,
+    probeWsl: options.probeWsl ?? platform === "win32",
+    wslBin: options.wslBin,
   };
 }
 
-function firstNonEmptyLine(value: string): string | null {
-  return (
-    value
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean) ?? null
+function lines(stdout: string): readonly string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function dirNameOf(filePath: string, platform: NodeJS.Platform): string {
+  const split = platform === "win32" ? path.win32 : path.posix;
+  return split.dirname(filePath);
+}
+
+/** Is the directory holding `filePath` reachable from the current shell? */
+function isFileReachableFromShell(
+  filePath: string,
+  resolved: ResolvedScannerOptions,
+): boolean {
+  return isDirOnPath(
+    dirNameOf(filePath, resolved.platform),
+    resolved.platform,
+    resolved.env,
   );
+}
+
+/**
+ * Every path the current shell resolves for `bin`, in PATH order. On Windows
+ * `where` reports each matching extension; on Unix `which` reports every match
+ * across PATH entries. `command -v` is the fallback when `which` is missing
+ * (it is a shell builtin, `which` is not always installed).
+ */
+async function resolveAllOnPath(
+  bin: string,
+  resolved: ResolvedScannerOptions,
+): Promise<readonly string[]> {
+  const lookupCommand = resolved.platform === "win32" ? "where" : "which";
+  const requestOptions: ExecFileRequestOptions = {
+    timeout: resolved.resolveTimeoutMs,
+    windowsHide: true,
+  };
+
+  try {
+    const { stdout } = await resolved.execFile(
+      lookupCommand,
+      [bin],
+      requestOptions,
+    );
+    const found = lines(stdout);
+    if (found.length > 0) {
+      return found;
+    }
+  } catch {
+    // Fall through to the shell builtin below.
+  }
+
+  if (resolved.platform === "win32") {
+    return [];
+  }
+
+  try {
+    const { stdout } = await resolved.execFile(
+      "sh",
+      ["-lc", `command -v ${bin}`],
+      requestOptions,
+    );
+    return lines(stdout);
+  } catch {
+    return [];
+  }
 }
 
 export async function resolveOnPath(
@@ -82,22 +169,8 @@ export async function resolveOnPath(
   options: ScannerOptions = {},
 ): Promise<string | null> {
   const resolved = resolveScannerOptions(options);
-  const lookupCommand = resolved.platform === "win32" ? "where" : "which";
-
-  try {
-    const { stdout } = await resolved.execFile(
-      lookupCommand,
-      [bin],
-      {
-        timeout: resolved.resolveTimeoutMs,
-        windowsHide: true,
-      } satisfies ExecFileRequestOptions,
-    );
-
-    return firstNonEmptyLine(stdout);
-  } catch {
-    return null;
-  }
+  const found = await resolveAllOnPath(bin, resolved);
+  return found[0] ?? null;
 }
 
 export async function getCliVersion(
@@ -106,29 +179,17 @@ export async function getCliVersion(
 ): Promise<string | null> {
   const resolved = resolveScannerOptions(options);
 
-  for (const args of resolved.versionArgs) {
-    try {
-      const { stdout, stderr } = await resolved.execFile(
-        binPath,
-        args,
-        {
-          timeout: resolved.versionTimeoutMs,
-          windowsHide: true,
-        } satisfies ExecFileRequestOptions,
-      );
-      const output = stdout.trim() ? stdout : stderr;
-      const version = firstNonEmptyLine(output);
-      if (version) {
-        return version;
-      }
-    } catch {
-      // Try the next documented flag; one failed probe never fails the scan.
-    }
-  }
-
-  return null;
+  return probeVersion([binPath], {
+    execFile: resolved.execFile,
+    timeoutMs: resolved.versionTimeoutMs,
+    versionArgs: resolved.versionArgs,
+  });
 }
 
+/**
+ * The documented Windows fallback order for Claude Code: the native installer
+ * location first, then the npm shim, then Bun's global bin.
+ */
 export async function getWindowsClaudeFallback(
   options: ScannerOptions = {},
 ): Promise<string | null> {
@@ -157,40 +218,328 @@ export async function getWindowsClaudeFallback(
   return null;
 }
 
-async function scanCli(
-  id: CliId,
-  bin: string,
-  options: ScannerOptions,
-): Promise<DetectedCli> {
-  const resolved = resolveScannerOptions(options);
-  let cliPath = await resolveOnPath(bin, options);
+/** Global bin directories published by package managers, probed once per scan. */
+async function probePackageBinDirs(
+  resolved: ResolvedScannerOptions,
+): Promise<readonly InstallDir[]> {
+  const probes: ReadonlyArray<{
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly source: CliSource;
+    readonly toDir: (stdout: string) => string;
+  }> = [
+    {
+      command: "npm",
+      args: ["prefix", "-g"],
+      source: "npm",
+      // npm keeps executables in <prefix>/bin on Unix, directly in <prefix>
+      // on Windows (the .cmd shims live there too).
+      toDir: (stdout) =>
+        resolved.platform === "win32" ? stdout : `${stdout}/bin`,
+    },
+    {
+      command: "bun",
+      args: ["pm", "bin", "-g"],
+      source: "bun",
+      toDir: (stdout) => stdout,
+    },
+    {
+      command: "pnpm",
+      args: ["bin", "-g"],
+      source: "pnpm",
+      toDir: (stdout) => stdout,
+    },
+    {
+      command: "yarn",
+      args: ["global", "bin"],
+      source: "yarn",
+      toDir: (stdout) => stdout,
+    },
+  ];
 
-  if (!cliPath && id === "claude") {
-    cliPath = await getWindowsClaudeFallback(options);
+  if (resolved.platform === "darwin") {
+    probes.push({
+      command: "brew",
+      args: ["--prefix"],
+      source: "brew",
+      toDir: (stdout) => `${stdout}/bin`,
+    });
   }
 
-  if (!cliPath) {
+  const results = await Promise.all(
+    probes.map(async (probe) => {
+      try {
+        const { stdout } = await resolved.execFile(probe.command, probe.args, {
+          timeout: resolved.resolveTimeoutMs,
+          windowsHide: true,
+        });
+        const first = lines(stdout)[0];
+        return first ? { dir: probe.toDir(first), source: probe.source } : null;
+      } catch {
+        // A missing or failing package manager simply contributes no directory.
+        return null;
+      }
+    }),
+  );
+
+  return results.filter((entry): entry is InstallDir => entry !== null);
+}
+
+interface LocalCandidate {
+  readonly path: string;
+  readonly source: CliSource;
+}
+
+async function accessible(
+  candidate: string,
+  resolved: ResolvedScannerOptions,
+): Promise<boolean> {
+  try {
+    await resolved.access(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every launchable executable for one CLI, in preference order: what the
+ * current shell resolves first, then the documented Claude Windows fallback,
+ * then package-manager and installer directories. Install source never
+ * outranks real launchability — the order here is the order we try.
+ */
+async function collectLocalCandidates(
+  definition: CliDefinition,
+  resolved: ResolvedScannerOptions,
+  packageDirs: readonly InstallDir[],
+  searchedDirs: string[],
+): Promise<readonly LocalCandidate[]> {
+  const ordered: LocalCandidate[] = [];
+
+  for (const found of await resolveAllOnPath(definition.bin, resolved)) {
+    ordered.push({
+      path: found,
+      source: classifySource(
+        found,
+        resolved.platform,
+        resolved.homeDir,
+        resolved.env,
+      ),
+    });
+  }
+
+  if (definition.id === "claude" && resolved.platform === "win32") {
+    const fallback = await getWindowsClaudeFallback({
+      platform: resolved.platform,
+      homeDir: resolved.homeDir,
+      env: resolved.env,
+      access: resolved.access,
+    });
+    if (fallback) {
+      ordered.push({ path: fallback, source: "fallback" });
+    }
+  }
+
+  const directories: readonly InstallDir[] = [
+    ...packageDirs,
+    ...userInstallDirs(resolved.platform, resolved.homeDir, resolved.env),
+    ...standardInstallDirs(resolved.platform, resolved.homeDir),
+  ];
+  for (const entry of directories) {
+    searchedDirs.push(entry.dir);
+  }
+
+  const inDirs = dedupePaths(
+    directories.flatMap((entry) =>
+      candidatePathsInDir(
+        entry.dir,
+        definition.bin,
+        resolved.platform,
+        resolved.env,
+      ),
+    ),
+    resolved.platform,
+  );
+
+  for (const candidate of inDirs) {
+    ordered.push({
+      path: candidate,
+      source: classifySource(
+        candidate,
+        resolved.platform,
+        resolved.homeDir,
+        resolved.env,
+      ),
+    });
+  }
+
+  const deduped = dedupePaths(
+    ordered.map((entry) => entry.path),
+    resolved.platform,
+  );
+  const byPath = new Map(ordered.map((entry) => [entry.path, entry.source]));
+  const launchable: LocalCandidate[] = [];
+  for (const candidate of deduped) {
+    if (await accessible(candidate, resolved)) {
+      launchable.push({
+        path: candidate,
+        source: byPath.get(candidate) ?? "path",
+      });
+    }
+  }
+
+  return launchable;
+}
+
+async function toLocalCandidates(
+  local: readonly LocalCandidate[],
+  resolved: ResolvedScannerOptions,
+): Promise<readonly CliCandidate[]> {
+  return Promise.all(
+    local.map(async (entry) => ({
+      path: entry.path,
+      runtime: "local" as const,
+      source: entry.source,
+      version: await probeVersion([entry.path], {
+        execFile: resolved.execFile,
+        timeoutMs: resolved.versionTimeoutMs,
+        versionArgs: resolved.versionArgs,
+      }),
+    })),
+  );
+}
+
+function toWslCandidates(
+  locations: readonly WslCliLocation[],
+): readonly CliCandidate[] {
+  return locations.map((location) => ({
+    path: location.path,
+    runtime: "wsl" as const,
+    source: "installer" as const,
+    distro: location.distro,
+    version: location.version,
+  }));
+}
+
+function selectedFrom(
+  candidates: readonly CliCandidate[],
+): CliCandidate | null {
+  return candidates[0] ?? null;
+}
+
+function buildDiagnostics(
+  definition: CliDefinition,
+  resolved: ResolvedScannerOptions,
+  selected: CliCandidate | null,
+  wsl: WslScanResult | null,
+  searchedDirs: readonly string[],
+): readonly CliDiagnostic[] {
+  const diagnostics: CliDiagnostic[] = [];
+
+  if (!selected) {
+    diagnostics.push({
+      level: "info",
+      message: `未发现 ${definition.bin}。已检查 PATH 与常见安装目录：${[
+        ...new Set(searchedDirs),
+      ].join(", ")}`,
+    });
+    for (const diagnostic of wsl?.diagnostics ?? []) {
+      diagnostics.push(diagnostic);
+    }
+    return diagnostics;
+  }
+
+  if (selected.runtime === "wsl") {
+    diagnostics.push({
+      level: "warn",
+      message: `仅在 WSL:${
+        selected.distro ?? "默认发行版"
+      } 中可用；原生 Windows shell 无法直接调用 ${definition.bin}。`,
+    });
+    return diagnostics;
+  }
+
+  if (selected.version === null) {
+    diagnostics.push({
+      level: "warn",
+      message: `已找到 ${selected.path}，但版本探测失败；该 CLI 可能未完整安装。`,
+    });
+  }
+
+  if (!isFileReachableFromShell(selected.path, resolved)) {
+    diagnostics.push({
+      level: "warn",
+      message: `已安装但不在当前 PATH：${dirNameOf(
+        selected.path,
+        resolved.platform,
+      )}。若要在终端直接调用 ${definition.bin}，请把该目录加入 PATH 并重新打开终端。`,
+    });
+  }
+
+  const wslLocations = wsl?.locations.get(definition.id) ?? [];
+  if (wslLocations.length > 0) {
+    diagnostics.push({
+      level: "info",
+      message: `WSL:${
+        wslLocations[0]?.distro ?? "默认发行版"
+      } 中也检测到 ${definition.bin}；当前 shell 优先使用原生路径。`,
+    });
+  }
+
+  return diagnostics;
+}
+
+async function scanCli(
+  definition: CliDefinition,
+  resolved: ResolvedScannerOptions,
+  packageDirs: readonly InstallDir[],
+  wsl: WslScanResult | null,
+): Promise<DetectedCli> {
+  const searchedDirs: string[] = [];
+  const local = await collectLocalCandidates(
+    definition,
+    resolved,
+    packageDirs,
+    searchedDirs,
+  );
+  const candidates: CliCandidate[] = [
+    ...(await toLocalCandidates(local, resolved)),
+    ...toWslCandidates(wsl?.locations.get(definition.id) ?? []),
+  ];
+  const selected = selectedFrom(candidates);
+  const diagnostics = buildDiagnostics(
+    definition,
+    resolved,
+    selected,
+    wsl,
+    searchedDirs,
+  );
+
+  if (!selected) {
     return {
-      id,
-      bin,
+      id: definition.id,
+      bin: definition.bin,
       path: "",
       version: null,
       available: false,
+      runtime: "local",
+      source: "path",
+      candidates,
+      diagnostics,
     };
   }
 
-  const version = await getCliVersion(cliPath, {
-    ...options,
-    versionTimeoutMs: resolved.versionTimeoutMs,
-    versionArgs: resolved.versionArgs,
-  });
-
   return {
-    id,
-    bin,
-    path: cliPath,
-    version,
+    id: definition.id,
+    bin: definition.bin,
+    path: selected.path,
+    version: selected.version,
     available: true,
+    runtime: selected.runtime,
+    source: selected.source,
+    ...(selected.distro ? { distro: selected.distro } : {}),
+    candidates,
+    diagnostics,
   };
 }
 
@@ -198,9 +547,29 @@ async function scanCli(
 export async function scanCodingClis(
   options: ScannerOptions = {},
 ): Promise<DetectedCli[]> {
+  const resolved = resolveScannerOptions(options);
+
+  // Both are resolved once per scan and shared by every CLI: the package
+  // managers and wsl.exe are far slower than the per-CLI lookups.
+  const packageDirsPromise = probePackageBinDirs(resolved);
+  const wslPromise: Promise<WslScanResult | null> = resolved.probeWsl
+    ? scanWslClis({
+        execFile: resolved.execFile,
+        resolveTimeoutMs: resolved.resolveTimeoutMs,
+        versionTimeoutMs: resolved.versionTimeoutMs,
+        versionArgs: resolved.versionArgs,
+        wslBin: resolved.wslBin,
+      })
+    : Promise.resolve(null);
+
+  const [packageDirs, wsl] = await Promise.all([
+    packageDirsPromise,
+    wslPromise,
+  ]);
+
   return Promise.all(
     CLI_DEFINITIONS.map((definition) =>
-      scanCli(definition.id, definition.bin, options),
+      scanCli(definition, resolved, packageDirs, wsl),
     ),
   );
 }

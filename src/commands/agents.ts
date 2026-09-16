@@ -4,7 +4,20 @@ import {
 } from "../agents/cli-adapters";
 import { loadConfig } from "../config/loader";
 import type { Config } from "../config/schema";
-import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
+import {
+  CLI_IDS,
+  cliCandidates,
+  cliDiagnostics,
+  cliRuntime,
+  cliSource,
+  type CliCandidate,
+  type CliDiagnostic,
+  type CliId,
+  type CliRuntime,
+  type CliSource,
+  type DetectedCli,
+} from "../models/cli";
+import { installHintLines, installPlatformFor } from "../models/install-guide";
 import { scanCodingClis, type ScannerOptions } from "../scanner/cli-scanner";
 
 const AGENT_LABELS: Readonly<Record<CliId, string>> = {
@@ -25,6 +38,12 @@ export interface AgentListEntry {
   readonly version: string | null;
   readonly configDir: string;
   readonly models: readonly string[];
+  /** Where the selected executable runs: this machine, or a WSL distro. */
+  readonly runtime: CliRuntime;
+  readonly distro?: string;
+  readonly source: CliSource;
+  readonly candidates: readonly CliCandidate[];
+  readonly diagnostics: readonly CliDiagnostic[];
 }
 
 export interface AgentCommandOptions {
@@ -38,6 +57,7 @@ export interface AgentCommandDependencies {
   readonly scan?: (options?: ScannerOptions) => Promise<DetectedCli[]>;
   readonly write?: (text: string) => void;
   readonly adapters?: CliAdapterOptions;
+  readonly platform?: NodeJS.Platform;
 }
 
 export function buildAgentList(
@@ -52,6 +72,7 @@ export function buildAgentList(
     const detectedCli = detectedById.get(id);
     const agentConfig = config.agents[id];
     const command = agentConfig?.command?.trim() || detectedCli?.path || "";
+    const distro = detectedCli?.distro;
 
     return {
       id,
@@ -64,17 +85,43 @@ export function buildAgentList(
       version: detectedCli?.version ?? null,
       configDir: adapters[id].configDir,
       models: agentConfig?.models.map((model) => model.id) ?? [],
+      runtime: detectedCli ? cliRuntime(detectedCli) : "local",
+      ...(distro ? { distro } : {}),
+      source: detectedCli ? cliSource(detectedCli) : "path",
+      candidates: detectedCli ? cliCandidates(detectedCli) : [],
+      diagnostics: detectedCli ? cliDiagnostics(detectedCli) : [],
     };
   });
 }
 
-export function formatAgentList(entries: readonly AgentListEntry[]): string {
+function runtimeLabel(entry: AgentListEntry): string {
+  return entry.runtime === "wsl"
+    ? `wsl (${entry.distro ?? "默认发行版"})`
+    : `local (${entry.source})`;
+}
+
+function candidateLabel(candidate: CliCandidate): string {
+  return candidate.runtime === "wsl"
+    ? `${candidate.path} (wsl: ${candidate.distro ?? "默认发行版"})`
+    : `${candidate.path} (${candidate.source})`;
+}
+
+export interface FormatAgentListOptions {
+  readonly platform?: NodeJS.Platform;
+}
+
+export function formatAgentList(
+  entries: readonly AgentListEntry[],
+  options: FormatAgentListOptions = {},
+): string {
+  const platform = installPlatformFor(options.platform ?? process.platform);
+
   return entries
     .map((entry) => {
       const defaultMarker = entry.isDefault ? " default" : "";
       const enabledMarker = entry.enabled ? "enabled" : "disabled";
       const availability = entry.available
-        ? entry.version ?? "available"
+        ? entry.version ?? "available（版本未知）"
         : "not found";
       const models =
         entry.models.length > 0 ? entry.models.join(", ") : "(adapter default)";
@@ -82,10 +129,20 @@ export function formatAgentList(entries: readonly AgentListEntry[]): string {
       return [
         `${entry.label} (${entry.id}) [${enabledMarker}${defaultMarker}]`,
         `  status: ${availability}`,
+        `  runtime: ${runtimeLabel(entry)}`,
         `  command: ${entry.command}`,
         entry.path ? `  path: ${entry.path}` : null,
         `  config: ${entry.configDir}`,
         `  models: ${models}`,
+        entry.candidates.length > 1
+          ? `  candidates: ${entry.candidates.map(candidateLabel).join(", ")}`
+          : null,
+        ...entry.diagnostics.map(
+          (diagnostic) => `  ${diagnostic.level}: ${diagnostic.message}`,
+        ),
+        ...(entry.available
+          ? []
+          : ["  install:", ...installHintLines(entry.id, platform).map((line) => `    ${line}`)]),
       ]
         .filter((line): line is string => line !== null)
         .join("\n");
@@ -111,7 +168,9 @@ export async function runAgentsCommand(
       detected,
       dependencies.adapters,
     );
-    write(`${formatAgentList(entries)}\n`);
+    write(
+      `${formatAgentList(entries, { platform: dependencies.platform })}\n`,
+    );
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

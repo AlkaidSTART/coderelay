@@ -7,12 +7,13 @@ import {
 import { isAgentId } from "../agents/registry";
 import { loadConfig } from "../config/loader";
 import type { Config } from "../config/schema";
-import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
+import { CLI_IDS, cliLaunchTarget, type CliId, type DetectedCli, type LaunchTarget } from "../models/cli";
 import type { AgentEvent } from "../models/agent-events";
 import type { ModelStrength } from "../models/types";
 import { route } from "../router/router";
 import type { RouteDecision } from "../router/types";
 import { runAgentStream, type AgentRunHandle } from "../runtime/agent-run";
+import { buildLaunchCmd, resolveLaunchCwd } from "../runtime/launcher";
 import { resolveCommand, type ProcessOptions, type ProcessResult } from "../runtime/process";
 import { scanCodingClis, type ScannerOptions } from "../scanner/cli-scanner";
 
@@ -77,13 +78,13 @@ function availableAgents(
   });
 }
 
-function resolveExecutable(
+function resolveTarget(
   agent: CliId,
   config: Config,
   detected: readonly DetectedCli[],
   bin: string,
   resolve: (command: string) => string | null,
-): string {
+): LaunchTarget {
   const configuredCommand = config.agents[agent]?.command?.trim();
   if (configuredCommand) {
     const resolved = resolve(configuredCommand);
@@ -92,17 +93,20 @@ function resolveExecutable(
         `configured command for ${agent} was not found: ${configuredCommand}`,
       );
     }
-    return resolved;
+    return { path: resolved, runtime: "local" };
   }
 
+  // 扫描结果携带真实运行上下文（本地 / WSL），启动必须沿用同一条路径，
+  // 不在启动时重新按 bin 名称查找，避免 PATH 变化导致启动失败。
   const detectedCli = findDetected(detected, agent);
-  if (detectedCli?.available && detectedCli.path) {
-    return detectedCli.path;
+  const scanned = detectedCli ? cliLaunchTarget(detectedCli) : null;
+  if (scanned) {
+    return scanned;
   }
 
   const resolved = resolve(bin);
   if (resolved) {
-    return resolved;
+    return { path: resolved, runtime: "local" };
   }
 
   throw new Error(`agent is not available: ${agent}`);
@@ -189,7 +193,7 @@ export async function runRunCommand(
     const probe = catalog.probes.find((item) => item.cliId === agent);
     const probed = probe?.models.find((item) => item.modelId === (model ?? item.modelId));
     const structured = probed?.capabilities.structuredEvents === true;
-    const executable = resolveExecutable(agent, config, detected, adapter.bin, resolve);
+    const executable = resolveTarget(agent, config, detected, adapter.bin, resolve);
     const agentConfig = config.agents[agent];
     const args = adapter.buildPromptArgs
       ? [...adapter.buildPromptArgs({ prompt: options.prompt, model, extraArgs: agentConfig?.extraArgs })]
@@ -197,6 +201,13 @@ export async function runRunCommand(
     void CLI_IDS;
 
     write(`coderelay: routing to ${targetDescription(agent, model)}\n`);
+
+    const launchCwd = resolveLaunchCwd(options.cwd, executable);
+    if (executable.runtime === "wsl" && options.cwd && !launchCwd) {
+      write(
+        `coderelay: 无法把工作目录转换为 WSL 路径（${options.cwd}），将在 WSL 当前目录执行\n`,
+      );
+    }
 
     // 统一流式生命周期：assistant 文本写 stdout，诊断写 stderr。
     const onEvent = (event: AgentEvent): void => {
@@ -211,8 +222,8 @@ export async function runRunCommand(
       }
     };
     const handle = startStream({
-      cmd: [executable, ...args],
-      cwd: options.cwd,
+      cmd: buildLaunchCmd(executable, args),
+      cwd: launchCwd,
       env: { ...process.env, ...agentConfig?.env, ...options.env },
       signal: options.signal,
       timeoutMs: options.timeoutMs,

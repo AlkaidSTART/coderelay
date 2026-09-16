@@ -51,7 +51,7 @@ const DETECTED: DetectedCli[] = [
 describe("probeModelCatalog", () => {
   test("returns a unified catalog; failures carry reasons and no candidates", async () => {
     const config = defaultConfig();
-    config.agents["omp"] = { enabled: false, models: [], extraArgs: [], env: {} };
+    config.agents["omp"] = { enabled: false, activationDecided: true, models: [], extraArgs: [], env: {} };
     const adapters = fakeAdapters({
       codex: { ok: true, models: [{ id: "gpt-5" }, { id: "gpt-5-mini" }], capabilities: CAPS },
       claude: { ok: false, reason: "auth missing" },
@@ -72,6 +72,7 @@ describe("probeModelCatalog", () => {
     const config = defaultConfig();
     config.agents["codex"] = {
       enabled: true,
+      activationDecided: true,
       models: [
         { id: "gpt-5-mini", label: "Mini!", strengths: [], cost: 1 },
         { id: "ghost-model", label: "Ghost", strengths: [], cost: 1 },

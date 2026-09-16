@@ -65,31 +65,6 @@ export function HintBar({ context }: HintBarProps) {
     );
   }
 
-  if (context === "activating") {
-    return (
-      <Box flexDirection="row">
-        {[
-          { key: "↑↓", label: "移动" },
-          { key: "space", label: "切换" },
-          { key: "↵", label: "保存" },
-          { key: "esc", label: "取消" },
-        ].map((hint, index) => (
-          <Text key={hint.key}>
-            {index > 0 ? (
-              <Text color={theme.muted}>
-                {"  ·  "}
-              </Text>
-            ) : null}
-            <Text bold color={theme.accent}>
-              {hint.key}
-            </Text>
-            <Text color={theme.muted}>{` ${hint.label}`}</Text>
-          </Text>
-        ))}
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="row">
       {HINTS[context].map((hint, index) => (
