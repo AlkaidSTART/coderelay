@@ -50,6 +50,15 @@ async function scanWindows(host: FakeWindowsHost = {}) {
   return scanCodingClis(options);
 }
 
+/** Canonical order is part of the contract, so index access is deliberate. */
+function nth<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) {
+    throw new Error(`expected a CLI at index ${index}`);
+  }
+  return item;
+}
+
 describe("WSL-isolated CLIs", () => {
   test("a CLI only present in WSL is selected as a WSL target", async () => {
     const detected = await scanWindows({
@@ -61,7 +70,7 @@ describe("WSL-isolated CLIs", () => {
       },
     });
 
-    const codex = detected[0];
+    const codex = nth(detected, 0);
     expect(codex).toMatchObject({
       available: true,
       path: "/home/me/.local/bin/codex",
@@ -88,7 +97,7 @@ describe("WSL-isolated CLIs", () => {
       },
     });
 
-    const target = cliLaunchTarget(detected[3]);
+    const target = cliLaunchTarget(nth(detected, 3));
     expect(target).not.toBeNull();
     expect(buildLaunchCmd(target!, ["-p", "hi"])).toEqual([
       "wsl.exe",
@@ -109,7 +118,7 @@ describe("WSL-isolated CLIs", () => {
       },
     });
 
-    const candidates = cliCandidates(detected[2]);
+    const candidates = cliCandidates(nth(detected, 2));
     expect(candidates).toEqual([
       {
         path: "/home/me/.local/bin/pi",
@@ -136,7 +145,7 @@ describe("native Windows wins over WSL", () => {
       },
     });
 
-    const claude = detected[1];
+    const claude = nth(detected, 1);
     expect(claude).toMatchObject({
       available: true,
       runtime: "local",
@@ -164,7 +173,7 @@ describe("multiple distributions", () => {
       },
     });
 
-    const pi = detected[2];
+    const pi = nth(detected, 2);
     expect(pi).toMatchObject({ runtime: "wsl", distro: "Ubuntu", path: "/home/me/.local/bin/pi" });
     expect(cliCandidates(pi).map((candidate) => candidate.distro)).toEqual([
       "Ubuntu",
@@ -183,13 +192,13 @@ describe("WSL failures stay isolated", () => {
       },
     });
 
-    expect(detected[0]).toMatchObject({
+    expect(nth(detected, 0)).toMatchObject({
       available: true,
       runtime: "local",
       path: "C:\\Users\\tester\\.local\\bin\\codex.exe",
     });
     const claudeDiagnostics =
-      detected[1].diagnostics?.map((entry) => entry.message).join("\n") ?? "";
+      nth(detected, 1).diagnostics?.map((entry) => entry.message).join("\n") ?? "";
     expect(claudeDiagnostics).toContain("WSL 不可用");
   });
 
@@ -197,7 +206,7 @@ describe("WSL failures stay isolated", () => {
     const detected = await scanWindows({ outputs: { [WSL_LIST]: "\r\n" } });
 
     const diagnostics =
-      detected[0].diagnostics?.map((entry) => entry.message).join("\n") ?? "";
+      nth(detected, 0).diagnostics?.map((entry) => entry.message).join("\n") ?? "";
     expect(diagnostics).toContain("未安装任何 WSL 发行版");
   });
 
@@ -209,7 +218,7 @@ describe("WSL failures stay isolated", () => {
       },
     });
 
-    expect(detected[3]).toMatchObject({
+    expect(nth(detected, 3)).toMatchObject({
       available: true,
       runtime: "wsl",
       distro: "Debian",

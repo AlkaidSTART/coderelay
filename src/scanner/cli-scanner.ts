@@ -222,12 +222,14 @@ export async function getWindowsClaudeFallback(
 async function probePackageBinDirs(
   resolved: ResolvedScannerOptions,
 ): Promise<readonly InstallDir[]> {
-  const probes: ReadonlyArray<{
+  interface PackageProbe {
     readonly command: string;
     readonly args: readonly string[];
     readonly source: CliSource;
     readonly toDir: (stdout: string) => string;
-  }> = [
+  }
+
+  const probes: PackageProbe[] = [
     {
       command: "npm",
       args: ["prefix", "-g"],

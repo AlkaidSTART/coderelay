@@ -6,6 +6,7 @@ import {
   probeModelCatalog,
   toRouteCandidates,
   validateExplicitTarget,
+  type ModelOption,
 } from "../src/agents/model-catalog";
 import { CLI_IDS, type CliAdapter, type CliId, type DetectedCli } from "../src/models/cli";
 

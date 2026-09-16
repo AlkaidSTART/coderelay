@@ -653,11 +653,19 @@ export function App({
   } else if (activationActive) {
     hint = "activating";
     body = (
-      <ActivationView
-        mode={activationMode}
-        options={activationRows}
-        cursor={activationCursor}
-      />
+      <Box flexDirection="column">
+        <ActivationView
+          mode={activationMode}
+          options={activationRows}
+          cursor={activationCursor}
+        />
+        {/* 写盘失败时留在本页，所以错误必须在这里可见，而不是回到对话区才看得到。 */}
+        {lastResult?.phase === "failed" ? (
+          <Box paddingX={2}>
+            <Text color={theme.alert}>{lastResult.message}</Text>
+          </Box>
+        ) : null}
+      </Box>
     );
   } else if (screen === "mode") {
     hint = "mode";

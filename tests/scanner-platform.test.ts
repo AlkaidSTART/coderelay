@@ -54,7 +54,16 @@ async function scan(host: FakeHost) {
 
 function only<T>(items: readonly T[]): T {
   expect(items).toHaveLength(1);
-  return items[0] as T;
+  return nth(items, 0);
+}
+
+/** Canonical order is part of the contract, so index access is deliberate. */
+function nth<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) {
+    throw new Error(`expected a CLI at index ${index}`);
+  }
+  return item;
 }
 
 describe("Windows native resolution", () => {
@@ -73,7 +82,7 @@ describe("Windows native resolution", () => {
       },
     });
 
-    const codex = detected[0];
+    const codex = nth(detected, 0);
     expect(codex).toMatchObject({
       available: true,
       path: "C:\\Program Files\\Codex\\codex.exe",
@@ -103,7 +112,7 @@ describe("Windows native resolution", () => {
       },
     });
 
-    const claude = detected[1];
+    const claude = nth(detected, 1);
     expect(claude).toMatchObject({
       available: true,
       path: "C:\\Users\\tester\\AppData\\Roaming\\npm\\claude.cmd",
@@ -131,7 +140,7 @@ describe("Windows native resolution", () => {
       },
     });
 
-    expect(detected[3]).toMatchObject({
+    expect(nth(detected, 3)).toMatchObject({
       available: true,
       path: "C:\\Users\\tester\\AppData\\Roaming\\npm\\omp.cmd",
       version: "omp 0.9.0",
@@ -155,8 +164,8 @@ describe("Windows native resolution", () => {
       },
     });
 
-    expect(detected[1]).toMatchObject({ available: true });
-    expect(cliSource(detected[1])).toBe("winget");
+    expect(nth(detected, 1)).toMatchObject({ available: true });
+    expect(cliSource(nth(detected, 1))).toBe("winget");
   });
 });
 
@@ -174,7 +183,7 @@ describe("macOS resolution", () => {
       },
     });
 
-    const omp = detected[3];
+    const omp = nth(detected, 3);
     expect(omp).toMatchObject({
       available: true,
       path: "/opt/homebrew/bin/omp",
@@ -196,11 +205,11 @@ describe("macOS resolution", () => {
       },
     });
 
-    expect(detected[0]).toMatchObject({
+    expect(nth(detected, 0)).toMatchObject({
       available: true,
       path: "/usr/local/bin/codex",
     });
-    expect(cliSource(detected[0])).toBe("brew");
+    expect(cliSource(nth(detected, 0))).toBe("brew");
   });
 
   test("the per-user installer directory is preferred to a later system one", async () => {
@@ -218,11 +227,11 @@ describe("macOS resolution", () => {
       },
     });
 
-    expect(detected[0]).toMatchObject({
+    expect(nth(detected, 0)).toMatchObject({
       path: "/Users/tester/.local/bin/codex",
     });
-    expect(cliSource(detected[0])).toBe("installer");
-    expect(cliCandidates(detected[0]).map((candidate) => candidate.path)).toEqual([
+    expect(cliSource(nth(detected, 0))).toBe("installer");
+    expect(cliCandidates(nth(detected, 0)).map((candidate) => candidate.path)).toEqual([
       "/Users/tester/.local/bin/codex",
       "/Users/tester/.bun/bin/codex",
     ]);
@@ -242,12 +251,12 @@ describe("resolution without a usable PATH", () => {
       },
     });
 
-    expect(detected[0]).toMatchObject({
+    expect(nth(detected, 0)).toMatchObject({
       available: true,
       path: "/usr/local/bin/codex",
       version: "codex-cli 0.139.0",
     });
-    expect(cliSource(detected[0])).toBe("npm");
+    expect(cliSource(nth(detected, 0))).toBe("npm");
   });
 
   test("a dead PATH hit does not stop the scan from finding the live one", async () => {
@@ -263,11 +272,11 @@ describe("resolution without a usable PATH", () => {
       },
     });
 
-    expect(detected[0]).toMatchObject({
+    expect(nth(detected, 0)).toMatchObject({
       available: true,
       path: "/usr/local/bin/codex",
     });
-    expect(cliCandidates(detected[0]).map((candidate) => candidate.path)).toEqual([
+    expect(cliCandidates(nth(detected, 0)).map((candidate) => candidate.path)).toEqual([
       "/usr/local/bin/codex",
     ]);
   });
@@ -279,7 +288,7 @@ describe("resolution without a usable PATH", () => {
       env: { PATH: "/usr/bin" },
     });
 
-    const claude = detected[1];
+    const claude = nth(detected, 1);
     expect(claude).toMatchObject({ available: false, path: "", version: null });
     const messages = claude.diagnostics?.map((entry) => entry.message) ?? [];
     expect(messages[0]).toContain("未发现 claude");
@@ -304,7 +313,7 @@ describe("version probing", () => {
       },
     });
 
-    const omp = detected[3];
+    const omp = nth(detected, 3);
     expect(omp).toMatchObject({ available: true, version: null });
     expect(omp.diagnostics?.map((entry) => entry.message).join("\n")).toContain(
       "版本探测失败",
@@ -334,7 +343,7 @@ describe("version probing", () => {
       },
     });
 
-    expect(detected[2]).toMatchObject({
+    expect(nth(detected, 2)).toMatchObject({
       available: true,
       version: "pi 1.2.3",
     });
@@ -355,7 +364,7 @@ describe("version probing", () => {
     });
 
     expect(
-      cliCandidates(detected[0]).map((candidate) => candidate.version),
+      cliCandidates(nth(detected, 0)).map((candidate) => candidate.version),
     ).toEqual(["codex-cli 0.139.0", "codex-cli 0.130.0"]);
   });
 
@@ -369,7 +378,7 @@ describe("version probing", () => {
     });
 
     // Every version flag throws for this path; the CLI is still usable.
-    expect(detected[0]).toMatchObject({ available: true, path: "/opt/bin/codex" });
-    expect(only(cliCandidates(detected[0])).version).toBeNull();
+    expect(nth(detected, 0)).toMatchObject({ available: true, path: "/opt/bin/codex" });
+    expect(only(cliCandidates(nth(detected, 0))).version).toBeNull();
   });
 });
