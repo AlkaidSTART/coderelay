@@ -56,6 +56,13 @@ bun run dev
 bun run dev run "重构 src/router 里的评分逻辑，补齐类型"
 ```
 
+## 更新
+
+```bash
+npm i -g @alkaidstart/coderelay@latest
+coderelay --version
+```
+
 ## 命令
 
 ### `coderelay run`
