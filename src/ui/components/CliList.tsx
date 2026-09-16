@@ -2,7 +2,13 @@ import { homedir } from "node:os";
 
 import { Box, Text } from "ink";
 
-import { CLI_IDS, type CliId, type DetectedCli } from "../../models/cli";
+import {
+  CLI_IDS,
+  cliRuntime,
+  cliSource,
+  type CliId,
+  type DetectedCli,
+} from "../../models/cli";
 import { theme } from "../theme";
 
 const CLI_NAMES: Readonly<Record<CliId, string>> = {
@@ -54,12 +60,34 @@ function versionLabel(version: string | null): string {
   return compact === "—" ? "版本未知" : `v${compact}`;
 }
 
+function platformLabel(platform: NodeJS.Platform): string {
+  if (platform === "darwin") {
+    return "macOS";
+  }
+  if (platform === "win32") {
+    return "Windows";
+  }
+  if (platform === "linux") {
+    return "Linux";
+  }
+  return platform;
+}
+
+/** `local` shows the OS and install channel; `wsl` shows the distribution. */
+function originLabel(cli: DetectedCli): string {
+  if (cliRuntime(cli) === "wsl") {
+    return `WSL: ${cli.distro ?? "默认发行版"}`;
+  }
+  return `${platformLabel(process.platform)} · ${cliSource(cli)}`;
+}
+
 function detailLine(cli: DetectedCli): string {
   if (!cli.available) {
-    return `PATH 里找不到 ${cli.bin}`;
+    // 安装指引集中在 doctor：这里只负责把用户送过去。
+    return `未发现 ${cli.bin}  ·  运行 coderelay doctor 查看安装方式`;
   }
 
-  return `${versionLabel(cli.version)}  ·  ${abbreviatePath(cli.path)}`;
+  return `${versionLabel(cli.version)}  ·  ${abbreviatePath(cli.path)}  ·  ${originLabel(cli)}`;
 }
 
 export function CliList({ clis, selectedIndex = 0 }: CliListProps) {

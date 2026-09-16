@@ -6,13 +6,20 @@ import type {
   ExecFileRequestOptions,
   ExecFileResult,
   ExecFileRunner,
+  LaunchTarget,
   SpawnRequestOptions,
   SpawnRunner,
 } from "../models/cli";
+import { buildWslArgs, toWslPath, WSL_EXECUTABLE } from "./wsl";
 
 export interface LaunchProcessOptions {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * Runtime context from the scan. Omitting it means "a plain local
+   * executable", which keeps hand-built callers working.
+   */
+  readonly target?: LaunchTarget;
 }
 
 export interface LaunchInteractiveOptions extends LaunchProcessOptions {
@@ -87,17 +94,72 @@ function resolveDependencies(
   return { ...DEFAULT_DEPENDENCIES, ...overrides };
 }
 
+/**
+ * Turn a scanned runtime context plus CLI arguments into the argv the host
+ * must actually spawn. A WSL CLI is reached through `wsl.exe`; its Linux path
+ * is passed as an argument and never handed to a native Windows spawn.
+ */
+export function buildLaunchArgv(
+  target: LaunchTarget,
+  args: readonly string[] = [],
+): { readonly file: string; readonly args: readonly string[] } {
+  if (target.runtime === "wsl") {
+    return {
+      file: WSL_EXECUTABLE,
+      args: buildWslArgs(target.distro, [target.path, ...args]),
+    };
+  }
+
+  return { file: target.path, args: [...args] };
+}
+
+/** Full argv with the executable first, for `cmd[]`-style runtimes. */
+export function buildLaunchCmd(
+  target: LaunchTarget,
+  args: readonly string[] = [],
+): string[] {
+  const argv = buildLaunchArgv(target, args);
+  return [argv.file, ...argv.args];
+}
+
+/**
+ * The working directory the child can understand. WSL cannot use a Windows
+ * path, so it is translated; `undefined` leaves WSL in its own default
+ * directory and the caller is expected to say why.
+ */
+export function resolveLaunchCwd(
+  cwd: string | undefined,
+  target: LaunchTarget | undefined,
+): string | undefined {
+  if (!cwd || target?.runtime !== "wsl") {
+    return cwd;
+  }
+
+  return toWslPath(cwd) ?? undefined;
+}
+
 export function createSpawnOptions(
   options: LaunchProcessOptions,
   platform: NodeJS.Platform,
 ): SpawnRequestOptions {
+  // A WSL launch spawns wsl.exe directly: routing it through cmd.exe would
+  // re-parse the Linux path and the `--` separator.
+  const wsl = options.target?.runtime === "wsl";
   return {
-    cwd: options.cwd,
+    cwd: resolveLaunchCwd(options.cwd, options.target),
     env: options.env ?? process.env,
     stdio: "inherit",
-    shell: platform === "win32",
+    shell: platform === "win32" && !wsl,
     windowsHide: platform === "win32",
   };
+}
+
+/** Runtime context for a launcher call, defaulting to a local executable. */
+function launchTargetFor(
+  fallbackPath: string,
+  options: LaunchProcessOptions,
+): LaunchTarget {
+  return options.target ?? { path: fallbackPath, runtime: "local" };
 }
 
 export function buildPromptArgs(
@@ -113,16 +175,20 @@ export function launchInteractive(
   options: LaunchInteractiveOptions = {},
 ): ReturnType<SpawnRunner> {
   const dependencies = resolveDependencies(options.dependencies);
-  const bin = typeof adapterOrPath === "string"
+  const declaredPath = typeof adapterOrPath === "string"
     ? adapterOrPath
     : options.binPath ?? adapterOrPath.bin;
   const baseArgs = typeof adapterOrPath === "string"
     ? []
     : adapterOrPath.interactiveArgs;
+  const argv = buildLaunchArgv(
+    launchTargetFor(declaredPath, options),
+    [...baseArgs, ...(options.extraArgs ?? [])],
+  );
 
   return dependencies.spawn(
-    bin,
-    [...baseArgs, ...(options.extraArgs ?? [])],
+    argv.file,
+    argv.args,
     createSpawnOptions(options, dependencies.platform),
   );
 }
@@ -133,11 +199,14 @@ export function launchWithPrompt(
   options: LaunchPromptOptions = {},
 ): ReturnType<SpawnRunner> {
   const dependencies = resolveDependencies(options.dependencies);
-  const bin = options.binPath ?? adapter.bin;
+  const argv = buildLaunchArgv(
+    launchTargetFor(options.binPath ?? adapter.bin, options),
+    buildPromptArgs(adapter, prompt, options.extraArgs),
+  );
 
   return dependencies.spawn(
-    bin,
-    buildPromptArgs(adapter, prompt, options.extraArgs),
+    argv.file,
+    argv.args,
     createSpawnOptions(options, dependencies.platform),
   );
 }
@@ -168,11 +237,12 @@ function createCaptureOptions(
   options: LaunchProcessOptions,
   platform: NodeJS.Platform,
 ): SpawnRequestOptions {
+  const wsl = options.target?.runtime === "wsl";
   return {
-    cwd: options.cwd,
+    cwd: resolveLaunchCwd(options.cwd, options.target),
     env: options.env ?? process.env,
     stdio: ["ignore", "pipe", "pipe"],
-    shell: platform === "win32",
+    shell: platform === "win32" && !wsl,
     windowsHide: platform === "win32",
   };
 }
@@ -193,12 +263,15 @@ export function launchWithPromptCaptured(
   options: LaunchCapturedOptions = {},
 ): CapturedLaunchHandle {
   const dependencies = resolveDependencies(options.dependencies);
-  const bin = options.binPath ?? adapter.bin;
   const maxChars = options.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
+  const argv = buildLaunchArgv(
+    launchTargetFor(options.binPath ?? adapter.bin, options),
+    buildPromptArgs(adapter, prompt, options.extraArgs),
+  );
 
   const child = dependencies.spawn(
-    bin,
-    buildPromptArgs(adapter, prompt, options.extraArgs),
+    argv.file,
+    argv.args,
     createCaptureOptions(options, dependencies.platform),
   );
 
@@ -326,19 +399,21 @@ export async function runOnce(
   const dependencies = resolveDependencies(options.dependencies);
   const timeoutMs = options.timeoutMs ?? 120_000;
   const maxBuffer = options.maxBuffer ?? 10 * 1024 * 1024;
+  const target = options.target ?? { path: binPath, runtime: "local" as const };
+  const argv = buildLaunchArgv(target, args);
   const execOptions: ExecFileRequestOptions = {
-    cwd: options.cwd,
+    cwd: resolveLaunchCwd(options.cwd, options.target),
     env: options.env ?? process.env,
     timeout: timeoutMs,
     maxBuffer,
     windowsHide: true,
-    shell: dependencies.platform === "win32",
+    shell: dependencies.platform === "win32" && target.runtime !== "wsl",
   };
 
   try {
     const { stdout, stderr } = await dependencies.execFile(
-      binPath,
-      args,
+      argv.file,
+      argv.args,
       execOptions,
     );
     return { ok: true, stdout, stderr, code: 0, signal: null };

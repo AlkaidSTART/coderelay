@@ -11,9 +11,16 @@ import {
   type ProbeDisplay,
 } from "./agents/model-catalog";
 import { isAgentId } from "./agents/registry";
+import {
+  activationConfirmTargets,
+  activationManageTargets,
+  pendingActivation,
+  toActivationOptions,
+  type ActivationOption,
+} from "./config/activation";
 import { defaultConfig, type Config } from "./config/schema";
-import { loadConfig } from "./config/loader";
-import { CLI_IDS, type CliId, type DetectedCli } from "./models/cli";
+import { loadConfig, saveActivationDecisions } from "./config/loader";
+import { CLI_IDS, cliLaunchTarget, type CliId, type DetectedCli, type LaunchTarget } from "./models/cli";
 import {
   summarizeEvents,
   type AgentEvent,
@@ -22,7 +29,7 @@ import type { SessionTurn, TurnContextSource } from "./models/session";
 import { route } from "./router/router";
 import { compareScores, scoreCandidates } from "./router/scorer";
 import { runAgentStream } from "./runtime/agent-run";
-import { launchInteractive } from "./runtime/launcher";
+import { buildLaunchCmd, launchInteractive, resolveLaunchCwd } from "./runtime/launcher";
 import { resolveCommand } from "./runtime/process";
 import { buildPromptWithContext } from "./session/context";
 import {
@@ -54,6 +61,10 @@ let phase: AgentPhase = "idle";
 let probes: ProbeDisplay[] | undefined;
 let modelOptions: ModelOption[] | undefined;
 let lastResult: PhaseResult | null = null;
+/** 激活流程：可切换的全部行 + 本次展示/保存的子集（首次确认页只含未决项）。 */
+let activationOptions: readonly ActivationOption[] = [];
+let activationTargets: readonly ActivationOption[] = [];
+let activationMode: "confirm" | "manage" = "confirm";
 /** selecting 流程携带的上下文：待执行 prompt / 探测快照 / 配置快照。 */
 let pendingPrompt: string | null = null;
 let pendingCatalog: ModelCatalog | null = null;
@@ -94,6 +105,19 @@ function tree() {
       running={running}
       phase={phase}
       probes={probes}
+      activationOptions={
+        phase === "activating" && activationTargets.length > 0
+          ? activationTargets
+          : undefined
+      }
+      activationMode={activationMode}
+      onSaveActivation={(options) => {
+        void handleSaveActivation(options);
+      }}
+      onCancelActivation={handleCancelActivation}
+      onRequestActivationManager={() => {
+        void requestActivationManager();
+      }}
       modelOptions={phase === "selecting" ? modelOptions : undefined}
       lastResult={lastResult}
       onLaunch={(request) => {
@@ -163,26 +187,27 @@ async function loadAppConfig(): Promise<Config> {
   }
 }
 
-function resolveExecutable(
+function resolveTarget(
   cliId: CliId,
   config: Config,
   bin: string,
-): string {
+): LaunchTarget {
   const configured = config.agents[cliId]?.command?.trim();
   if (configured) {
     const resolved = resolveCommand(configured);
     if (!resolved) {
       throw new Error(`configured command for ${cliId} was not found: ${configured}`);
     }
-    return resolved;
+    return { path: resolved, runtime: "local" };
   }
   const detected = clis.find((item) => item.id === cliId);
-  if (detected?.available && detected.path) {
-    return detected.path;
+  const scanned = detected ? cliLaunchTarget(detected) : null;
+  if (scanned) {
+    return scanned;
   }
   const resolved = resolveCommand(bin);
   if (resolved) {
-    return resolved;
+    return { path: resolved, runtime: "local" };
   }
   throw new Error(`agent is not available: ${cliId}`);
 }
@@ -194,12 +219,110 @@ function needsSelecting(catalog: ModelCatalog): boolean {
   return false;
 }
 
+/** 本机首次确认：只把已安装且用户还没决策过的 CLI 拿来问。 */
+function enterActivationConfirm(
+  detected: readonly DetectedCli[],
+  config: Config,
+): boolean {
+  const options = toActivationOptions(detected, config);
+  const pending = pendingActivation(options);
+  if (pending.length === 0) {
+    return false;
+  }
+  activationOptions = options;
+  activationTargets = activationConfirmTargets(options);
+  activationMode = "confirm";
+  phase = "activating";
+  return true;
+}
+
+/** /activate：给全部 CLI 一个入口，方便随时取消或重新启用。 */
+async function requestActivationManager(): Promise<void> {
+  if (
+    phase === "probing" ||
+    phase === "starting" ||
+    phase === "running" ||
+    phase === "selecting"
+  ) {
+    return;
+  }
+  flowSeq += 1;
+  const flow = flowSeq;
+  lastResult = null;
+  const config = await loadAppConfig();
+  if (flow !== flowSeq) {
+    return;
+  }
+  const options = toActivationOptions(clis, config);
+  activationOptions = options;
+  activationTargets = activationManageTargets(options);
+  activationMode = "manage";
+  probes = undefined;
+  modelOptions = undefined;
+  phase = "activating";
+  rerender();
+}
+
+async function handleSaveActivation(
+  options: readonly ActivationOption[],
+): Promise<void> {
+  if (phase !== "activating") {
+    return;
+  }
+  // 作废在途的 prompt 流程，避免保存期间的旧流程回写界面。
+  flowSeq += 1;
+  try {
+    // 只写本次展示过的行：其余 CLI 的配置保持原样。
+    await saveActivationDecisions(
+      options.map((option) => ({
+        cliId: option.cliId,
+        enabled: option.enabled,
+      })),
+    );
+    if (phase !== "activating") {
+      return;
+    }
+    await loadAppConfig();
+    activationOptions = options;
+    activationTargets = options;
+    probes = undefined;
+    modelOptions = undefined;
+    phase = "idle";
+    lastResult = {
+      phase: "completed",
+      message: `✓ 激活状态已保存：${options.filter((o) => o.enabled).length}/${options.length} 个 CLI 已激活`,
+    };
+    rerender();
+  } catch (error) {
+    if (phase !== "activating") {
+      return;
+    }
+    // 写盘失败不能改内存状态：留在激活页让用户重试或 Esc 放弃。
+    lastResult = {
+      phase: "failed",
+      message: `× 保存失败：${error instanceof Error ? error.message : String(error)}`,
+    };
+    rerender();
+  }
+}
+
+function handleCancelActivation(): void {
+  if (phase !== "activating") {
+    return;
+  }
+  flowSeq += 1;
+  activationOptions = [];
+  activationTargets = [];
+  phase = "idle";
+  rerender();
+}
+
 async function runPromptFlow(prompt: string): Promise<void> {
   const text = prompt.trim();
   if (!text) {
     return;
   }
-  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting") {
+  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting" || phase === "activating") {
     return;
   }
   const flow = ++flowSeq;
@@ -239,6 +362,11 @@ async function runPromptFlow(prompt: string): Promise<void> {
 
   const candidates = toRouteCandidates(catalog, config);
   if (candidates.length === 0) {
+    // 全部 CLI 都被取消激活是合法状态：提示用户去哪里重新启用，不自动恢复。
+    if (catalog.probes.every((probe) => probe.status === "disabled")) {
+      failTerminal("暂无已激活 CLI，输入 /activate 启用后重试", flow);
+      return;
+    }
     const reasons = catalog.probes
       .map((probe) => `${probe.cliId}: ${probe.reason ?? probe.status}`)
       .join("; ");
@@ -284,9 +412,9 @@ async function startExecution(
 ): Promise<void> {
   const adapters = createCliAdapters();
   const adapter = adapters[cliId];
-  let executable: string;
+  let target: LaunchTarget;
   try {
-    executable = resolveExecutable(cliId, config, adapter.bin);
+    target = resolveTarget(cliId, config, adapter.bin);
   } catch (error) {
     failTerminal(error instanceof Error ? error.message : String(error), flow);
     return;
@@ -368,8 +496,8 @@ async function startExecution(
   onEvent({ kind: "session_started", cliId, model: modelId, protocol, nativeSessionId });
 
   const handle = runAgentStream({
-    cmd: [executable, ...args],
-    cwd: process.cwd(),
+    cmd: buildLaunchCmd(target, args),
+    cwd: resolveLaunchCwd(process.cwd(), target),
     env: { ...process.env, ...agentConfig?.env },
     signal: controller.signal,
     protocol,
@@ -489,7 +617,7 @@ async function startExecution(
 }
 
 async function requestModelSelector(): Promise<void> {
-  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting") {
+  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting" || phase === "activating") {
     return;
   }
   const flow = ++flowSeq;
@@ -528,6 +656,14 @@ async function handleSelectModel(option: ModelOption): Promise<void> {
   }
   if (!targetPrompt) {
     // 无 prompt 的 /model：只记录手动选择，下次提交优先使用。
+    // 选择器已按 CLI 隔离候选，这里再挡一道，避免跨 CLI 的陈旧选择落盘。
+    const ownsModel = catalog.options.some(
+      (item) =>
+        item.cliId === option.cliId && item.modelId === option.modelId,
+    );
+    if (!ownsModel) {
+      return;
+    }
     flowSeq += 1;
     manualTarget = { cliId: option.cliId, modelId: option.modelId };
     pendingCatalog = null;
@@ -593,6 +729,8 @@ function handleNewSession(): void {
   pendingConfig = null;
   probes = undefined;
   modelOptions = undefined;
+  activationOptions = [];
+  activationTargets = [];
   running = null;
   lastResult = null;
   phase = "idle";
@@ -600,7 +738,7 @@ function handleNewSession(): void {
 }
 
 async function launch(request: LaunchRequest): Promise<void> {
-  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting") {
+  if (phase === "probing" || phase === "starting" || phase === "running" || phase === "selecting" || phase === "activating") {
     return;
   }
   if (running) {
@@ -609,8 +747,9 @@ async function launch(request: LaunchRequest): Promise<void> {
   const detected = clis.find(
     (cli) => cli.id === request.id && cli.available,
   );
+  const target = detected ? cliLaunchTarget(detected) : null;
 
-  if (!detected) {
+  if (!target) {
     return;
   }
 
@@ -623,8 +762,8 @@ async function launch(request: LaunchRequest): Promise<void> {
     app?.unmount();
     try {
       const child = launchInteractive(adapter, {
-        binPath: detected.path,
-        cwd: process.cwd(),
+        target,
+        cwd: resolveLaunchCwd(process.cwd(), target),
       });
       await waitForChildExit(child);
     } catch {
@@ -640,13 +779,21 @@ async function launch(request: LaunchRequest): Promise<void> {
 mount();
 
 void scanCodingClis()
-  .then((detected) => {
+  .then(async (detected) => {
     clis = detected;
     isScanning = false;
+    // 只有「已安装且用户还没决策过」的 CLI 才需要问一次；否则直接进模式页。
+    try {
+      const config = await loadAppConfig();
+      enterActivationConfirm(detected, config);
+    } catch {
+      phase = "idle";
+    }
     rerender();
   })
   .catch(() => {
     clis = [];
     isScanning = false;
+    phase = "idle";
     rerender();
   });

@@ -32,13 +32,99 @@ export const CLI_DEFINITIONS: readonly CliDefinition[] = [
   { id: "omp", bin: "omp", versionArgs: DEFAULT_VERSION_ARGS },
 ];
 
-/** Result of scanning the host for one supported CLI. */
+/**
+ * Where a discovered executable actually runs. `local` means the current
+ * process can spawn it directly; `wsl` means it lives inside a WSL
+ * distribution and must be reached through `wsl.exe`.
+ */
+export type CliRuntime = "local" | "wsl";
+
+/** Installation channel behind a discovered executable. */
+export type CliSource =
+  | "path"
+  | "npm"
+  | "bun"
+  | "pnpm"
+  | "yarn"
+  | "brew"
+  | "winget"
+  | "installer"
+  | "nix"
+  | "mise"
+  | "fallback";
+
+/** One concrete executable found for a CLI, with its provenance. */
+export interface CliCandidate {
+  readonly path: string;
+  readonly runtime: CliRuntime;
+  readonly source: CliSource;
+  /** WSL distribution name; only set when `runtime` is `"wsl"`. */
+  readonly distro?: string;
+  readonly version: string | null;
+}
+
+/** Non-fatal observation recorded while scanning, surfaced by `doctor`. */
+export interface CliDiagnostic {
+  readonly level: "info" | "warn";
+  readonly message: string;
+}
+
+/**
+ * Result of scanning the host for one supported CLI.
+ *
+ * `path`/`version`/`available` always describe the single selected candidate.
+ * The scan metadata below is optional only so hand-built fixtures stay valid;
+ * `scanCodingClis` always populates it — read it through the `cli*` helpers.
+ */
 export interface DetectedCli {
   readonly id: CliId;
   readonly bin: string;
   readonly path: string;
   readonly version: string | null;
   readonly available: boolean;
+  readonly runtime?: CliRuntime;
+  readonly distro?: string;
+  readonly source?: CliSource;
+  /** Every candidate found, selected one first, in resolution order. */
+  readonly candidates?: readonly CliCandidate[];
+  readonly diagnostics?: readonly CliDiagnostic[];
+}
+
+/** How to start a CLI: the executable plus the runtime it belongs to. */
+export interface LaunchTarget {
+  readonly path: string;
+  readonly runtime: CliRuntime;
+  readonly distro?: string;
+}
+
+export function cliRuntime(cli: DetectedCli): CliRuntime {
+  return cli.runtime ?? "local";
+}
+
+export function cliSource(cli: DetectedCli): CliSource {
+  return cli.source ?? "path";
+}
+
+export function cliCandidates(cli: DetectedCli): readonly CliCandidate[] {
+  return cli.candidates ?? [];
+}
+
+export function cliDiagnostics(cli: DetectedCli): readonly CliDiagnostic[] {
+  return cli.diagnostics ?? [];
+}
+
+/** Launch target for a scan result, or `null` when nothing was found. */
+export function cliLaunchTarget(cli: DetectedCli): LaunchTarget | null {
+  if (!cli.available || !cli.path) {
+    return null;
+  }
+
+  const distro = cli.distro;
+  return {
+    path: cli.path,
+    runtime: cliRuntime(cli),
+    ...(distro ? { distro } : {}),
+  };
 }
 
 export interface PromptBuildOptions {

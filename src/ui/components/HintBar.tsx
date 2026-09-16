@@ -4,6 +4,7 @@ import { theme } from "../theme";
 
 export type HintContext =
   | "scanning"
+  | "activating"
   | "mode"
   | "picker"
   | "chat"
@@ -22,6 +23,12 @@ interface Hint {
 const HINTS: Readonly<
   Record<Exclude<HintContext, "scanning">, readonly Hint[]>
 > = {
+  activating: [
+    { key: "↑↓", label: "移动" },
+    { key: "space", label: "切换" },
+    { key: "↵", label: "保存" },
+    { key: "esc", label: "取消" },
+  ],
   mode: [
     { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },

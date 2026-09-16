@@ -31,6 +31,12 @@ export const ModelConfigSchema = z.object({
 
 export const AgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
+  /**
+   * Whether the user has explicitly decided this agent's activation state.
+   * `enabled` defaults to `true`, so it cannot distinguish "never asked" from
+   * "user turned it on"; this flag records that the question was answered.
+   */
+  activationDecided: z.boolean().default(false),
   /** Override the binary, for example `/opt/homebrew/bin/codex`. */
   command: z.string().optional(),
   /** Models exposed by this agent; empty means the adapter default. */

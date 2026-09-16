@@ -197,7 +197,7 @@ describe("App UI", () => {
     }
 
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("PATH 里找不到 omp");
+    expect(frame).toContain("未发现 omp");
     expect(frame.match(/─+/g)).toEqual(["─────"]);
     instance.cleanup();
   });

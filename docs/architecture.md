@@ -122,7 +122,7 @@ coderelay/
 ### 4.1 Schema（`schema.ts`，Zod 全量校验、字段全可省略）
 
 - `Config{ version: 1, defaultAgent: "codex", defaultModel?, agents: Record<string, AgentConfig>, routing }`
-- `AgentConfig{ enabled, command?, models: ModelConfig[], extraArgs?, env? }`
+- `AgentConfig{ enabled, activationDecided, command?, models: ModelConfig[], extraArgs?, env? }`
 - `ModelConfig{ id, label?, strengths: ModelStrength[], cost?: 1–5, default? }`
 - `RouteRule{ name, priority（默认 0）, when?: RuleWhen, use: RuleUse }`
 - `RuleWhen{ keywords?, patterns?（正则，i 匹配）, languages?, files?（glob）, minPromptLength?, maxPromptLength? }`
@@ -139,6 +139,22 @@ coderelay/
 4. `coderelay.config.yml`
 
 找不到时返回 `defaultConfig()`（`usedDefaults: true`，`path: null`）。YAML 解析失败 / Zod 校验失败抛 `ConfigError`（带 path + cause）。
+
+### 4.3 激活决策（`activation.ts` + `loader.ts` 写路径）
+
+`enabled` 是最终生效状态，但默认为 `true`，单靠它分不清「用户没答过」和「用户主动开启」。因此 `AgentConfig` 增加 `activationDecided`，只用于判断是否还需要询问：
+
+- 需要询问 ⇔ `available === true && activationDecided !== true && enabled !== false`。
+- 显式写下 `enabled: false` 本身就等于表过态，即使没有 `activationDecided`。
+
+`toActivationOptions(detected, config)` 把扫描结果与配置合成每个 CLI 一行（`{ cliId, available, enabled, decided }`）；`activationConfirmTargets` 只取「可用且未决」（首次激活页），`activationManageTargets` 取全部（`/activate` 管理页）。
+
+`saveActivationDecisions(decisions, { cwd?, path? })` 是配置的唯一写路径，默认写 `<cwd>/.coderelay/config.yaml`：
+
+- **读原始 YAML 对象再合并**，而不是从解析后的 `Config` 重新序列化——`models` / `routing` / `extraArgs` / `env` 以及本版本 schema 不认识的键都原样保留。
+- 只对 `agents.<cliId>` 合并 `{ enabled, activationDecided: true }`，其余内容一字不动。
+- 用 `yaml` 包的 `stringify`（块状输出，便于用户手改）；`Bun.YAML.stringify` 只产 flow 风格的单行，不做此用。
+- 解析失败 / 非 mapping 时抛 `ConfigError` 且不覆盖原文件。
 
 ---
 
@@ -251,10 +267,11 @@ coderelay/
 
 ## 10. 展示层 TUI（`src/ui/`，Ink + React）
 
-状态机（`App.tsx` 的 `AgentPhase`）：`idle / probing / selecting / starting / running / completed / failed / aborted`。
+状态机（`App.tsx` 的 `AgentPhase`）：`idle / probing / selecting / activating / starting / running / completed / failed / aborted`。
 
 - `probing`：`phaseBanner` 显示 4 个 CLI 独立探测行（`扫描中 / 已找到 / 无法探测 / 未安装`），失败行附 `reason`。
-- `selecting`：统一 CLI + 模型候选（CLI、模型 id、显示名、是否默认、能力标签、探测状态、不可用原因），键盘上下选择，不可用候选不可提交。
+- `activating`：扫描完成后的分支点——若存在「可用且未决」的 CLI 进首次激活页（`activationConfirmTargets`），否则直接进模式页；`/activate` 走同一屏但用管理页（`activationManageTargets`，含全部 CLI，未安装行不可切换）。Enter 写盘并刷新内存配置，Esc 不写盘。
+- `selecting`：两段式选择器，先 CLI 后模型；CLI 步列出全部 4 个 CLI 及其探测状态，光标只停在被探测到的 CLI 上（已安装但探测失败、以及已禁用的 CLI 只显示不可进入），模型步只渲染 `option.cliId === pickedCliId` 的候选。键盘上下选择，不可用候选不可提交。
 - `starting`：显示 `正在启动 <cli>:<model>`，等待子进程建立通信（`session_started` 前）。
 - `running`（`ChatView` 常驻对话区）：保留等待动画，实时显示 `assistant_text`，显示当前 `status`；工具调用只显示简化状态（`正在执行工具：xxx`），参数默认不展开；已输出内容保留，不等整轮结束再渲染。
 - `completed`：终端行显示最终输出和退出信息（绿色），落盘 SQLite（含 `eventSummary`），回到 `idle` 允许继续输入下一轮。
@@ -262,12 +279,15 @@ coderelay/
 
 键盘约定：
 
-- `Enter`：提交 prompt，默认走自动路由（已探测模型候选 + 配置元数据）。
-- `/model`：打开 CLI + 模型选择器（`selecting`）。
-- `Esc`：取消模型选择或返回输入态。
-- `Ctrl-C`（相位感知）：`probing` / `selecting` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`；`idle` 退出 coderelay。
+- `Enter`：提交 prompt，默认走自动路由（已探测模型候选 + 配置元数据）；激活页为「保存」。
+- `/model`：打开两段式 CLI + 模型选择器（`selecting`）；`Esc` 从模型步退回 CLI 步，在 CLI 步才取消。
+- `/activate`：打开激活管理页（`activating`），可逐个启用/禁用 CLI，保存到 `.coderelay/config.yaml`。
+- `Esc`：取消模型选择、取消激活（不写盘）或返回输入态。
+- `Ctrl-C`（相位感知）：`probing` / `selecting` / `activating` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`；`idle` 退出 coderelay。
 - `/new`：清理当前会话上下文并创建新会话（`slash-commands.ts`；另有 `/exit`）。
 - `tab` 交互模式（保留兼容）：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重挂载；此模式暂不纳入结构化事件流，输出不写入会话。
+
+自动路由只从「已激活且探测成功」的 CLI 的可用模型里选（`probeModelCatalog` 把 `enabled: false` 标成 `disabled` / `models: []`，`toRouteCandidates` 再过滤 `available`）；候选保留各自归属的 CLI，同名模型在不同 CLI 下是两条独立候选。全部 CLI 被禁用是合法状态，此时提示「暂无已激活 CLI，输入 /activate 启用后重试」，不自动恢复任何 CLI。
 
 `AppHeader` / `StageBar` / `HintBar`：品牌、步骤、快捷键提示。视觉 token 见 `theme.ts` 与 `docs/cli-ui-plan.md` 第 3 节（三色信号灯语义：粉 = 当前位置唯一色块，蓝 = 可操作，绿 = 单字符状态信号）。
 
@@ -285,7 +305,7 @@ coderelay/
 
 ```bash
 bun install
-bun test            # tests/：cli-scanner / launcher / cli-adapters / session / ui-app / agent-run / model-catalog / ui-phase
+bun test            # tests/：cli-scanner / launcher / cli-adapters / session / ui-app / agent-run / model-catalog / ui-phase / activation / config-activation / ui-activation / ui-model-isolation
 bun run typecheck   # tsc --noEmit
 bun run dev         # 本地跑 CLI（bun src/cli.tsx）
 ```
