@@ -1,5 +1,8 @@
 import type { ChildProcess } from "node:child_process";
 
+import type { AgentEvent } from "./agent-events";
+import type { CliCapabilities, ProbeResult } from "../agents/capabilities";
+
 /** Supported coding-agent CLI identifiers, in canonical scan order. */
 export const CLI_IDS = ["codex", "claude", "pi", "omp"] as const;
 
@@ -38,6 +41,14 @@ export interface DetectedCli {
   readonly available: boolean;
 }
 
+export interface PromptBuildOptions {
+  readonly prompt: string;
+  readonly model?: string;
+  readonly extraArgs?: readonly string[];
+  /** 原生会话 id（CLI 支持 resume 时使用）。 */
+  readonly nativeSessionId?: string;
+}
+
 /** Uniform metadata and argument construction for one CLI. */
 export interface CliAdapter {
   readonly id: CliId;
@@ -46,6 +57,22 @@ export interface CliAdapter {
   readonly versionArgs: readonly (readonly string[])[];
   readonly interactiveArgs: readonly string[];
   readonly promptArgs: (prompt: string) => readonly string[];
+  /** 探测本机已配置模型；失败时带 reason，禁止静默转默认。 */
+  readonly probeModels?: () => Promise<ProbeResult>;
+  readonly probeCapabilities?: () => CliCapabilities;
+  /** 非交互任务参数（含模型选择与原生恢复）。 */
+  readonly buildPromptArgs?: (options: PromptBuildOptions) => readonly string[];
+  /** 原生会话恢复参数；不支持时返回 null，调用方走 transcript 注入。 */
+  readonly buildResumeArgs?: (
+    sessionId: string,
+    options?: Omit<PromptBuildOptions, "nativeSessionId" | "prompt"> & { readonly prompt?: string },
+  ) => readonly string[] | null;
+  /** 将原始 stdout/stderr 片段解析为统一事件。 */
+  readonly parseOutputChunk?: (
+    chunk: string,
+    source: "stdout" | "stderr",
+  ) => readonly AgentEvent[];
+  readonly defaultModel?: () => string | undefined;
 }
 
 /** Options accepted by the Node `execFile` runner used by the scanner. */
