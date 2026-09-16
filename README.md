@@ -59,9 +59,14 @@ bun run dev run "重构 src/router 里的评分逻辑，补齐类型"
 ## 更新
 
 ```bash
-npm i -g @alkaidstart/coderelay@latest
+npm view @alkaidstart/coderelay version   # 先看 registry 上的最新版本
+
+npm i -g @alkaidstart/coderelay@latest --prefer-online   # --prefer-online 强制重新校验元数据缓存
+
 coderelay --version
 ```
+
+`@latest` 是 dist-tag，npm 必须先拉取 registry 元数据才能把它解析成具体版本，而这份元数据会被缓存约 5 分钟。所以新版本刚发布时，直接跑 `npm i -g @alkaidstart/coderelay@latest` 很可能仍旧解析到旧版本，然后提示「已是最新」而什么都不做。`--prefer-online` 会跳过缓存重新校验，是可靠的更新方式。
 
 ## 命令
 
