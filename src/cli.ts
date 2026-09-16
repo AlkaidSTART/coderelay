@@ -12,7 +12,9 @@ import { runModelsCommand } from "./commands/models";
 import { runRunCommand } from "./commands/run";
 import { MODEL_STRENGTHS, type ModelStrength } from "./models/types";
 
-const VERSION = "0.2.0";
+import pkg from "../package.json";
+
+const VERSION = pkg.version;
 
 interface RunCliOptions extends OptionValues {
   readonly agent?: string;
