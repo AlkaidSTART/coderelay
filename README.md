@@ -37,7 +37,7 @@ coderelay 会扫描本机已安装的编码 Agent CLI（Codex、Claude Code、pi
 ```bash
 npm i -g @alkaidstart/coderelay
 
-coderelay
+cr            # 快捷命令，等价于 coderelay
 ```
 
 不带参数进入交互式 TUI（扫描 → 选择 → 写任务 → 执行 → 结果），带参数则直接把任务路由给最合适的 Agent：
@@ -97,6 +97,7 @@ bun run dev run --lang go --file main.go --strength long-context "拆分这个�
 | 命令 | 说明 |
 |------|------|
 | `coderelay`（无参数） | 进入交互式 TUI：扫描 → 选择 → 写任务 → 执行 → 结果 |
+| `cr`（无参数） | `coderelay` 的快捷别名，同样进入交互式 TUI |
 | `coderelay agents` | 列出支持的 Agent 与本机安装状态 |
 | `coderelay models` | 列出配置中的模型与路由默认值 |
 | `coderelay doctor` | 检查配置、路由规则与已安装的 CLI |

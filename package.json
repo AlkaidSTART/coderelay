@@ -28,6 +28,7 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "bin": {
-    "coderelay": "src/cli.ts"
+    "coderelay": "src/cli.ts",
+    "cr": "src/cli.ts"
   }
 }
