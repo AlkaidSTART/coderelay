@@ -142,11 +142,16 @@ export async function scanWslClis(
         if (!linuxPath) {
           continue;
         }
-        const version = await probeVersion(buildWslArgs(distro, [linuxPath]), {
-          execFile: options.execFile,
-          timeoutMs: versionTimeoutMs,
-          versionArgs,
-        });
+        // `probeVersion` takes `[executable, ...fixedArgs]`, so the WSL
+        // prefix has to be part of the argv it appends the flag to.
+        const version = await probeVersion(
+          [wslBin, ...buildWslArgs(distro, [linuxPath])],
+          {
+            execFile: options.execFile,
+            timeoutMs: versionTimeoutMs,
+            versionArgs,
+          },
+        );
         found.push([definition.id, { distro, path: linuxPath, version }]);
       }
       return found;

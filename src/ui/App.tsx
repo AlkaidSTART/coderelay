@@ -142,6 +142,18 @@ function probeStatusText(probe: ProbeDisplay): string {
   }
 }
 
+/**
+ * The CLI step only stops on CLIs whose adapter actually reported models.
+ * Installed-but-unprobed and disabled CLIs are still listed for context, but
+ * entering them could never offer a model to pick.
+ */
+function isPickable(
+  cli: DetectedCli,
+  probe: ProbeDisplay | undefined,
+): boolean {
+  return probe ? probe.status === "found" : cli.available;
+}
+
 function capabilityTags(option: ModelOption): string {
   const tags: string[] = [];
   if (option.capabilities.structuredEvents) {
@@ -215,8 +227,11 @@ export function App({
   const [modelPickStep, setModelPickStep] = useState<ModelPickStep>(
     initialPickStep,
   );
+  // 下标是模型数组的下标，不是 CLI 数组的下标——两者顺序无关，只能问模型自己。
   const [pickedCliId, setPickedCliId] = useState<CliId | undefined>(
-    initialPickStep === "model" ? clis[selectedModelIndex ?? 0]?.id : undefined,
+    initialPickStep === "model"
+      ? modelOptions?.[selectedModelIndex ?? 0]?.cliId
+      : undefined,
   );
   const [activationDraft, setActivationDraft] = useState<
     readonly ActivationOption[] | undefined
@@ -245,6 +260,14 @@ export function App({
       ? clis.findIndex((cli) => cli.id === pickedCliId)
       : selectedIndex;
   const pickProbe = probes?.find((probe) => probe.cliId === pickedCliId);
+  // 第一步只停在被探测到的 CLI 上；已安装但探测失败、以及已禁用的 CLI 都进不去。
+  const pickableIndices = clis
+    .map((cli, index) =>
+      isPickable(cli, probes?.find((probe) => probe.cliId === cli.id))
+        ? index
+        : -1,
+    )
+    .filter((index) => index >= 0);
   // 第二步只列当前 CLI 自己的模型：config 不能把别的 CLI 的模型注进来。
   const cliModelOptions = pickedCliId
     ? modelPickOptions.filter((option) => option.cliId === pickedCliId)
@@ -290,13 +313,16 @@ export function App({
     }
     if (selectedModelIndex !== undefined) {
       setModelPickStep("model");
-      setPickedCliId(clis[selectedModelIndex]?.id);
+      setPickedCliId(modelOptions?.[selectedModelIndex]?.cliId);
       return;
     }
     setModelPickStep("cli");
-    setPickedCliId(undefined);
-  }, [effectivePhase, selectedModelIndex, clis]);
-
+    // 光标初始落在第一个可进入的 CLI 上：进不去的行不该抢到焦点。
+    const firstPickable = clis.find((cli) =>
+      isPickable(cli, probes?.find((probe) => probe.cliId === cli.id)),
+    );
+    setPickedCliId(firstPickable?.id);
+  }, [effectivePhase, selectedModelIndex, modelOptions, clis, probes]);
   const selectedCli = clis[selectedIndex];
   const activeId = selectedCli?.id;
 
@@ -487,18 +513,15 @@ export function App({
       if (modelPickStep === "cli") {
         if (key.upArrow || input === "k" || key.downArrow || input === "j") {
           const delta = key.upArrow || input === "k" ? -1 : 1;
-          const selectable = clis
-            .map((cli, index) => (cli.available ? index : -1))
-            .filter((index) => index >= 0);
-          if (selectable.length === 0) {
+          if (pickableIndices.length === 0) {
             return;
           }
-          const current = Math.max(selectable.indexOf(pickCliIndex), 0);
+          const current = Math.max(pickableIndices.indexOf(pickCliIndex), 0);
           const next =
-            (current + delta + selectable.length) % selectable.length;
-          const target = clis[selectable[next] ?? 0];
+            (current + delta + pickableIndices.length) % pickableIndices.length;
+          const target = clis[pickableIndices[next] ?? 0];
           if (target) {
-            setSelectedIndex(selectable[next] ?? 0);
+            // 只是浏览：不改变当前活跃 CLI，选定发生在下一步。
             setPickedCliId(target.id);
           }
           return;
@@ -506,7 +529,7 @@ export function App({
 
         if (key.return) {
           const target = clis[pickCliIndex];
-          if (target?.available) {
+          if (target && pickableIndices.includes(pickCliIndex)) {
             setPickedCliId(target.id);
             setModelPickStep("model");
             setModelCursor(0);
@@ -688,7 +711,8 @@ export function App({
           </Text>
           {clis.map((cli, index) => {
             const probe = probes?.find((item) => item.cliId === cli.id);
-            const focused = index === pickCliIndex && cli.available;
+            const pickable = isPickable(cli, probe);
+            const focused = index === pickCliIndex && pickable;
             const state = probe
               ? probeStatusText(probe)
               : cli.available
@@ -699,7 +723,7 @@ export function App({
                 <Text color={theme.accent}>{focused ? "❯ " : "  "}</Text>
                 <Text
                   bold={focused}
-                  color={cli.available ? theme.text : theme.muted}
+                  color={pickable ? theme.text : theme.muted}
                 >
                   {cliDisplayName(cli.id)}
                 </Text>

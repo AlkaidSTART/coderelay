@@ -237,6 +237,9 @@ function wslCheck(
   const distros: string[] = [];
   let observed: string | null = null;
   for (const cli of detected) {
+    if (cliRuntime(cli) === "wsl" && cli.distro && !distros.includes(cli.distro)) {
+      distros.push(cli.distro);
+    }
     for (const candidate of cliCandidates(cli)) {
       if (candidate.runtime === "wsl" && candidate.distro) {
         if (!distros.includes(candidate.distro)) {

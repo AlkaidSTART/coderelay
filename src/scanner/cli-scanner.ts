@@ -19,7 +19,7 @@ import {
 } from "../models/cli";
 import {
   candidatePathsInDir,
-  classifySource,
+  classifySourceIn,
   dedupePaths,
   type InstallDir,
   isDirOnPath,
@@ -314,18 +314,24 @@ async function collectLocalCandidates(
   packageDirs: readonly InstallDir[],
   searchedDirs: string[],
 ): Promise<readonly LocalCandidate[]> {
+  const directories: readonly InstallDir[] = [
+    ...packageDirs,
+    ...userInstallDirs(resolved.platform, resolved.homeDir, resolved.env),
+    ...standardInstallDirs(resolved.platform, resolved.homeDir),
+  ];
+  for (const entry of directories) {
+    searchedDirs.push(entry.dir);
+  }
+
+  // Attribution uses the directories this scan actually looked in, so a path
+  // under a package manager's global bin is credited to that package manager.
+  const sourceOf = (filePath: string): CliSource =>
+    classifySourceIn(filePath, directories, resolved.platform);
+
   const ordered: LocalCandidate[] = [];
 
   for (const found of await resolveAllOnPath(definition.bin, resolved)) {
-    ordered.push({
-      path: found,
-      source: classifySource(
-        found,
-        resolved.platform,
-        resolved.homeDir,
-        resolved.env,
-      ),
-    });
+    ordered.push({ path: found, source: sourceOf(found) });
   }
 
   if (definition.id === "claude" && resolved.platform === "win32") {
@@ -338,15 +344,6 @@ async function collectLocalCandidates(
     if (fallback) {
       ordered.push({ path: fallback, source: "fallback" });
     }
-  }
-
-  const directories: readonly InstallDir[] = [
-    ...packageDirs,
-    ...userInstallDirs(resolved.platform, resolved.homeDir, resolved.env),
-    ...standardInstallDirs(resolved.platform, resolved.homeDir),
-  ];
-  for (const entry of directories) {
-    searchedDirs.push(entry.dir);
   }
 
   const inDirs = dedupePaths(
@@ -362,15 +359,7 @@ async function collectLocalCandidates(
   );
 
   for (const candidate of inDirs) {
-    ordered.push({
-      path: candidate,
-      source: classifySource(
-        candidate,
-        resolved.platform,
-        resolved.homeDir,
-        resolved.env,
-      ),
-    });
+    ordered.push({ path: candidate, source: sourceOf(candidate) });
   }
 
   const deduped = dedupePaths(

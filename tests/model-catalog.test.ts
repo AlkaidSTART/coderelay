@@ -48,6 +48,19 @@ const DETECTED: DetectedCli[] = [
   { id: "omp", bin: "omp", path: "/bin/omp", version: "1", available: true },
 ];
 
+/** A probed model option, for catalogs built by hand rather than by probing. */
+function modelOption(cliId: CliId, modelId: string): ModelOption {
+  return {
+    cliId,
+    modelId,
+    label: modelId,
+    isDefault: false,
+    capabilities: CAPS,
+    strengths: [],
+    available: true,
+  };
+}
+
 describe("probeModelCatalog", () => {
   test("returns a unified catalog; failures carry reasons and no candidates", async () => {
     const config = defaultConfig();
@@ -124,5 +137,100 @@ describe("probeModelCatalog", () => {
     const candidates = toRouteCandidates(catalog, config);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]).toMatchObject({ agent: "codex", model: "gpt-5" });
+  });
+
+  test("a disabled CLI contributes no candidates even if its models probed fine", async () => {
+    const config = defaultConfig();
+    config.agents["codex"] = {
+      enabled: false,
+      activationDecided: true,
+      models: [],
+      extraArgs: [],
+      env: {},
+    };
+    const adapters = fakeAdapters({
+      codex: { ok: true, models: [{ id: "gpt-5" }], capabilities: CAPS },
+      claude: { ok: true, models: [{ id: "claude-sonnet-4-5" }], capabilities: CAPS },
+      pi: { ok: false, reason: "down" },
+      omp: { ok: false, reason: "down" },
+    });
+    const catalog = await probeModelCatalog(DETECTED, adapters, config);
+    expect(catalog.probes.find((p) => p.cliId === "codex")?.status).toBe("disabled");
+    const candidates = toRouteCandidates(catalog, config);
+    expect(candidates.map((candidate) => candidate.agent)).toEqual(["claude"]);
+  });
+
+  test("available: false options are filtered out of routing", () => {
+    // probeModelCatalog 只会产出 available 的模型；这里直接构造 catalog，
+    // 锁住 toRouteCandidates 自己的过滤，避免以后把判断挪到别处时悄悄放开。
+    const catalog = {
+      probes: [],
+      options: [
+        { ...modelOption("codex", "gpt-5"), available: false },
+        modelOption("codex", "gpt-5-mini"),
+      ],
+    };
+    const candidates = toRouteCandidates(catalog, defaultConfig());
+    expect(candidates.map((candidate) => candidate.model)).toEqual(["gpt-5-mini"]);
+  });
+
+  test("the same model name on two CLIs stays two distinct candidates", async () => {
+    const config = defaultConfig();
+    const adapters = fakeAdapters({
+      codex: { ok: true, models: [{ id: "shared" }], capabilities: CAPS },
+      claude: { ok: true, models: [{ id: "shared" }], capabilities: CAPS },
+      pi: { ok: false, reason: "down" },
+      omp: { ok: false, reason: "down" },
+    });
+    const catalog = await probeModelCatalog(DETECTED, adapters, config);
+    expect(catalog.options).toHaveLength(2);
+    expect(catalog.options.map((o) => `${o.cliId}:${o.modelId}`)).toEqual([
+      "codex:shared",
+      "claude:shared",
+    ]);
+    const candidates = toRouteCandidates(catalog, config);
+    expect(candidates.map((candidate) => `${candidate.agent}:${candidate.model}`)).toEqual([
+      "codex:shared",
+      "claude:shared",
+    ]);
+  });
+
+  test("validateExplicitTarget rejects a model that belongs to a different CLI", async () => {
+    const config = defaultConfig();
+    const adapters = fakeAdapters({
+      codex: { ok: true, models: [{ id: "gpt-5" }], capabilities: CAPS },
+      claude: { ok: true, models: [{ id: "claude-sonnet-4-5" }], capabilities: CAPS },
+      pi: { ok: false, reason: "down" },
+      omp: { ok: false, reason: "down" },
+    });
+    const catalog = await probeModelCatalog(DETECTED, adapters, config);
+    // 模型确实存在，但不是 codex 的：不能借用别的 CLI 的同名/任意模型。
+    expect(() =>
+      validateExplicitTarget(catalog, "codex", "codex:claude-sonnet-4-5", "codex"),
+    ).toThrow("模型不存在于 codex");
+    expect(
+      validateExplicitTarget(catalog, "claude", "claude:claude-sonnet-4-5", "codex"),
+    ).toEqual({ cliId: "claude", modelId: "claude-sonnet-4-5" });
+  });
+
+  test("validateExplicitTarget refuses a disabled CLI", async () => {
+    const config = defaultConfig();
+    config.agents["omp"] = {
+      enabled: false,
+      activationDecided: true,
+      models: [],
+      extraArgs: [],
+      env: {},
+    };
+    const adapters = fakeAdapters({
+      codex: { ok: true, models: [{ id: "gpt-5" }], capabilities: CAPS },
+      claude: { ok: false, reason: "down" },
+      pi: { ok: false, reason: "down" },
+      omp: { ok: true, models: [{ id: "m" }], capabilities: CAPS },
+    });
+    const catalog = await probeModelCatalog(DETECTED, adapters, config);
+    expect(() => validateExplicitTarget(catalog, "omp", "omp:m", "codex")).toThrow(
+      "agent 已禁用：omp",
+    );
   });
 });

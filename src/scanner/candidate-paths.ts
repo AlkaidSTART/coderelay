@@ -155,15 +155,30 @@ export function classifySource(
   homeDir: string,
   env: NodeJS.ProcessEnv = {},
 ): CliSource {
-  const target = normalizeForCompare(filePath, platform);
-  const known = [
-    ...userInstallDirs(platform, homeDir, env),
-    ...standardInstallDirs(platform, homeDir),
-  ];
+  return classifySourceIn(
+    filePath,
+    [
+      ...userInstallDirs(platform, homeDir, env),
+      ...standardInstallDirs(platform, homeDir),
+    ],
+    platform,
+  );
+}
 
-  for (const entry of known) {
+/**
+ * Provenance of `filePath` relative to the directories a scan actually
+ * searched, so a package manager's own global bin is attributed to it.
+ */
+export function classifySourceIn(
+  filePath: string,
+  dirs: readonly InstallDir[],
+  platform: NodeJS.Platform,
+): CliSource {
+  const target = normalizeForCompare(filePath, platform);
+
+  for (const entry of dirs) {
     const dir = normalizeForCompare(entry.dir, platform);
-    if (target.startsWith(`${dir}/`)) {
+    if (dir && target.startsWith(`${dir}/`)) {
       return entry.source;
     }
   }
