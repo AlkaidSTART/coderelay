@@ -23,6 +23,7 @@ export interface SessionStore {
   getSession(id: string): SessionRecord | null;
   listTurns(sessionId: string): readonly SessionTurn[];
   appendTurn(input: AppendTurnInput): SessionTurn;
+  pruneSessions(keep: number): number;
   close(): void;
 }
 
@@ -72,6 +73,8 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, id);
 `;
+
+export const SESSION_RETENTION = 20;
 
 /** Session database lives beside the config so history follows the repo. */
 export function defaultSessionDbPath(cwd = process.cwd()): string {
@@ -129,6 +132,22 @@ export function createSessionStore(dbPath: string): SessionStore {
   const selectTurns = db.query<TurnRow, [string]>(
     `SELECT ${TURN_COLUMNS} FROM turns WHERE session_id = ? ORDER BY id ASC`,
   );
+  const deleteOldTurns = db.query<unknown, [number]>(
+    `DELETE FROM turns
+     WHERE session_id IN (
+       SELECT id FROM sessions ORDER BY updated_at DESC, id DESC LIMIT -1 OFFSET ?
+     )`,
+  );
+  const deleteOldSessions = db.query<unknown, [number]>(
+    `DELETE FROM sessions
+     WHERE id IN (
+       SELECT id FROM sessions ORDER BY updated_at DESC, id DESC LIMIT -1 OFFSET ?
+     )`,
+  );
+  const prune = db.transaction((keep: number): number => {
+    deleteOldTurns.run(keep);
+    return deleteOldSessions.run(keep).changes;
+  });
 
   return {
     createSession(cliId, title) {
@@ -169,6 +188,16 @@ export function createSessionStore(dbPath: string): SessionStore {
         throw new Error(`turn insert failed in session ${input.sessionId}`);
       }
       return rowToTurn(row);
+    },
+
+    pruneSessions(keep) {
+      const removed = prune(Math.max(0, Math.floor(keep)));
+      if (removed > 0) {
+        // VACUUM 会重写数据库文件，让删除后的空间真正归还磁盘。
+        db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        db.exec("VACUUM;");
+      }
+      return removed;
     },
 
     close() {

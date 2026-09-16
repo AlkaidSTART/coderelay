@@ -68,4 +68,69 @@ describe("session store", () => {
     expect(turns[0]?.output).toBe("产出");
     second.close();
   });
+
+  test("prunes oldest sessions together with their turns", async () => {
+    const store = createSessionStore(tempDbPath());
+    const sessions = [];
+
+    for (let index = 0; index < 5; index += 1) {
+      const session = store.createSession("codex", `会话 ${index}`);
+      store.appendTurn({
+        sessionId: session.id,
+        cliId: "codex",
+        prompt: `第 ${index} 问`,
+        output: `第 ${index} 答`,
+        exitCode: 0,
+        signal: null,
+        durationMs: 100,
+      });
+      sessions.push(session);
+      await Bun.sleep(3);
+    }
+
+    expect(store.pruneSessions(3)).toBe(2);
+    for (const [index, session] of sessions.entries()) {
+      if (index < 2) {
+        expect(store.getSession(session.id)).toBeNull();
+        expect(store.listTurns(session.id)).toEqual([]);
+      } else {
+        expect(store.getSession(session.id)?.id).toBe(session.id);
+      }
+    }
+    store.close();
+  });
+
+  test("keeps every session when the database is below the limit", () => {
+    const store = createSessionStore(tempDbPath());
+    const first = store.createSession("codex", "第一会话");
+    const second = store.createSession("claude", "第二会话");
+
+    expect(store.pruneSessions(5)).toBe(0);
+    expect(store.getSession(first.id)?.id).toBe(first.id);
+    expect(store.getSession(second.id)?.id).toBe(second.id);
+    store.close();
+  });
+
+  test("keeps the most recently active session instead of the newest created", async () => {
+    const store = createSessionStore(tempDbPath());
+    const older = store.createSession("codex", "旧会话");
+    await Bun.sleep(3);
+    const newer = store.createSession("claude", "新会话");
+    await Bun.sleep(3);
+    store.appendTurn({
+      sessionId: older.id,
+      cliId: "codex",
+      prompt: "继续旧会话",
+      output: "最近活跃",
+      exitCode: 0,
+      signal: null,
+      durationMs: 100,
+    });
+
+    expect(store.pruneSessions(1)).toBe(1);
+    expect(store.getSession(older.id)?.id).toBe(older.id);
+    expect(store.listTurns(older.id)).toHaveLength(1);
+    expect(store.getSession(newer.id)).toBeNull();
+    store.close();
+  });
 });

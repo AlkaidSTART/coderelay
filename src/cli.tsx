@@ -13,6 +13,7 @@ import { buildPromptWithContext } from "./session/context";
 import {
   createSessionStore,
   defaultSessionDbPath,
+  SESSION_RETENTION,
   type SessionStore,
 } from "./session/store";
 import { scanCodingClis } from "./scanner/cli-scanner";
@@ -31,6 +32,11 @@ let app: Instance | undefined;
 function getStore(): SessionStore {
   if (!store) {
     store = createSessionStore(defaultSessionDbPath());
+    try {
+      store.pruneSessions(SESSION_RETENTION);
+    } catch {
+      // 多实例并发启动时剪枝可能遇到 SQLITE_BUSY，不应阻塞主流程。
+    }
   }
   return store;
 }
