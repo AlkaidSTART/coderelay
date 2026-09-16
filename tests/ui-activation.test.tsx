@@ -172,6 +172,32 @@ describe("activation page", () => {
     view.cleanup();
   });
 
+  test("leaving the activating phase lands on an interactive screen", async () => {
+    // 激活页退出后 screen 必须跟着走，否则没有任何 useInput 处于激活状态，界面卡死。
+    const common = {
+      clis: CLIS,
+      initialId: "codex" as const,
+      activationOptions: [option({ cliId: "codex" })],
+      onLaunch: () => undefined,
+      onExit: () => undefined,
+    };
+    const instance = render(<App {...common} phase="activating" />);
+    await settle();
+    expect(instance.lastFrame() ?? "").toContain("激活 CLI");
+
+    instance.rerender(<App {...common} phase="idle" />);
+    await settle();
+    expect(instance.lastFrame() ?? "").toContain("写下任务");
+
+    // 键位重新生效：esc 能一路退回首屏（卡死的界面到不了首屏）。
+    instance.stdin.write("\x1b");
+    await settle();
+    instance.stdin.write("\x1b");
+    await settle();
+    expect(instance.lastFrame() ?? "").toContain("先选个开场方式？");
+    instance.cleanup();
+  });
+
   test("a write failure stays on the activation page and shows the reason", async () => {
     // 保存失败时页面不能跳走，否则用户既看不到错误也无法重试。
     const instance = render(

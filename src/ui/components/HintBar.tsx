@@ -32,23 +32,25 @@ const HINTS: Readonly<
   mode: [
     { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },
-    { key: "q", label: "退出" },
+    { key: "ctrl c", label: "退出" },
   ],
   picker: [
     { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },
-    { key: "q", label: "退出" },
+    { key: "esc", label: "返回" },
+    { key: "ctrl c", label: "退出" },
   ],
   chat: [
     { key: "↵", label: "发送" },
     { key: "/model", label: "切换 agent" },
     { key: "tab", label: "交互模式" },
-    { key: "esc", label: "选择 agent" },
+    { key: "esc", label: "返回" },
+    { key: "ctrl c", label: "退出" },
   ],
-  running: [{ key: "ctrl c", label: "中止任务" }],
+  running: [{ key: "esc / ctrl c", label: "中止任务" }],
   detail: [
     { key: "↵ / esc", label: "返回" },
-    { key: "q", label: "退出" },
+    { key: "ctrl c", label: "退出" },
   ],
 };
 

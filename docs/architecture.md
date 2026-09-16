@@ -56,7 +56,7 @@ coderelay/
 │       ├── App.tsx           # 屏状态机 + 统一 8 态 AgentPhase（idle/probing/selecting/…）
 │       ├── theme.ts          # 视觉 token（液态玻璃浅色主题）
 │       ├── ink-theme.ts      # Ink 主题适配
-│       ├── slash-commands.ts # /model /new /exit 等聊天命令
+│       ├── slash-commands.ts # /model /activate /new 等聊天命令
 │       └── components/       # AppHeader / StageBar / CliList / ScanningView / ChatView / HintBar
 ├── tests/                    # bun test（scanner/launcher/adapters/session/ui/agent-run/model-catalog/ui-phase + mock-cli fixture）
 ├── docs/
@@ -282,9 +282,9 @@ coderelay/
 - `Enter`：提交 prompt，默认走自动路由（已探测模型候选 + 配置元数据）；激活页为「保存」。
 - `/model`：打开两段式 CLI + 模型选择器（`selecting`）；`Esc` 从模型步退回 CLI 步，在 CLI 步才取消。
 - `/activate`：打开激活管理页（`activating`），可逐个启用/禁用 CLI，保存到 `.coderelay/config.yaml`。
-- `Esc`：取消模型选择、取消激活（不写盘）或返回输入态。
-- `Ctrl-C`（相位感知）：`probing` / `selecting` / `activating` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`；`idle` 退出 coderelay。
-- `/new`：清理当前会话上下文并创建新会话（`slash-commands.ts`；另有 `/exit`）。
+- `Esc`（返回键）：退回上一层——`detail` / `chat` 回 CLI 列表、CLI 列表回首屏、模型选择器退一步（模型步→CLI 步，CLI 步才取消）、激活页取消（不写盘）；`probing` 取消探测；`starting` / `running` 中止当前任务回到输入态。首屏没有上一层，`Esc` 不做事。
+- `Ctrl-C`（相位感知，退出键）：`idle`（首屏 / CLI 列表 / 对话区 / 未就绪页）退出 coderelay；`probing` / `selecting` / `activating` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`——执行中不退出程序，避免把 agent 子进程留成孤儿进程。`q` 不再是退出键。
+- `/new`：清理当前会话上下文并创建新会话（`slash-commands.ts`）。
 - `tab` 交互模式（保留兼容）：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重挂载；此模式暂不纳入结构化事件流，输出不写入会话。
 
 自动路由只从「已激活且探测成功」的 CLI 的可用模型里选（`probeModelCatalog` 把 `enabled: false` 标成 `disabled` / `models: []`，`toRouteCandidates` 再过滤 `available`）；候选保留各自归属的 CLI，同名模型在不同 CLI 下是两条独立候选。全部 CLI 被禁用是合法状态，此时提示「暂无已激活 CLI，输入 /activate 启用后重试」，不自动恢复任何 CLI。
