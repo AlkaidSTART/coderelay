@@ -4,6 +4,7 @@ import { theme } from "../theme";
 
 export type HintContext =
   | "scanning"
+  | "activating"
   | "mode"
   | "picker"
   | "chat"
@@ -22,6 +23,12 @@ interface Hint {
 const HINTS: Readonly<
   Record<Exclude<HintContext, "scanning">, readonly Hint[]>
 > = {
+  activating: [
+    { key: "↑↓", label: "移动" },
+    { key: "space", label: "切换" },
+    { key: "↵", label: "保存" },
+    { key: "esc", label: "取消" },
+  ],
   mode: [
     { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },
@@ -55,6 +62,31 @@ export function HintBar({ context }: HintBarProps) {
       <Text color={theme.muted}>
         扫描完成后自动进入选择，稍等一下。
       </Text>
+    );
+  }
+
+  if (context === "activating") {
+    return (
+      <Box flexDirection="row">
+        {[
+          { key: "↑↓", label: "移动" },
+          { key: "space", label: "切换" },
+          { key: "↵", label: "保存" },
+          { key: "esc", label: "取消" },
+        ].map((hint, index) => (
+          <Text key={hint.key}>
+            {index > 0 ? (
+              <Text color={theme.muted}>
+                {"  ·  "}
+              </Text>
+            ) : null}
+            <Text bold color={theme.accent}>
+              {hint.key}
+            </Text>
+            <Text color={theme.muted}>{` ${hint.label}`}</Text>
+          </Text>
+        ))}
+      </Box>
     );
   }
 

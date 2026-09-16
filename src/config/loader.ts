@@ -9,7 +9,8 @@
  */
 
 import { dirname, join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { mkdir } from "node:fs/promises";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 
 import { ConfigSchema, defaultConfig, type Config } from "./schema";
@@ -131,4 +132,90 @@ export async function resolveConfigPath(
 /** Directory that holds the config file (created on demand by `init`). */
 export function configDirFor(cwd = process.cwd()): string {
   return join(resolve(cwd), CONFIG_DIR);
+}
+
+/** One CLI's activation choice, as confirmed by the user in the TUI. */
+export interface ActivationDecision {
+  readonly cliId: string;
+  readonly enabled: boolean;
+}
+
+export interface SaveActivationOptions {
+  /** Directory the default config path is derived from. */
+  cwd?: string;
+  /** Explicit config file to update; defaults to `<cwd>/.coderelay/config.yaml`. */
+  path?: string | null;
+}
+
+/** Path `saveActivationDecisions` writes to when no explicit path is given. */
+export function defaultConfigPath(cwd = process.cwd()): string {
+  return join(resolve(cwd), CONFIG_FILE_NAMES[0]);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Persist activation choices, touching only the activation fields.
+ *
+ * The raw YAML is merged into rather than re-serialized from the parsed
+ * `Config`, so models, routing, commands, env and any keys this version of the
+ * schema does not know about survive the write untouched. Comments are not
+ * preserved.
+ */
+export async function saveActivationDecisions(
+  decisions: readonly ActivationDecision[],
+  options: SaveActivationOptions = {},
+): Promise<string> {
+  const path = options.path
+    ? resolve(options.path)
+    : defaultConfigPath(options.cwd);
+
+  let raw: Record<string, unknown> = {};
+  const file = Bun.file(path);
+  if (await file.exists()) {
+    const text = await file.text();
+    let parsed: unknown;
+    try {
+      parsed = parseYaml(text);
+    } catch (error) {
+      throw new ConfigError(`invalid YAML in ${path}: ${errorMessage(error)}`, {
+        path,
+        cause: error,
+      });
+    }
+    if (parsed !== null && parsed !== undefined) {
+      if (!isRecord(parsed)) {
+        throw new ConfigError(`${path} must contain a YAML mapping`, { path });
+      }
+      raw = parsed;
+    }
+  }
+
+  const agents = isRecord(raw.agents) ? raw.agents : {};
+  for (const decision of decisions) {
+    const existing = agents[decision.cliId];
+    agents[decision.cliId] = {
+      ...(isRecord(existing) ? existing : {}),
+      enabled: decision.enabled,
+      activationDecided: true,
+    };
+  }
+  raw.agents = agents;
+
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    // The `yaml` package emits block style; `Bun.YAML.stringify` writes flow
+    // style (one dense line), which is valid but unreadable for a file users
+    // are expected to hand-edit.
+    await Bun.write(path, stringifyYaml(raw));
+  } catch (error) {
+    throw new ConfigError(`failed to write config to ${path}: ${errorMessage(error)}`, {
+      path,
+      cause: error,
+    });
+  }
+
+  return path;
 }
