@@ -28,10 +28,16 @@ describe("CLI scanner", () => {
       throw Object.assign(new Error("failed"), { code: 1 });
     };
 
+    const installed = new Set(["/opt/bin/codex", "/opt/bin/omp"]);
+
     const detected = await scanCodingClis({
       platform: "linux",
       execFile,
-      access: async () => {},
+      access: async (candidate) => {
+        if (!installed.has(candidate)) {
+          throw Object.assign(new Error("not found"), { code: "ENOENT" });
+        }
+      },
       env: {},
       homeDir: "/home/tester",
     });
