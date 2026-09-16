@@ -266,12 +266,12 @@ describe("App UI", () => {
     await afterEscapeFlush();
     expect(instance.lastFrame()).toContain("Claude Code");
 
-    instance.stdin.write("");
+    instance.stdin.write("\u001B");
     await afterEscapeFlush();
     expect(instance.lastFrame()).toContain("先选个开场方式？");
     expect(instance.exits()).toBe(0);
 
-    instance.stdin.write("");
+    instance.stdin.write("\u0003");
     await nextTick();
     expect(instance.exits()).toBe(1);
     instance.cleanup();
@@ -294,7 +294,7 @@ describe("App UI", () => {
       running: { id: "claude", prompt: "x", startedAt: Date.now() },
     });
 
-    instance.stdin.write("");
+    instance.stdin.write("\u001B");
     await afterEscapeFlush();
 
     expect(instance.aborts()).toBe(1);

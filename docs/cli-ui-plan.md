@@ -104,7 +104,7 @@ scanning ──▶ picker ──▶ chat（多轮对话区）──▶ picker
 - running 时板内出现 Spinner（系统蓝）+「正在把任务交给 <Agent>」+ 蓝色秒表 + prompt 回显；输入框保留但禁用——任务不消失、输入不闪烁。
 - 输入 `/` 实时弹出命令菜单（蓝字命令名 + `dim` 描述）：`/model` 回选择条（会话保留）、`/new` 开新会话、`/help` 显示命令；未知命令给一行提示。
 - 提交后输入框立即清空并保持可输入——及时渲染下一轮。发送的 prompt 经 `buildPromptWithContext` 注入历史轮次后再交给 CLI。
-- 快捷键：`↵` 发送、`tab` 交互模式、`esc` 回选择条、`ctrl c` running 时中止 / 空闲时退出。
+- 快捷键：`↵` 发送、`tab` 交互模式、`esc` 返回上一层、`ctrl c` 退出（running 时中止任务）。
 
 ### detail（未安装）
 
@@ -130,15 +130,18 @@ scanning ──▶ picker ──▶ chat（多轮对话区）──▶ picker
 | --- | --- | --- |
 | picker | `←→` / `h l` | 移动选中 |
 | picker | `↵` | 可用 → chat；不可用 → detail |
-| picker | `q` / `⌃C` | 退出 |
+| picker | `esc` | 返回首屏（模式选择） |
+| picker | `⌃C` | 退出 |
 | chat | `↵` | 发送任务（渲染层模式）；`/` 开头的输入按命令处理 |
 | chat | `/model` | 切换 agent，会话上下文保留 |
 | chat | `/new` | 开始新会话 |
 | chat | `tab` | 交互模式启动（继承 stdio） |
-| chat | `esc` | 回 picker 重新选择 |
+| chat | `esc` | 返回 picker 重新选择；running 时中止任务；probing 时取消探测 |
 | chat | `⌃C` | running 时中止任务（SIGTERM）；空闲时退出 |
 | detail | `↵` / `esc` | 返回 picker |
-| detail | `q` / `⌃C` | 退出 |
+| detail | `⌃C` | 退出 |
+
+`esc` 是返回键（逐层往回走，首屏没有上一层所以不做事），`⌃C` 是退出键；`q` 不再绑定任何行为。唯一例外是 `⌃C` 在执行中退化为中止——不让「退出」把 agent 子进程留成孤儿进程。
 
 prompt 模式下每轮结束由 `cli.tsx` 把 turn 写入 SQLite 并刷新对话板；交互模式结束后重挂载，带着 `initialId` 直接回到 chat。
 
