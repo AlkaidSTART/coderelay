@@ -4,6 +4,11 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { CliId, DetectedCli } from "../models/cli";
+import { cliDiagnostics } from "../models/cli";
+import {
+  installHintLines,
+  installPlatformFor,
+} from "../models/install-guide";
 import type { SessionTurn } from "../models/session";
 import type { ActivationOption } from "../config/activation";
 import type { ModelOption, ProbeDisplay } from "../agents/model-catalog";
@@ -149,6 +154,21 @@ function capabilityTags(option: ModelOption): string {
     tags.push("工具事件");
   }
   return tags.length > 0 ? ` [${tags.join("|")}]` : "";
+}
+
+/**
+ * 「这个 CLI 还没就位」的说明：说清扫描过哪里、怎么装、以及是否需要重开终端。
+ * 安装命令只打印不执行——复制粘贴由用户自己决定。
+ */
+function missingDetailLines(cli: DetectedCli): readonly string[] {
+  const platform = installPlatformFor(process.platform);
+  return [
+    `当前环境未发现 ${cli.bin}。`,
+    ...cliDiagnostics(cli).map((diagnostic) => diagnostic.message),
+    "安装方式（复制后自行执行，coderelay 不会代跑）：",
+    ...installHintLines(cli.id, platform).map((line) => `  ${line}`),
+    "装好后重新打开终端，再运行 coderelay。",
+  ];
 }
 
 export function App({
@@ -797,10 +817,11 @@ export function App({
         <Text bold color={theme.text}>
           {cliDisplayName(selectedCli.id)} 还没就位
         </Text>
-        <Text color={theme.muted}>PATH 里找不到 {selectedCli.bin}。</Text>
-        <Text color={theme.muted}>
-          安装后重新运行 coderelay，它会出现在这里。
-        </Text>
+        {missingDetailLines(selectedCli).map((line, index) => (
+          <Text key={index} color={theme.muted} wrap="truncate-end">
+            {line}
+          </Text>
+        ))}
       </Box>
     );
   } else {

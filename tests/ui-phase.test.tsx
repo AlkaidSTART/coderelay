@@ -80,6 +80,8 @@ describe("unified lifecycle TUI phases", () => {
       option({ cliId: "codex", modelId: "good" }),
     ];
     let selected: ModelOption | undefined;
+    // selectedModelIndex 同时圈定 CLI 步的落点：CLI 现在必须与模型同一个，
+    // 选择器不会再展示其他 CLI 的模型。
     const bad = render(
       <App
         clis={CLIS}
