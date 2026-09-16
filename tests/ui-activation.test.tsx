@@ -171,4 +171,24 @@ describe("activation page", () => {
     expect(view.saves).toHaveLength(0);
     view.cleanup();
   });
+
+  test("a write failure stays on the activation page and shows the reason", async () => {
+    // 保存失败时页面不能跳走，否则用户既看不到错误也无法重试。
+    const instance = render(
+      <App
+        clis={CLIS}
+        initialId="codex"
+        phase="activating"
+        activationOptions={[option({ cliId: "codex" })]}
+        lastResult={{ phase: "failed", message: "× 保存失败：EACCES" }}
+        onLaunch={() => undefined}
+        onExit={() => undefined}
+      />,
+    );
+    await settle();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("激活 CLI");
+    expect(frame).toContain("× 保存失败：EACCES");
+    instance.cleanup();
+  });
 });
