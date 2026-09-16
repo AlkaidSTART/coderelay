@@ -1,21 +1,19 @@
-import type { AgentAdapter } from "../agents/adapter";
-import { getAgentAdapter, isAgentId } from "../agents/registry";
-import type { CliAdapterOptions } from "../agents/cli-adapters";
+import { createCliAdapters, type CliAdapterOptions } from "../agents/cli-adapters";
+import {
+  probeModelCatalog,
+  toRouteCandidates,
+  validateExplicitTarget,
+} from "../agents/model-catalog";
+import { isAgentId } from "../agents/registry";
 import { loadConfig } from "../config/loader";
 import type { Config } from "../config/schema";
 import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
-import {
-  parseModelRef,
-  type ModelStrength,
-} from "../models/types";
+import type { AgentEvent } from "../models/agent-events";
+import type { ModelStrength } from "../models/types";
 import { route } from "../router/router";
 import type { RouteDecision } from "../router/types";
-import {
-  resolveCommand,
-  runProcess,
-  type ProcessOptions,
-  type ProcessResult,
-} from "../runtime/process";
+import { runAgentStream, type AgentRunHandle } from "../runtime/agent-run";
+import { resolveCommand, type ProcessOptions, type ProcessResult } from "../runtime/process";
 import { scanCodingClis, type ScannerOptions } from "../scanner/cli-scanner";
 
 export interface RunCommandOptions {
@@ -39,17 +37,17 @@ export interface RunCommandOptions {
 
 export interface RunCommandDependencies {
   readonly scan?: (options?: ScannerOptions) => Promise<DetectedCli[]>;
+  /** 遗留注入点：统一生命周期落地后不再使用，保留兼容外部调用。 */
   readonly run?: (options: ProcessOptions) => Promise<ProcessResult>;
+  readonly stream?: (
+    options: Parameters<typeof runAgentStream>[0],
+  ) => AgentRunHandle;
   readonly resolve?: (command: string) => string | null;
   readonly adapters?: CliAdapterOptions;
   /** Diagnostic output, including routing and process errors. Defaults to stderr. */
   readonly write?: (text: string) => void;
-}
-
-interface ResolvedTarget {
-  readonly agent: CliId;
-  readonly model?: string;
-  readonly decision?: RouteDecision;
+  /** Agent stdout（assistant 文本）。默认写 stdout。 */
+  readonly writeOut?: (text: string) => void;
 }
 
 function findDetected(
@@ -79,64 +77,11 @@ function availableAgents(
   });
 }
 
-function explicitTarget(
-  options: RunCommandOptions,
-  config: Config,
-): ResolvedTarget | null {
-  if (!options.agent && !options.model) {
-    return null;
-  }
-
-  const reference = options.model
-    ? parseModelRef(options.model, options.agent ?? config.defaultAgent)
-    : undefined;
-
-  if (
-    options.agent &&
-    reference?.agent &&
-    reference.agent !== options.agent
-  ) {
-    throw new Error(
-      `model reference targets ${reference.agent}, but --agent is ${options.agent}`,
-    );
-  }
-
-  const agent = options.agent ?? reference?.agent;
-  if (!agent) {
-    throw new Error("an explicit model does not include an agent");
-  }
-  if (!isAgentId(agent)) {
-    throw new Error(`unsupported agent: ${agent}`);
-  }
-
-  return {
-    agent,
-    model: reference?.model || undefined,
-  };
-}
-
-function assertAgentEnabled(config: Config, agent: CliId): void {
-  if (config.agents[agent]?.enabled === false) {
-    throw new Error(`agent is disabled: ${agent}`);
-  }
-}
-
-function assertAgentAvailable(
-  agent: CliId,
-  available: readonly CliId[],
-): void {
-  if (!available.includes(agent)) {
-    throw new Error(
-      `agent is not available: ${agent}; run "coderelay doctor" for details`,
-    );
-  }
-}
-
 function resolveExecutable(
   agent: CliId,
   config: Config,
   detected: readonly DetectedCli[],
-  adapter: AgentAdapter,
+  bin: string,
   resolve: (command: string) => string | null,
 ): string {
   const configuredCommand = config.agents[agent]?.command?.trim();
@@ -155,7 +100,7 @@ function resolveExecutable(
     return detectedCli.path;
   }
 
-  const resolved = resolve(adapter.bin);
+  const resolved = resolve(bin);
   if (resolved) {
     return resolved;
   }
@@ -163,9 +108,8 @@ function resolveExecutable(
   throw new Error(`agent is not available: ${agent}`);
 }
 
-function targetDescription(target: ResolvedTarget): string {
-  const model = target.model ? `:${target.model}` : "";
-  return `${target.agent}${model}`;
+function targetDescription(agent: CliId, model?: string): string {
+  return model ? `${agent}:${model}` : agent;
 }
 
 /**
@@ -179,9 +123,11 @@ export async function runRunCommand(
 ): Promise<number> {
   const write =
     dependencies.write ?? ((text: string) => process.stderr.write(text));
+  const writeOut =
+    dependencies.writeOut ?? ((text: string) => process.stdout.write(text));
   const scan = dependencies.scan ?? scanCodingClis;
-  const run = dependencies.run ?? runProcess;
   const resolve = dependencies.resolve ?? resolveCommand;
+  const startStream = dependencies.stream ?? runAgentStream;
 
   try {
     if (!options.prompt.trim()) {
@@ -194,11 +140,32 @@ export async function runRunCommand(
         : { config: options.config };
     const config = loaded.config;
     const detected = await scan(options.scanner);
-    const available = availableAgents(config, detected, resolve);
+    const cliAdapters = createCliAdapters(dependencies.adapters);
 
-    let target = explicitTarget(options, config);
-    if (!target) {
-      const decision = route(
+    // 统一探测：以 CLI 原生配置为事实来源，失败带原因且禁止执行。
+    const catalog = await probeModelCatalog(detected, cliAdapters, config);
+
+    let agent: CliId;
+    let model: string | undefined;
+    let decision: RouteDecision | undefined;
+    if (options.agent || options.model) {
+      const explicit = validateExplicitTarget(
+        catalog,
+        options.agent,
+        options.model,
+        config.defaultAgent,
+      );
+      agent = explicit.cliId;
+      model = explicit.modelId;
+    } else {
+      const candidates = toRouteCandidates(catalog, config);
+      if (candidates.length === 0) {
+        const reasons = catalog.probes
+          .map((probe) => `${probe.cliId}: ${probe.reason ?? probe.status}`)
+          .join("; ");
+        throw new Error(`没有可用的已探测模型（${reasons}）`);
+      }
+      const routed = route(
         {
           prompt: options.prompt,
           files: options.files,
@@ -207,66 +174,69 @@ export async function runRunCommand(
           requiredStrengths: options.requiredStrengths,
         },
         config,
-        { availableAgents: available },
+        { candidates },
       );
-
-      if (!isAgentId(decision.agent)) {
-        throw new Error(`routing selected unsupported agent: ${decision.agent}`);
+      if (!isAgentId(routed.agent)) {
+        throw new Error(`routing selected unsupported agent: ${routed.agent}`);
       }
-
-      target = {
-        agent: decision.agent,
-        model: decision.model,
-        decision,
-      };
+      agent = routed.agent;
+      model = routed.model;
+      decision = routed;
     }
+    void decision;
 
-    assertAgentEnabled(config, target.agent);
-    assertAgentAvailable(target.agent, available);
+    const adapter = cliAdapters[agent];
+    const probe = catalog.probes.find((item) => item.cliId === agent);
+    const probed = probe?.models.find((item) => item.modelId === (model ?? item.modelId));
+    const structured = probed?.capabilities.structuredEvents === true;
+    const executable = resolveExecutable(agent, config, detected, adapter.bin, resolve);
+    const agentConfig = config.agents[agent];
+    const args = adapter.buildPromptArgs
+      ? [...adapter.buildPromptArgs({ prompt: options.prompt, model, extraArgs: agentConfig?.extraArgs })]
+      : [...adapter.promptArgs(options.prompt)];
+    void CLI_IDS;
 
-    const adapter = getAgentAdapter(target.agent, dependencies.adapters);
-    if (!adapter) {
-      throw new Error(`unsupported agent: ${target.agent}`);
-    }
+    write(`coderelay: routing to ${targetDescription(agent, model)}\n`);
 
-    const executable = resolveExecutable(
-      target.agent,
-      config,
-      detected,
-      adapter,
-      resolve,
-    );
-    const agentConfig = config.agents[target.agent];
-    const args = adapter.buildArgs({
-      model: target.model,
-      prompt: options.prompt,
-      extraArgs: agentConfig?.extraArgs,
-    });
-
-    write(`coderelay: routing to ${targetDescription(target)}\n`);
-
-    const result = await run({
+    // 统一流式生命周期：assistant 文本写 stdout，诊断写 stderr。
+    const onEvent = (event: AgentEvent): void => {
+      if (event.kind === "assistant_text") {
+        writeOut(event.text);
+      } else if (event.kind === "stderr") {
+        write(event.text);
+      } else if (event.kind === "tool_started") {
+        write(`coderelay: 正在执行工具：${event.tool}\n`);
+      } else if (event.kind === "status") {
+        write(`coderelay: ${event.text}\n`);
+      }
+    };
+    const handle = startStream({
       cmd: [executable, ...args],
       cwd: options.cwd,
-      env: { ...agentConfig?.env, ...options.env },
-      mode: "stream",
+      env: { ...process.env, ...agentConfig?.env, ...options.env },
       signal: options.signal,
       timeoutMs: options.timeoutMs,
+      protocol: structured ? "structured" : "text",
+      parseChunk: adapter.parseOutputChunk,
+      onEvent,
     });
+    const result = await handle.done;
 
-    if (result.ok) {
+    if (result.status === "completed") {
       return 0;
     }
-
-    if (result.timedOut) {
-      write(
-        `coderelay run: process timed out after ${options.timeoutMs ?? 0}ms\n`,
-      );
-    } else if (result.signal) {
-      write(`coderelay run: process terminated by ${result.signal}\n`);
+    if (result.status === "timeout") {
+      write(`coderelay run: process timed out after ${options.timeoutMs ?? 0}ms\n`);
+      return 124;
     }
-
-    return result.code > 0 ? result.code : 1;
+    if (result.status === "aborted") {
+      write("coderelay run: process aborted\n");
+      return 130;
+    }
+    if (result.stderrTail.trim()) {
+      write(result.stderrTail.endsWith("\n") ? result.stderrTail : `${result.stderrTail}\n`);
+    }
+    return result.code !== null && result.code > 0 ? result.code : 1;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     write(`coderelay run: ${message}\n`);

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { CliId, DetectedCli } from "../models/cli";
 import type { SessionTurn } from "../models/session";
+import type { ModelOption, ProbeDisplay } from "../agents/model-catalog";
 import { inkTheme } from "./ink-theme";
 import { theme } from "./theme";
 import { AppHeader } from "./components/AppHeader";
@@ -23,11 +24,32 @@ export type LaunchRequest =
   | { readonly id: CliId; readonly mode: "prompt"; readonly prompt: string }
   | { readonly id: CliId; readonly mode: "interactive" };
 
-/** 正在执行的任务：加载态与位置层都靠它回答「现在是谁在跑」。 */
+/** 统一执行状态机：idle/probing/selecting/starting/running/completed/failed/aborted。 */
+export type AgentPhase =
+  | "idle"
+  | "probing"
+  | "selecting"
+  | "starting"
+  | "running"
+  | "completed"
+  | "failed"
+  | "aborted";
+
+/** 正在执行的任务：加载态与位置层都靠它回答「现在是谁在跑」。live* 为流式实时字段。 */
 export interface RunningTask {
   readonly id: CliId;
   readonly prompt: string;
   readonly startedAt: number;
+  readonly modelId?: string;
+  readonly liveText?: string;
+  readonly statusText?: string;
+  readonly tool?: string;
+}
+
+/**  terminal 状态（completed/failed/aborted）的一次性展示。 */
+export interface PhaseResult {
+  readonly phase: "completed" | "failed" | "aborted";
+  readonly message: string;
 }
 
 export interface AppProps {
@@ -40,6 +62,20 @@ export interface AppProps {
   readonly onAbort?: () => void;
   readonly onNewSession?: () => void;
   readonly onExit: () => void;
+  /** 统一状态机（可选，缺省时由 running/screen 推导，保持旧调用兼容）。 */
+  readonly phase?: AgentPhase;
+  /** probing 阶段四 CLI 独立状态。 */
+  readonly probes?: readonly ProbeDisplay[];
+  /** selecting 阶段统一候选。 */
+  readonly modelOptions?: readonly ModelOption[];
+  /** selecting 阶段已选项下标（受控于调用方时传入）。 */
+  readonly selectedModelIndex?: number;
+  /** terminal 结果一次性展示。 */
+  readonly lastResult?: PhaseResult | null;
+  readonly onSelectModel?: (option: ModelOption) => void;
+  readonly onCancelSelecting?: () => void;
+  /** /model 统一模型选择器入口（提供时优先于旧 picker 屏）。 */
+  readonly onRequestModelSelector?: () => void;
 }
 
 type Screen = "scanning" | "mode" | "picker" | "chat" | "detail";
@@ -67,6 +103,35 @@ function moveSelection(
   return (current + delta + length) % length;
 }
 
+function probeStatusText(probe: ProbeDisplay): string {
+  switch (probe.status) {
+    case "scanning":
+      return "扫描中";
+    case "found":
+      return `已找到 ${probe.models.length} 个模型`;
+    case "unprobed":
+      return `无法探测${probe.reason ? `：${probe.reason}` : ""}`;
+    case "not-installed":
+      return "未安装";
+    case "disabled":
+      return `已禁用${probe.reason ? `：${probe.reason}` : ""}`;
+  }
+}
+
+function capabilityTags(option: ModelOption): string {
+  const tags: string[] = [];
+  if (option.capabilities.structuredEvents) {
+    tags.push("结构化");
+  }
+  if (option.capabilities.nativeResume) {
+    tags.push("原生会话");
+  }
+  if (option.capabilities.toolEvents) {
+    tags.push("工具事件");
+  }
+  return tags.length > 0 ? ` [${tags.join("|")}]` : "";
+}
+
 export function App({
   clis,
   isScanning = false,
@@ -77,6 +142,14 @@ export function App({
   onAbort,
   onNewSession,
   onExit,
+  phase,
+  probes,
+  modelOptions,
+  selectedModelIndex,
+  lastResult,
+  onSelectModel,
+  onCancelSelecting,
+  onRequestModelSelector,
 }: AppProps) {
   const [screen, setScreen] = useState<Screen>(() => {
     if (isScanning) {
@@ -88,6 +161,21 @@ export function App({
   const [selectedIndex, setSelectedIndex] = useState(() =>
     selectedIndexFor(clis, initialId),
   );
+  const [modelCursor, setModelCursor] = useState(0);
+  const effectivePhase: AgentPhase =
+    phase ?? (running ? "running" : "idle");
+
+  // 受控下标（调用方传入时同步），并钳制到候选范围内。
+  useEffect(() => {
+    if (selectedModelIndex !== undefined) {
+      setModelCursor(selectedModelIndex);
+    }
+  }, [selectedModelIndex]);
+  const optionCount = modelOptions?.length ?? 0;
+  const clampedCursor =
+    optionCount === 0
+      ? 0
+      : Math.min(Math.max(modelCursor, 0), optionCount - 1);
   const [modeIndex, setModeIndex] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -193,6 +281,10 @@ export function App({
       }
 
       if (key.escape) {
+        if (effectivePhase === "selecting") {
+          onCancelSelecting?.();
+          return;
+        }
         setScreen("picker");
         return;
       }
@@ -202,6 +294,46 @@ export function App({
       }
     },
     { isActive: screen === "chat" },
+  );
+
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === "c") {
+        onCancelSelecting?.();
+        return;
+      }
+
+      if (key.escape) {
+        onCancelSelecting?.();
+        return;
+      }
+
+      const options = modelOptions ?? [];
+      if (options.length === 0) {
+        return;
+      }
+
+      if (key.upArrow || input === "k") {
+        setModelCursor(
+          (current) => (current - 1 + options.length) % options.length,
+        );
+        return;
+      }
+
+      if (key.downArrow || input === "j") {
+        setModelCursor((current) => (current + 1) % options.length);
+        return;
+      }
+
+      if (key.return) {
+        const option = options[clampedCursor];
+        // 不可用候选不可提交：停留在选择器由用户另选。
+        if (option?.available) {
+          onSelectModel?.(option);
+        }
+      }
+    },
+    { isActive: effectivePhase === "selecting" },
   );
 
   useInput(
@@ -240,7 +372,11 @@ export function App({
       if (matches.length === 1) {
         const command = matches[0];
         if (command?.name === "/model") {
-          setScreen("picker");
+          if (onRequestModelSelector) {
+            onRequestModelSelector();
+          } else {
+            setScreen("picker");
+          }
         } else if (command?.name === "/new") {
           onNewSession?.();
         } else if (command?.name === "/help") {
@@ -323,8 +459,76 @@ export function App({
     );
   } else if (screen === "chat" && activeId) {
     hint = running ? "running" : "chat";
+    const phaseBanner: ReactNode =
+      effectivePhase === "probing" && probes ? (
+        <Box flexDirection="column" paddingX={2} marginBottom={1}>
+          <Text bold color={theme.text}>
+            正在探测本机模型…
+          </Text>
+          {probes.map((probe) => (
+            <Text key={probe.cliId} color={theme.muted}>
+              {cliDisplayName(probe.cliId)}：{probeStatusText(probe)}
+            </Text>
+          ))}
+        </Box>
+      ) : effectivePhase === "selecting" && modelOptions ? (
+        <Box flexDirection="column" paddingX={2} marginBottom={1}>
+          <Text bold color={theme.text}>
+            选择 CLI + 模型（↑↓ 移动，Enter 确认，Esc 取消）
+          </Text>
+          {modelOptions.map((option, index) => {
+            const cursor = index === clampedCursor;
+            const marker = cursor ? "❯" : " ";
+            const state = option.available
+              ? ""
+              : `（不可用${option.reason ? `：${option.reason}` : ""}）`;
+            return (
+              <Text
+                key={`${option.cliId}:${option.modelId}`}
+                bold={cursor}
+                color={
+                  option.available
+                    ? cursor
+                      ? theme.text
+                      : theme.muted
+                    : theme.muted
+                }
+              >
+                {marker} {cliDisplayName(option.cliId)}:{option.modelId}{" "}
+                {option.label}
+                {option.isDefault ? " [默认]" : ""}
+                {capabilityTags(option)}
+                {state}
+              </Text>
+            );
+          })}
+        </Box>
+      ) : effectivePhase === "starting" && running ? (
+        <Box paddingX={2} marginBottom={1}>
+          <Text bold color={theme.text}>
+            正在启动 {cliDisplayName(running.id)}
+            {running.modelId ? `:${running.modelId}` : ""}…
+          </Text>
+        </Box>
+      ) : lastResult ? (
+        <Box paddingX={2} marginBottom={1}>
+          <Text
+            color={
+              lastResult.phase === "completed"
+                ? theme.ok
+                : lastResult.phase === "aborted"
+                  ? theme.muted
+                  : theme.alert
+            }
+          >
+            {lastResult.message}
+          </Text>
+        </Box>
+      ) : null;
     body = (
-      <ChatView
+      <Box flexDirection="column">
+        {phaseBanner}
+        <ChatView
         agentName={cliDisplayName(activeId)}
         turns={turns}
         running={
@@ -333,6 +537,10 @@ export function App({
                 agentName: cliDisplayName(running.id),
                 prompt: running.prompt,
                 startedAt: running.startedAt,
+                modelId: running.modelId,
+                liveText: running.liveText,
+                statusText: running.statusText,
+                tool: running.tool,
               }
             : null
         }
@@ -341,7 +549,8 @@ export function App({
         commands={matchSlashCommands(prompt)}
         onChange={handlePromptChange}
         onSubmit={handleSubmit}
-      />
+        />
+      </Box>
     );
   } else if (screen === "detail" && selectedCli) {
     hint = "detail";

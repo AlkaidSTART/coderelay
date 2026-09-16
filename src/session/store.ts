@@ -6,7 +6,12 @@ import { Database } from "bun:sqlite";
 
 import { configDirFor } from "../config/loader";
 import type { CliId } from "../models/cli";
-import type { SessionRecord, SessionTurn } from "../models/session";
+import type {
+  SessionRecord,
+  SessionTurn,
+  TurnContextSource,
+  TurnRunStatus,
+} from "../models/session";
 
 export interface AppendTurnInput {
   readonly sessionId: string;
@@ -16,6 +21,12 @@ export interface AppendTurnInput {
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly durationMs: number;
+  readonly modelId?: string;
+  readonly protocol?: "structured" | "text";
+  readonly reusedNative?: boolean;
+  readonly status?: TurnRunStatus;
+  readonly eventSummary?: string;
+  readonly contextSource?: TurnContextSource;
 }
 
 export interface SessionStore {
@@ -45,12 +56,18 @@ interface TurnRow {
   readonly signal: string | null;
   readonly duration_ms: number;
   readonly created_at: number;
+  readonly model_id?: string | null;
+  readonly protocol?: string | null;
+  readonly reused_native?: number | null;
+  readonly status?: string | null;
+  readonly event_summary?: string | null;
+  readonly context_source?: string | null;
 }
 
 const SESSION_COLUMNS =
   "id, cli_id, title, created_at, updated_at";
 const TURN_COLUMNS =
-  "id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at";
+  "id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at, model_id, protocol, reused_native, status, event_summary, context_source";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -91,6 +108,22 @@ function rowToSession(row: SessionRow): SessionRecord {
   };
 }
 
+function asTurnStatus(value: string | null | undefined): TurnRunStatus | undefined {
+  return value === "completed" ||
+    value === "failed" ||
+    value === "timeout" ||
+    value === "aborted" ||
+    value === "spawn-error"
+    ? value
+    : undefined;
+}
+
+function asContextSource(value: string | null | undefined): TurnContextSource | undefined {
+  return value === "native" || value === "transcript" || value === "none"
+    ? value
+    : undefined;
+}
+
 function rowToTurn(row: TurnRow): SessionTurn {
   return {
     id: row.id,
@@ -102,7 +135,34 @@ function rowToTurn(row: TurnRow): SessionTurn {
     signal: row.signal,
     durationMs: row.duration_ms,
     createdAt: row.created_at,
+    modelId: row.model_id ?? undefined,
+    protocol: row.protocol === "structured" || row.protocol === "text" ? row.protocol : undefined,
+    reusedNative: row.reused_native === null || row.reused_native === undefined
+      ? undefined
+      : row.reused_native === 1,
+    status: asTurnStatus(row.status),
+    eventSummary: row.event_summary ?? undefined,
+    contextSource: asContextSource(row.context_source),
   };
+}
+
+const TURN_MIGRATIONS: readonly string[] = [
+  "ALTER TABLE turns ADD COLUMN model_id TEXT",
+  "ALTER TABLE turns ADD COLUMN protocol TEXT",
+  "ALTER TABLE turns ADD COLUMN reused_native INTEGER",
+  "ALTER TABLE turns ADD COLUMN status TEXT",
+  "ALTER TABLE turns ADD COLUMN event_summary TEXT",
+  "ALTER TABLE turns ADD COLUMN context_source TEXT",
+];
+
+function migrateTurnColumns(db: { exec: (sql: string) => void }): void {
+  for (const sql of TURN_MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch {
+      // 列已存在时忽略，保持旧库可直接升级。
+    }
+  }
 }
 
 export function createSessionStore(dbPath: string): SessionStore {
@@ -110,6 +170,7 @@ export function createSessionStore(dbPath: string): SessionStore {
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);
+  migrateTurnColumns(db);
 
   const insertSession = db.query<unknown, [string, string, string, number, number]>(
     `INSERT INTO sessions (${SESSION_COLUMNS}) VALUES (?, ?, ?, ?, ?)`,
@@ -122,9 +183,24 @@ export function createSessionStore(dbPath: string): SessionStore {
   );
   const insertTurn = db.query<
     unknown,
-    [string, string, string, string, number | null, string | null, number, number]
+    [
+      string,
+      string,
+      string,
+      string,
+      number | null,
+      string | null,
+      number,
+      number,
+      string | null,
+      string | null,
+      number | null,
+      string | null,
+      string | null,
+      string | null,
+    ]
   >(
-    "INSERT INTO turns (session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO turns (session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at, model_id, protocol, reused_native, status, event_summary, context_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const selectTurn = db.query<TurnRow, [number]>(
     `SELECT ${TURN_COLUMNS} FROM turns WHERE id = ?`,
@@ -181,6 +257,12 @@ export function createSessionStore(dbPath: string): SessionStore {
         input.signal,
         input.durationMs,
         now,
+        input.modelId ?? null,
+        input.protocol ?? null,
+        input.reusedNative === undefined ? null : input.reusedNative ? 1 : 0,
+        input.status ?? null,
+        input.eventSummary ?? null,
+        input.contextSource ?? null,
       );
       touchSession.run(now, input.sessionId);
       const row = selectTurn.get(Number(result.lastInsertRowid));

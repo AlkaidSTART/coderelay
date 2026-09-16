@@ -24,6 +24,10 @@ export interface RunningState {
   readonly agentName: string;
   readonly prompt: string;
   readonly startedAt: number;
+  readonly modelId?: string;
+  readonly liveText?: string;
+  readonly statusText?: string;
+  readonly tool?: string;
 }
 
 export interface SlashCommandOption {
@@ -135,8 +139,9 @@ function TurnBlock({ turn }: { readonly turn: SessionTurn }) {
       ))}
       <Box width="100%" justifyContent="flex-end">
         <Text color={failed ? theme.alert : theme.muted}>
-          {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
+          {`${failed ? "×" : "✓"} ${cliDisplayName(turn.cliId)}${turn.modelId ? `:${turn.modelId}` : ""} · exit ${turn.exitCode ?? "—"} · ${(turn.durationMs / 1_000).toFixed(1)}s`}
           {turn.signal ? ` · ${turn.signal}` : ""}
+          {turn.contextSource === "native" ? " · 原生会话" : turn.contextSource === "transcript" ? " · transcript 上下文" : ""}
         </Text>
       </Box>
     </Box>
@@ -212,7 +217,29 @@ export function ChatView({
 
       {running ? (
         <>
-          {/* CLI 流式事件暂不接入：运行中只显示等待占位，进程返回后由 TurnBlock 渲染结果。 */}
+          {running.liveText ? (
+            <Box flexDirection="column" marginTop={1}>
+              {running.liveText
+                .replace(/\s+$/, "")
+                .split("\n")
+                .slice(-6)
+                .map((line, index) => (
+                  <Text key={index} color={CLI_RESPONSE_COLOR} wrap="truncate-end">
+                    {line === "" ? " " : line}
+                  </Text>
+                ))}
+            </Box>
+          ) : null}
+          {running.statusText ? (
+            <Box marginTop={1}>
+              <Text color={theme.muted}>{running.statusText}</Text>
+            </Box>
+          ) : null}
+          {running.tool ? (
+            <Box>
+              <Text color={theme.muted}>{`正在执行工具：${running.tool}`}</Text>
+            </Box>
+          ) : null}
           <Box flexDirection="row" marginTop={tail.length > 0 ? 1 : 0}>
             <WaitingSnake elapsed={elapsed} columns={columns} />
             <Text> </Text>
