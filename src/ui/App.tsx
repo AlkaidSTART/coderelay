@@ -42,7 +42,7 @@ export interface AppProps {
   readonly onExit: () => void;
 }
 
-type Screen = "scanning" | "picker" | "chat" | "detail";
+type Screen = "scanning" | "mode" | "picker" | "chat" | "detail";
 
 function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): number {
   if (!initialId) {
@@ -52,6 +52,8 @@ function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): numb
   const index = clis.findIndex((cli) => cli.id === initialId);
   return index >= 0 ? index : 0;
 }
+
+const MODES: readonly string[] = ["手动选择", "自动进入对话"];
 
 function moveSelection(
   current: number,
@@ -81,11 +83,12 @@ export function App({
       return "scanning";
     }
     // 交互模式结束后重挂载：带着 initialId 直接回到对话区继续干活。
-    return initialId ? "chat" : "picker";
+    return initialId ? "chat" : "mode";
   });
   const [selectedIndex, setSelectedIndex] = useState(() =>
     selectedIndexFor(clis, initialId),
   );
+  const [modeIndex, setModeIndex] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   // 备用屏里没有终端滚动条，根节点占满窗口，画面才会像全屏应用而不是命令输出。
@@ -97,11 +100,50 @@ export function App({
       return;
     }
 
-    setScreen((current) => current === "scanning" ? "picker" : current);
+    setScreen((current) => current === "scanning" ? "mode" : current);
   }, [isScanning]);
 
   const selectedCli = clis[selectedIndex];
   const activeId = selectedCli?.id;
+
+  useInput(
+    (input, key) => {
+      if ((key.ctrl && input === "c") || input === "q") {
+        onExit();
+        return;
+      }
+
+      if (key.leftArrow || input === "h") {
+        setModeIndex((current) => moveSelection(current, -1, MODES.length));
+        return;
+      }
+
+      if (key.rightArrow || input === "l") {
+        setModeIndex((current) => moveSelection(current, 1, MODES.length));
+        return;
+      }
+
+      if (!key.return) {
+        return;
+      }
+
+      if (modeIndex !== 1) {
+        setScreen("picker");
+        return;
+      }
+
+      // 自动：跳过手动选择，直接用第一个可用 CLI 进入对话。
+      const autoIndex = clis.findIndex((cli) => cli.available);
+      if (autoIndex >= 0) {
+        setSelectedIndex(autoIndex);
+        const target = clis[autoIndex];
+        setScreen(target && target.available ? "chat" : "detail");
+      } else {
+        setScreen("picker");
+      }
+    },
+    { isActive: screen === "mode" },
+  );
 
   useInput(
     (input, key) => {
@@ -232,9 +274,54 @@ export function App({
   let hint: HintContext = "picker";
   let body: ReactNode;
 
+  const autoCli = clis.find((cli) => cli.available);
+  const autoName = autoCli ? cliDisplayName(autoCli.id) : undefined;
+
   if (screen === "scanning") {
     hint = "scanning";
     body = <ScanningView />;
+  } else if (screen === "mode") {
+    hint = "mode";
+    body = (
+      <Box flexDirection="column" paddingX={2}>
+        <Box marginBottom={1}>
+          <Text bold color={theme.text}>
+            先选个开场方式？
+          </Text>
+        </Box>
+        <Box flexDirection="row">
+          {MODES.map((label, index) => {
+            const active = index === modeIndex;
+            const underlineWidth = label.length;
+            return (
+              <Box
+                key={label}
+                flexDirection="column"
+                marginRight={index < MODES.length - 1 ? 3 : 0}
+              >
+                <Text bold={active} color={active ? theme.text : theme.muted}>
+                  {label}
+                </Text>
+                <Text color={theme.accent}>
+                  {active
+                    ? "─".repeat(underlineWidth)
+                    : " ".repeat(underlineWidth)}
+                </Text>
+              </Box>
+            );
+          })}
+        </Box>
+        <Box marginTop={1} height={1}>
+          <Text color={theme.muted} wrap="truncate-end">
+            {modeIndex === 1
+              ? autoName
+                ? `跳过选择，直接用 ${autoName} 对话`
+                : "暂无可用 CLI，先手动看看"
+              : "自己挑用哪个 CLI 干活"}
+          </Text>
+        </Box>
+      </Box>
+    );
   } else if (screen === "chat" && activeId) {
     hint = running ? "running" : "chat";
     body = (

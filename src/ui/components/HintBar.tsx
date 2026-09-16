@@ -4,6 +4,7 @@ import { theme } from "../theme";
 
 export type HintContext =
   | "scanning"
+  | "mode"
   | "picker"
   | "chat"
   | "running"
@@ -21,6 +22,11 @@ interface Hint {
 const HINTS: Readonly<
   Record<Exclude<HintContext, "scanning">, readonly Hint[]>
 > = {
+  mode: [
+    { key: "←→", label: "移动" },
+    { key: "↵", label: "选择" },
+    { key: "q", label: "退出" },
+  ],
   picker: [
     { key: "←→", label: "移动" },
     { key: "↵", label: "选择" },
@@ -41,7 +47,7 @@ const HINTS: Readonly<
 
 /**
  * 底部键位条：常驻在窗口最后一行，不参与滚动内容。
- * 键帽是薄荷青点缀——「这里能按」；键帽不加内边距，避免挤爆窄终端。
+ * 键帽用强调色加粗——「这里能按」；键帽不加内边距，避免挤爆窄终端。
  */
 export function HintBar({ context }: HintBarProps) {
   if (context === "scanning") {
@@ -61,7 +67,7 @@ export function HintBar({ context }: HintBarProps) {
               {"  ·  "}
             </Text>
           ) : null}
-          <Text bold backgroundColor={theme.chip.aqua} color={theme.chip.ink}>
+          <Text bold color={theme.accent}>
             {hint.key}
           </Text>
           <Text color={theme.muted}>{` ${hint.label}`}</Text>

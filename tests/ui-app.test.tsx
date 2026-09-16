@@ -125,8 +125,55 @@ describe("App UI", () => {
     instance.cleanup();
   });
 
-  test("renders the horizontal CLI rail with one underline and selected detail", () => {
+  test("starts on the mode screen with manual and auto options", () => {
     const instance = renderApp();
+    const frame = instance.lastFrame() ?? "";
+
+    expect(frame).toContain("先选个开场方式？");
+    expect(frame).toContain("手动选择");
+    expect(frame).toContain("自动进入对话");
+    expect(frame).toContain("自己挑用哪个 CLI 干活");
+    instance.cleanup();
+  });
+
+  test("manual mode enters the picker", async () => {
+    const instance = renderApp();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.lastFrame()).toContain("这一棒交给谁？");
+    instance.cleanup();
+  });
+
+  test("auto mode skips the picker with the first available CLI", async () => {
+    const instance = renderApp();
+    instance.stdin.write("\u001B[C");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.lastFrame()).toContain("将任务交给 Codex");
+    instance.cleanup();
+  });
+
+  test("auto mode picks the first available CLI when the first is missing", async () => {
+    const custom: DetectedCli[] = CLIS.map((cli, index) =>
+      index === 0 ? { ...cli, available: false, path: "" } : cli,
+    );
+    const instance = renderApp({ clis: custom });
+    instance.stdin.write("\u001B[C");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(instance.lastFrame()).toContain("将任务交给 Claude Code");
+    instance.cleanup();
+  });
+
+  test("renders the horizontal CLI rail with one underline and selected detail", async () => {
+    const instance = renderApp();
+    instance.stdin.write("\r");
+    await nextTick();
     const frame = instance.lastFrame() ?? "";
 
     expect(frame).toContain("这一棒交给谁？");
@@ -141,6 +188,8 @@ describe("App UI", () => {
 
   test("shows the focused CLI detail line while moving the rail", async () => {
     const instance = renderApp();
+    instance.stdin.write("\r");
+    await nextTick();
 
     for (let i = 0; i < 3; i += 1) {
       instance.stdin.write("\u001B[C");
@@ -155,6 +204,8 @@ describe("App UI", () => {
 
   test("moves with → and enters chat, then accepts text input", async () => {
     const instance = renderApp();
+    instance.stdin.write("\r");
+    await nextTick();
 
     instance.stdin.write("\u001B[C");
     await nextTick();
@@ -174,6 +225,8 @@ describe("App UI", () => {
     const first = renderApp();
     first.stdin.write("\r");
     await nextTick();
+    first.stdin.write("\r");
+    await nextTick();
     first.stdin.write("do work");
     await nextTick();
     first.stdin.write("\r");
@@ -185,6 +238,8 @@ describe("App UI", () => {
     first.cleanup();
 
     const second = renderApp();
+    second.stdin.write("\r");
+    await nextTick();
     second.stdin.write("\r");
     await nextTick();
     second.stdin.write("ignored");
@@ -201,6 +256,8 @@ describe("App UI", () => {
   test("esc returns to picker and q exits", async () => {
     const instance = renderApp();
 
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("\r");
     await nextTick();
     expect(instance.lastFrame()).toContain("将任务交给 Codex");
@@ -220,6 +277,8 @@ describe("App UI", () => {
 
     instance.stdin.write("\r");
     await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("do work");
     await nextTick();
     instance.stdin.write("\r");
@@ -237,6 +296,8 @@ describe("App UI", () => {
 
     instance.stdin.write("\r");
     await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("/m");
     await nextTick();
 
@@ -249,6 +310,8 @@ describe("App UI", () => {
   test("/model returns to the picker and keeps the session", async () => {
     const instance = renderApp({ turns: [turn()] });
 
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("\r");
     await nextTick();
     instance.stdin.write("/model");
@@ -265,6 +328,8 @@ describe("App UI", () => {
 
     instance.stdin.write("\r");
     await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("/new");
     await nextTick();
     instance.stdin.write("\r");
@@ -277,6 +342,8 @@ describe("App UI", () => {
   test("unknown slash command shows a notice", async () => {
     const instance = renderApp();
 
+    instance.stdin.write("\r");
+    await nextTick();
     instance.stdin.write("\r");
     await nextTick();
     instance.stdin.write("/foo");
