@@ -266,8 +266,18 @@ export function App({
   useInput(
     (input, key) => {
       if (key.ctrl && input === "c") {
-        // running 时中止任务；空闲时退出整个接力台。
-        if (running) {
+        // probing 取消当前操作；selecting 由选择器专属 useInput 处理取消，
+        // 避免两个 hook 重复触发；starting/running 终止进程组；空闲退出。
+        // phase 缺省时沿用旧语义：running 非空视为执行中（兼容旧调用）。
+        if (effectivePhase === "probing") {
+          onCancelSelecting?.();
+        } else if (effectivePhase === "selecting") {
+          return;
+        } else if (
+          effectivePhase === "starting" ||
+          effectivePhase === "running" ||
+          running
+        ) {
           onAbort?.();
         } else {
           onExit();
@@ -275,16 +285,20 @@ export function App({
         return;
       }
 
-      if (running) {
-        // 任务执行中不响应导航，避免开出新任务。
+      if (
+        running ||
+        effectivePhase === "starting" ||
+        effectivePhase === "running" ||
+        effectivePhase === "probing" ||
+        effectivePhase === "selecting"
+      ) {
+        // 任务执行/探测/选择中不响应导航，避免开出新任务。
         return;
       }
 
       if (key.escape) {
-        if (effectivePhase === "selecting") {
-          onCancelSelecting?.();
-          return;
-        }
+        // selecting 阶段由独立的 useInput 处理 Esc（取消选择）；
+        // 此处执行/探测/选择中已提前返回，走到这里直接回 picker。
         setScreen("picker");
         return;
       }
@@ -502,6 +516,16 @@ export function App({
               </Text>
             );
           })}
+          {(probes ?? [])
+            .filter(
+              (probe) =>
+                probe.status !== "found" && probe.status !== "scanning",
+            )
+            .map((probe) => (
+              <Text key={`probe-${probe.cliId}`} color={theme.muted}>
+                {cliDisplayName(probe.cliId)}：{probeStatusText(probe)}
+              </Text>
+            ))}
         </Box>
       ) : effectivePhase === "starting" && running ? (
         <Box paddingX={2} marginBottom={1}>

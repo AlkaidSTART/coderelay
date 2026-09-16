@@ -1,6 +1,6 @@
 # coderelay 架构文档
 
-> 版本：v0.1.6（2026-09-16 整理，依据当前 `src/` 实际代码）
+> 版本：v0.2.0（2026-09-16 整理，依据当前 `src/` 实际代码）
 >
 > 一句话：coderelay 是“编码任务路由器 + 启动器”——扫描本机已安装的编码 Agent CLI（codex / claude / pi / omp），按配置中的**规则 + 评分**选出最合适的 `agent:model`，然后在本机终端直接启动它。不带参数时进入交互式 TUI。
 
@@ -28,13 +28,16 @@ coderelay/
 │   ├── scanner/              # 本机 CLI 探测
 │   │   └── cli-scanner.ts    # which/where + --version 探测
 │   ├── agents/               # 适配器层
-│   │   ├── adapter.ts        # AgentAdapter（buildArgs 核心）
-│   │   ├── cli-adapters.ts   # 4 个 CLI 的底层元数据（bin/configDir/promptArgs）
+│   │   ├── adapter.ts        # AgentAdapter（buildArgs 核心，交互模式用）
+│   │   ├── capabilities.ts   # 统一能力协议：CliCapabilities / ProbeResult
+│   │   ├── model-catalog.ts  # 并行探测 + 统一模型目录（config 只叠加元数据）
+│   │   ├── cli-adapters.ts   # 4 个 CLI 适配器（probeModels/能力/参数/事件解析）
 │   │   ├── codex.ts          # Codex 专属适配器（当前透传通用实现）
 │   │   ├── claude.ts         # Claude 专属适配器（当前透传通用实现）
 │   │   └── registry.ts       # AGENT_REGISTRY / getAgentAdapter()
 │   ├── models/               # 共享类型
-│   │   ├── cli.ts            # CliId / DetectedCli / CliAdapter / SpawnRunner 等
+│   │   ├── agent-events.ts   # 统一事件流（9 种事件 + 结构化解析 + 摘要）
+│   │   ├── cli.ts            # CliId / DetectedCli / CliAdapter（含能力协议扩展）
 │   │   ├── types.ts          # ModelStrength / ModelCost / parseModelRef 等
 │   │   └── session.ts        # SessionRecord / SessionTurn
 │   ├── router/               # 路由决策
@@ -43,18 +46,19 @@ coderelay/
 │   │   ├── scorer.ts         # 评分（strength/default/cost/context + 关键词推断）
 │   │   └── types.ts          # RouteRequest / Candidate / Decision / Strategy
 │   ├── runtime/              # 进程执行
-│   │   ├── process.ts        # Bun.spawn 封装（capture/stream/超时/Abort）
-│   │   └── launcher.ts       # launchInteractive / launchWithPrompt / 捕获版启动
+│   │   ├── process.ts        # Bun.spawn 封装（capture/stream/超时/Abort，短命令用）
+│   │   ├── agent-run.ts      # 统一 prompt 生命周期 runAgentStream（事件流/进程组/取消）
+│   │   └── launcher.ts       # launchInteractive（TTY 交互）/ 旧捕获版启动（兼容保留）
 │   ├── session/              # 跨 CLI 会话记忆（bun:sqlite）
 │   │   ├── store.ts          # sessions + turns 表，保留最近 20 个会话
 │   │   └── context.ts        # buildPromptWithContext：历史 transcript 注入
 │   └── ui/                   # Ink TUI
-│       ├── App.tsx           # 屏状态机：scanning → mode → picker → chat/detail
+│       ├── App.tsx           # 屏状态机 + 统一 8 态 AgentPhase（idle/probing/selecting/…）
 │       ├── theme.ts          # 视觉 token（液态玻璃浅色主题）
 │       ├── ink-theme.ts      # Ink 主题适配
 │       ├── slash-commands.ts # /model /new /exit 等聊天命令
 │       └── components/       # AppHeader / StageBar / CliList / ScanningView / ChatView / HintBar
-├── tests/                    # bun test（scanner/launcher/adapters/session/ui）
+├── tests/                    # bun test（scanner/launcher/adapters/session/ui/agent-run/model-catalog/ui-phase + mock-cli fixture）
 ├── docs/
 │   ├── architecture.md       # 本文档
 │   ├── cli-ui-plan.md        # TUI 详细设计（视觉 token / 页面流 / 会话层）
@@ -102,15 +106,14 @@ coderelay/
 
 ### 3.2 run 命令（`src/commands/run.ts`）
 
-流程（显式指定时跳过路由）：
+流程（显式指定时跳过路由，但仍走统一探测校验）：
 
 1. `loadConfig({ cwd, path })` 读配置（缺失则用内置默认值）。
-2. `scan()` 探测本机 CLI → `availableAgents()` 算出可用集合。
-3. 若有 `--agent/--model` → `explicitTarget()` 直接定目标；否则构造 `RouteRequest{ prompt, files, language, contextSize, requiredStrengths }` 调 `route()`。
-4. 校验目标 agent 已启用且已安装 → `getAgentAdapter()` 取适配器。
-5. `resolveExecutable()` 定可执行路径（配置 `command` 覆盖优先，否则用扫描到的 `DetectedCli.path`）。
-6. `adapter.buildArgs({ model, prompt, extraArgs })` 组装 argv → `stderr` 打印 `coderelay: routing to …`。
-7. `run({ cmd, cwd, env, mode: "stream", signal, timeoutMs })` 启动子进程，透传 TTY；超时 / 信号 / 非零退出码分别给出诊断并透出退出码。
+2. `scan()` 探测本机 CLI 安装状态 → `probeModelCatalog()` 对已安装且启用的 CLI 并行探测模型/能力（事实来源是 CLI 原生配置，失败带 `reason` 且禁止执行）。
+3. 若有 `--agent/--model` → `validateExplicitTarget()` 校验目标确实存在于探测结果（不存在/不可探测直接报可读错误，不静默回退）；否则用 `toRouteCandidates()` 把已探测模型 + 配置元数据交给 `route()`（`rules/score/hybrid` 策略不变）。
+4. 目标 CLI 优先用原生 resume 恢复会话（`buildResumeArgs()`）；不支持时用 `buildPromptWithContext()` 做 transcript 注入；跨 CLI 切换一律 transcript 注入。
+5. `adapter.buildPromptArgs()` 组装 argv → `stderr` 打印 `coderelay: routing to …`。
+6. `runAgentStream({ cmd, protocol, onEvent, signal, timeoutMs })` 启动子进程并消费统一事件流（stdout 实时透出，非零退出/超时/取消分别给出诊断并透出退出码）。
 
 ---
 
@@ -207,22 +210,31 @@ coderelay/
 
 ## 8. 运行时层（`src/runtime/`）
 
-### 8.1 `process.ts`（基于 `Bun.spawn`，唯一的外部进程出口）
+### 8.1 `agent-run.ts`（统一 prompt 生命周期，prompt 执行的唯一出口）
+
+- `runAgentStream({ cmd, cwd, env, signal, timeoutMs, protocol, parseChunk?, onEvent })` → `{ child, done, abort }`：
+  - `stdio: [pipe, pipe, pipe]`，stdout/stderr 实时消费（防缓冲区死锁）；`protocol: "structured"` 优先结构化事件流，解析失败回退文本事件 + 诊断 `status`，不丢用户可见输出；JSON 按流缓存残行，跨 chunk 拼接。
+  - 状态：`completed`（零退出）/ `failed`（非零退出或信号）/ `timeout`（`timeoutMs` 到时）/ `aborted`（`abort()` 或外部 signal）/ `spawn-error`（启动失败）。
+  - 取消语义 = 终止整个进程组：Unix 独立进程组（`detached`）先 `SIGTERM`，2s 后 `SIGKILL`；Windows 用 `taskkill /pid /t /f`；随后关闭 stdin、解绑全部监听器。
+  - 结束统一结算：`AgentRunResult{ status, code, signal, durationMs, timedOut, text（事件摘要）, stderrTail（8k 截尾）, events }`。
+- 适配器通过 `parseOutputChunk(chunk, source)` 声明文本解析器；`src/models/agent-events.ts` 提供 `parseStructuredLine` + `summarizeEvents`，事件共 9 种：`session_started / status / assistant_text / tool_started / tool_finished / stderr / completed / failed / aborted`。
+
+### 8.2 `process.ts`（基于 `Bun.spawn`，短命令出口）
 
 - `runProcess({ cmd, cwd, env, input?, mode = "capture", signal?, timeoutMs? })`：
   - `capture` 静默收集 stdout/stderr；`stream` 边收集边镜像到父终端。
   - `timeoutMs` 到时 kill（`timedOut: true`），`signal` abort 时 kill（`aborted: true`），返回统一 `ProcessResult{ cmd, code（信号杀死时 −1）, signal, stdout, stderr, durationMs, timedOut, aborted, ok }`。
   - `cmd` 为空直接抛错；非零退出不抛错（由调用方解读），另有带 `result` 的 `ProcessError` 供需要抛错的场景。
 
-### 8.2 `launcher.ts`（spawn 语义封装 + 可注入）
+### 8.3 `launcher.ts`（TTY 交互模式 + 旧捕获版兼容保留）
 
 - `launchInteractive(adapter | binPath)`：`interactiveArgs + extraArgs`，`stdio: inherit`（TTY 透传，Windows 下 `shell: true`）。
 - `launchWithPrompt(adapter, prompt, …)`：`buildPromptArgs = promptArgs(prompt) + extraArgs`，同样 `inherit`（`run` 命令走此路径）。
-- `launchWithPromptCaptured(…)`：`stdio: [ignore, pipe, pipe]`，捕获输出尾部（默认每路 20k 字符，防长任务吃满内存），供 TUI prompt 模式渲染。
+- `launchWithPromptCaptured(…)`（兼容保留）：`stdio: [ignore, pipe, pipe]`，捕获输出尾部；新 prompt 执行路径已迁移到 `runAgentStream`。
 - `runOnce({ timeoutMs, maxBuffer, … })`：`execFile` 一次性执行（scanner/version 类短命令用）。
 - `spawn` / `execFile` / `platform` 经 `LauncherDependencies` 注入，默认取 Node `child_process` 与 `process.platform`。
 
-输出边界约定：Agent 进程输出走 stdout/TTY 直接透传；coderelay 自身的路由与诊断信息只写 stderr；`--timeout` 到时终止子进程并报超时。
+输出边界约定：Agent 进程输出走统一事件流（TUI 渲染 / `run` 写 stdout）；coderelay 自身的路由与诊断信息只写 stderr；`--timeout` 触发统一进程组终止流程。交互式原生 CLI 模式（`tab`）暂不纳入结构化事件流：仍走“卸载 Ink → 继承 stdio → 退出后重挂载”。
 
 ---
 
@@ -233,21 +245,31 @@ coderelay/
   - `turns(id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at)`，`(session_id, id)` 索引。
   - 启动时按 `updated_at` 保留最近 `SESSION_RETENTION = 20` 个会话，多余连同轮次删除。
 - `context.ts`：`buildPromptWithContext()` 把历史轮次拼成 transcript 注入新 prompt 之前，实现跨 CLI 上下文继承（不依赖各 CLI 原生会话）：单轮输出留尾 1.5k 字符、总预算 8k 字符，超限从最旧轮丢弃。
+- 上下文策略：同 CLI 优先原生 resume（`buildResumeArgs()` 返回非空时）；目标 CLI 不支持原生恢复或发生 CLI 切换时，用 transcript 注入；每轮落盘记录 `modelId / protocol / reusedNative / status / eventSummary / contextSource`，UI 标记“原生会话”或“transcript 上下文”。
 
 ---
 
 ## 10. 展示层 TUI（`src/ui/`，Ink + React）
 
-状态机（`App.tsx`）：`scanning → mode → picker → chat ⇄ detail`，另有 `tab` 交互模式与 `esc` 返回。
+状态机（`App.tsx` 的 `AgentPhase`）：`idle / probing / selecting / starting / running / completed / failed / aborted`。
 
-- `scanning`（`ScanningView`）：展示 CLI 探测进度。
-- `mode`：自动路由（根据任务并结合本机 CLI 自动选择合适的 CLI，当前先用首个可用 CLI 直进 chat）/ 手动（进 picker）。
-- `picker`（`CliList`）：CLI 列表 + 未安装详情。
-- `chat`（`ChatView`，常驻对话区）：多轮输入、加载态、每轮输出渲染在同一块圆角玻璃板，输入框常驻板底。
-  - `↵` prompt 模式：UI 保持挂载，`launchWithPromptCaptured` 捕获输出 → 写会话 → 板内渲染；`ctrl+c` 经 `onAbort` 发 SIGTERM 中止。
-  - `tab` 交互模式：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重挂载；此模式输出不写入会话。
-  - `/model` 切换 agent 后靠 `buildPromptWithContext` 继承上下文；`slash-commands.ts` 提供 `/model`、`/new`、`/exit` 等。
-- `AppHeader` / `StageBar` / `HintBar`：品牌、步骤、快捷键提示。视觉 token 见 `theme.ts` 与 `docs/cli-ui-plan.md` 第 3 节（三色信号灯语义：粉 = 当前位置唯一色块，蓝 = 可操作，绿 = 单字符状态信号）。
+- `probing`：`phaseBanner` 显示 4 个 CLI 独立探测行（`扫描中 / 已找到 / 无法探测 / 未安装`），失败行附 `reason`。
+- `selecting`：统一 CLI + 模型候选（CLI、模型 id、显示名、是否默认、能力标签、探测状态、不可用原因），键盘上下选择，不可用候选不可提交。
+- `starting`：显示 `正在启动 <cli>:<model>`，等待子进程建立通信（`session_started` 前）。
+- `running`（`ChatView` 常驻对话区）：保留等待动画，实时显示 `assistant_text`，显示当前 `status`；工具调用只显示简化状态（`正在执行工具：xxx`），参数默认不展开；已输出内容保留，不等整轮结束再渲染。
+- `completed`：终端行显示最终输出和退出信息（绿色），落盘 SQLite（含 `eventSummary`），回到 `idle` 允许继续输入下一轮。
+- `failed` / `aborted`：终端行明确区分启动失败（`spawn-error`）、CLI 失败（`failed`，非零退出）、超时（`timeout`）和用户取消（`aborted`），显示可读诊断，不残留 `running` 状态。
+
+键盘约定：
+
+- `Enter`：提交 prompt，默认走自动路由（已探测模型候选 + 配置元数据）。
+- `/model`：打开 CLI + 模型选择器（`selecting`）。
+- `Esc`：取消模型选择或返回输入态。
+- `Ctrl-C`（相位感知）：`probing` / `selecting` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`；`idle` 退出 coderelay。
+- `/new`：清理当前会话上下文并创建新会话（`slash-commands.ts`；另有 `/exit`）。
+- `tab` 交互模式（保留兼容）：Ink 先卸载、子进程继承 stdio 完整接管终端（REPL 需要 TTY），退出后重挂载；此模式暂不纳入结构化事件流，输出不写入会话。
+
+`AppHeader` / `StageBar` / `HintBar`：品牌、步骤、快捷键提示。视觉 token 见 `theme.ts` 与 `docs/cli-ui-plan.md` 第 3 节（三色信号灯语义：粉 = 当前位置唯一色块，蓝 = 可操作，绿 = 单字符状态信号）。
 
 ---
 
@@ -263,10 +285,12 @@ coderelay/
 
 ```bash
 bun install
-bun test            # tests/：cli-scanner / launcher / cli-adapters / session / ui-app
+bun test            # tests/：cli-scanner / launcher / cli-adapters / session / ui-app / agent-run / model-catalog / ui-phase
 bun run typecheck   # tsc --noEmit
 bun run dev         # 本地跑 CLI（bun src/cli.tsx）
 ```
+
+`tests/fixtures/mock-cli.mjs` 为模拟 CLI：覆盖分块输出、工具状态、`split-json` 跨 chunk、`invalid-json` 回退、非零退出、`sleep` 超时、`child` 进程树取消、`stderr-flood` 流背压与流结束清理。
 
 仓库规范（`AGENTS.md`）：禁止 `any` 类型；最小改动原则；拿不准的好功能先和用户讨论再实现。
 
@@ -276,5 +300,5 @@ bun run dev         # 本地跑 CLI（bun src/cli.tsx）
 
 1. `codex.ts` / `claude.ts` 当前只是具名透传，`--model` 参数对 4 个 CLI 一视同仁；若某 CLI 模型 flag 不同，需在此分叉。
 2. 评分关键词全为英文，中文 prompt 主要靠显式 `--strength` / `--lang` / `--file` 与规则补足。
-3. TUI 的 `tab` 交互模式输出不进会话层（TTY 透传无法捕获），只有 `↵` prompt 模式可回放。
+3. TUI 的 `tab` 交互模式输出不进会话层（TTY 透传无法捕获），只有 `↵` prompt 模式可回放；prompt 模式统一走 `runAgentStream` 事件流（TUI 渲染 / `run` 写 stdout），`tab` 模式仍走继承 stdio 兼容路径。
 4. `doctor` 只返回第一页式检查，不做自动修复；`init` 占位（`configDirFor` 已预留“按需创建配置目录”语义）。
