@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { AgentEvent } from "../src/models/agent-events";
 import { runAgentStream } from "../src/runtime/agent-run";
 
-const FIXTURE = new URL("./fixtures/mock-cli.mjs", import.meta.url).pathname;
+const FIXTURE = new URL("./fixtures/mock-cli.ts", import.meta.url).pathname;
 const NODE = process.execPath;
 
 function collect(
