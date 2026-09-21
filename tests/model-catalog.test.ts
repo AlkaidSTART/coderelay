@@ -121,11 +121,9 @@ describe("probeModelCatalog", () => {
           label: "GPT-5",
           strengths: [
             ...MODEL_STRENGTHS,
-            // @ts-expect-error invalid strength injected for boundary testing
             "invalid-strength",
-            // @ts-expect-error legacy typo injected for boundary testing
             "code",
-          ],
+          ] as unknown as ModelStrength[],
           cost: 3,
         },
       ],
