@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@alkaidstart/coderelay"><img src="https://img.shields.io/npm/v/@alkaidstart/coderelay.svg?color=blue&style=flat-square" alt="npm version" /></a>
+  <a href="package.json"><img src="https://img.shields.io/github/package-json/v/AlkaidSTART/coderelay?color=blue&style=flat-square" alt="version" /></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-bun-f472b6.svg?style=flat-square" alt="bun" /></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/language-TypeScript-3178c6.svg?style=flat-square" alt="typescript" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="license" /></a>
