@@ -10,6 +10,7 @@ import { runAgentsCommand } from "./commands/agents";
 import { runDoctorCommand } from "./commands/doctor";
 import { runModelsCommand } from "./commands/models";
 import { runRunCommand } from "./commands/run";
+import type { RoutingMode } from "./config/schema";
 import { MODEL_STRENGTHS, type ModelStrength } from "./models/types";
 
 import pkg from "../package.json";
@@ -17,6 +18,7 @@ import pkg from "../package.json";
 const VERSION = pkg.version;
 
 interface RunCliOptions extends OptionValues {
+  readonly mode?: RoutingMode;
   readonly agent?: string;
   readonly model?: string;
   readonly cwd?: string;
@@ -55,6 +57,13 @@ function parsePositiveInteger(value: string): number {
     throw new InvalidArgumentError("expected a positive integer");
   }
   return parsed;
+}
+
+function parseRoutingMode(value: string): RoutingMode {
+  if (value === "local" || value === "manual" || value === "jev") {
+    return value;
+  }
+  throw new InvalidArgumentError("expected one of: local, manual, jev");
 }
 
 async function applyExitCode(action: () => Promise<number>): Promise<void> {
@@ -97,6 +106,11 @@ export function createProgram(): Command {
       [],
     )
     .option(
+      "-M, --mode <mode>",
+      "routing decision mode: local, manual, jev",
+      parseRoutingMode,
+    )
+    .option(
       "--timeout <ms>",
       "terminate the selected agent after this timeout",
       parsePositiveInteger,
@@ -106,6 +120,7 @@ export function createProgram(): Command {
       await applyExitCode(() =>
         runRunCommand({
           prompt,
+          mode: options.mode,
           agent: options.agent,
           model: options.model,
           cwd: options.cwd,

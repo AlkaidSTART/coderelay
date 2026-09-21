@@ -5,7 +5,8 @@ import type {
   ModelStrength,
 } from "../models/types";
 
-export type RoutingStrategy = "rules" | "score" | "hybrid";
+export type RoutingStrategy = "rules" | "score" | "hybrid" | "jev";
+export type RoutingMode = "local" | "manual" | "jev";
 
 /** Input signals used to select an agent/model pair. */
 export interface RouteRequest {

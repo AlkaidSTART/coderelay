@@ -12,6 +12,7 @@ import {
 import type { SessionTurn } from "../models/session";
 import type { ActivationOption } from "../config/activation";
 import type { ModelOption, ProbeDisplay } from "../agents/model-catalog";
+import type { RoutingMode } from "../config/schema";
 import { inkTheme } from "./ink-theme";
 import { theme } from "./theme";
 import {
@@ -97,6 +98,9 @@ export interface AppProps {
   readonly onRequestModelSelector?: () => void;
   /** /activate 激活管理页入口。 */
   readonly onRequestActivationManager?: () => void;
+  /** 当前决策模式：local / manual / jev。 */
+  readonly routingMode?: RoutingMode;
+  readonly onModeChange?: (mode: RoutingMode) => void;
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -113,7 +117,27 @@ function selectedIndexFor(clis: readonly DetectedCli[], initialId?: CliId): numb
   return index >= 0 ? index : 0;
 }
 
-const MODES: readonly string[] = ["手动选择", "自动路由"];
+export const MODE_OPTIONS: readonly {
+  readonly id: RoutingMode;
+  readonly label: string;
+  readonly description: string;
+}[] = [
+  {
+    id: "manual",
+    label: "手动选择",
+    description: "自己挑用哪个 CLI 干活",
+  },
+  {
+    id: "local",
+    label: "自动路由",
+    description: "根据任务并结合本机 CLI 自动选择合适的 CLI",
+  },
+  {
+    id: "jev",
+    label: "Jev 决策",
+    description: "调用 TypeSafe Jev 模型做第三方决策，不走自动推断",
+  },
+];
 
 function moveSelection(
   current: number,
@@ -206,7 +230,15 @@ export function App({
   onCancelSelecting,
   onRequestModelSelector,
   onRequestActivationManager,
+  routingMode = "local",
+  onModeChange,
 }: AppProps) {
+  const [activeMode, setActiveMode] = useState<RoutingMode>(routingMode);
+
+  useEffect(() => {
+    setActiveMode(routingMode);
+  }, [routingMode]);
+
   const [screen, setScreen] = useState<Screen>(() => {
     if (isScanning) {
       return "scanning";
@@ -344,12 +376,12 @@ export function App({
       }
 
       if (key.leftArrow || input === "h") {
-        setModeIndex((current) => moveSelection(current, -1, MODES.length));
+        setModeIndex((current) => moveSelection(current, -1, MODE_OPTIONS.length));
         return;
       }
 
       if (key.rightArrow || input === "l") {
-        setModeIndex((current) => moveSelection(current, 1, MODES.length));
+        setModeIndex((current) => moveSelection(current, 1, MODE_OPTIONS.length));
         return;
       }
 
@@ -357,12 +389,18 @@ export function App({
         return;
       }
 
-      if (modeIndex !== 1) {
+      const selectedOption = MODE_OPTIONS[modeIndex];
+      if (selectedOption) {
+        setActiveMode(selectedOption.id);
+        onModeChange?.(selectedOption.id);
+      }
+
+      if (selectedOption?.id === "manual") {
         setScreen("picker");
         return;
       }
 
-      // 自动路由：根据任务并结合本机 CLI 自动选择合适的 CLI（当前先用首个可用直进对话）。
+      // 本地推断 / Jev 决策：直接进入对话
       const autoIndex = clis.findIndex((cli) => cli.available);
       if (autoIndex >= 0) {
         setSelectedIndex(autoIndex);
@@ -638,7 +676,27 @@ export function App({
       const matches = matchSlashCommands(normalized);
       if (matches.length === 1) {
         const command = matches[0];
-        if (command?.name === "/model") {
+        if (command?.name === "/mode") {
+          const parts = normalized.split(/\s+/);
+          const arg = parts[1]?.toLowerCase();
+          let nextMode: RoutingMode;
+          if (arg === "local" || arg === "manual" || arg === "jev") {
+            nextMode = arg;
+          } else {
+            const sequence: RoutingMode[] = ["local", "manual", "jev"];
+            const currentIdx = sequence.indexOf(activeMode);
+            nextMode = sequence[(currentIdx + 1) % sequence.length] ?? "local";
+          }
+          setActiveMode(nextMode);
+          onModeChange?.(nextMode);
+
+          const modeLabels: Record<RoutingMode, string> = {
+            local: "本地推断 (内置规则与打分，0ms 离线)",
+            manual: "手动选择 (每次任务由用户挑选目标)",
+            jev: "Jev 模型决策 (TypeSafe Jev System One 第三方决策层)",
+          };
+          setNotice(`✓ 决策模式已切换为：${modeLabels[nextMode]}`);
+        } else if (command?.name === "/model") {
           if (onRequestModelSelector) {
             setModelPickStep("cli");
             setPickedCliId(undefined);
@@ -713,17 +771,17 @@ export function App({
           </Text>
         </Box>
         <Box flexDirection="row">
-          {MODES.map((label, index) => {
+          {MODE_OPTIONS.map((option, index) => {
             const active = index === modeIndex;
-            const underlineWidth = label.length;
+            const underlineWidth = option.label.length;
             return (
               <Box
-                key={label}
+                key={option.id}
                 flexDirection="column"
-                marginRight={index < MODES.length - 1 ? 3 : 0}
+                marginRight={index < MODE_OPTIONS.length - 1 ? 3 : 0}
               >
                 <Text bold={active} color={active ? theme.text : theme.muted}>
-                  {label}
+                  {option.label}
                 </Text>
                 <Text color={theme.accent}>
                   {active
@@ -740,7 +798,7 @@ export function App({
               ? autoCli
                 ? "根据任务并结合本机 CLI 自动选择合适的 CLI"
                 : "暂无可用 CLI，先手动看看"
-              : "自己挑用哪个 CLI 干活"}
+              : MODE_OPTIONS[modeIndex]?.description}
           </Text>
         </Box>
       </Box>
@@ -901,7 +959,7 @@ export function App({
       {/* 不铺底色：底色交给终端原生背景。Ink 只给有字符的格子刷底，
           整屏铺 backgroundColor 会在空行和行尾漏出终端底色。 */}
       <Box width="100%" minHeight={rows} flexDirection="column">
-        <AppHeader />
+        <AppHeader mode={activeMode} />
         <StageBar
           stage={stage}
           focus={focusId ? cliDisplayName(focusId) : undefined}

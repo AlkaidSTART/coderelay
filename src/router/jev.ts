@@ -1,0 +1,328 @@
+import { join, resolve } from "node:path";
+
+import type { AgentId } from "../models/types";
+import type { RouteCandidate, RouteDecision, RouteRequest } from "./types";
+
+export const TYPESAFE_DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
+export const TYPESAFE_ENV_KEY = "TYPESAFE_API_KEY";
+
+const CANDIDATE_ENV_FILES = [
+  "env.locaj",
+  "env.local",
+  ".env.local",
+  ".env",
+] as const;
+
+export class JevError extends Error {
+  readonly code:
+    | "NO_KEY"
+    | "NO_CANDIDATES"
+    | "TIMEOUT"
+    | "HTTP_ERROR"
+    | "INVALID_RESPONSE"
+    | "NO_CHOICE";
+  readonly status?: number;
+
+  constructor(
+    message: string,
+    options: {
+      code:
+        | "NO_KEY"
+        | "NO_CANDIDATES"
+        | "TIMEOUT"
+        | "HTTP_ERROR"
+        | "INVALID_RESPONSE"
+        | "NO_CHOICE";
+      status?: number;
+      cause?: unknown;
+    },
+  ) {
+    super(message, { cause: options.cause });
+    this.name = "JevError";
+    this.code = options.code;
+    this.status = options.status;
+  }
+}
+
+export interface JevQuestionChoice {
+  readonly type: "choice";
+  readonly instructions: string;
+  readonly criteria: Record<string, string | null>;
+}
+
+export interface JevRequestBody {
+  readonly state: string | Record<string, unknown>;
+  readonly model: string;
+  readonly questions: Record<string, JevQuestionChoice>;
+}
+
+export interface JevChoiceAnswer {
+  readonly type: "choice";
+  readonly choice: string;
+  readonly confidence: number;
+  readonly probabilities: Record<string, number>;
+}
+
+export interface JevResponseBody {
+  readonly model: string;
+  readonly answers: Record<string, JevChoiceAnswer | undefined>;
+  readonly usage?: {
+    readonly input_tokens: number;
+    readonly output_tokens: number;
+  };
+}
+
+export interface JevClientOptions {
+  readonly apiKey?: string;
+  readonly endpoint?: string;
+  readonly model?: string;
+  readonly timeoutMs?: number;
+  readonly fetchFn?: (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>;
+  readonly cwd?: string;
+}
+
+export interface JevDecision {
+  readonly agent: AgentId;
+  readonly model?: string;
+  readonly candidate: RouteCandidate;
+  readonly confidence: number;
+  readonly probabilities: Record<string, number>;
+  readonly rawChoice: string;
+  readonly modelName: string;
+  readonly usage?: {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+  };
+}
+
+/** Formats a route candidate into a distinct choice identifier. */
+export function formatCandidateKey(candidate: RouteCandidate): string {
+  return candidate.model ? `${candidate.agent}:${candidate.model}` : candidate.agent;
+}
+
+/**
+ * Resolves the TypeSafe API key in order of priority:
+ * 1. Explicitly supplied key
+ * 2. process.env.TYPESAFE_API_KEY
+ * 3. Local env files (env.locaj, env.local, .env.local, .env) in cwd
+ */
+export async function resolveTypesafeApiKey(
+  options: { explicitKey?: string; cwd?: string } = {},
+): Promise<string | null> {
+  const explicit = options.explicitKey?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const envKey = process.env[TYPESAFE_ENV_KEY]?.trim();
+  if (envKey) {
+    return envKey;
+  }
+
+  const baseDir = resolve(options.cwd ?? process.cwd());
+  for (const fileName of CANDIDATE_ENV_FILES) {
+    const filePath = join(baseDir, fileName);
+    try {
+      const file = Bun.file(filePath);
+      if (await file.exists()) {
+        const text = await file.text();
+        for (const line of text.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) {
+            continue;
+          }
+          const eqIndex = trimmed.indexOf("=");
+          if (eqIndex === -1) {
+            continue;
+          }
+          const key = trimmed.slice(0, eqIndex).trim();
+          if (key === TYPESAFE_ENV_KEY) {
+            const val = trimmed.slice(eqIndex + 1).trim();
+            const unquoted = val.replace(/^["']|["']$/g, "").trim();
+            if (unquoted) {
+              return unquoted;
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore filesystem read errors and check next candidate file.
+    }
+  }
+
+  return null;
+}
+
+/** Build the structured Jev systemone request body from candidates. */
+export function buildJevRequest(
+  prompt: string,
+  candidates: readonly RouteCandidate[],
+  model = TYPESAFE_DEFAULT_MODEL,
+): JevRequestBody {
+  const criteria: Record<string, string> = {};
+
+  for (const candidate of candidates) {
+    const key = formatCandidateKey(candidate);
+    const parts: string[] = [];
+
+    if (candidate.label) {
+      parts.push(candidate.label);
+    }
+    if (candidate.strengths.length > 0) {
+      parts.push(`strengths: ${candidate.strengths.join(", ")}`);
+    }
+    if (candidate.isDefault) {
+      parts.push("default agent");
+    }
+
+    criteria[key] = parts.length > 0 ? parts.join("; ") : candidate.agent;
+  }
+
+  return {
+    state: prompt,
+    model,
+    questions: {
+      decision: {
+        type: "choice",
+        instructions:
+          "Select the single most suitable coding agent or model for this coding task.",
+        criteria,
+      },
+    },
+  };
+}
+
+/**
+ * Routes a request using the TypeSafe Jev System One model.
+ * Never falls back to local heuristic routing: raises JevError on failure.
+ */
+export async function routeWithJev(
+  request: RouteRequest,
+  candidates: readonly RouteCandidate[],
+  options: JevClientOptions = {},
+): Promise<JevDecision> {
+  if (candidates.length === 0) {
+    throw new JevError("no route candidates available for Jev decision", {
+      code: "NO_CANDIDATES",
+    });
+  }
+
+  const apiKey = await resolveTypesafeApiKey({
+    explicitKey: options.apiKey,
+    cwd: options.cwd,
+  });
+
+  if (!apiKey) {
+    throw new JevError(
+      "TYPESAFE_API_KEY is not configured (check env.locaj or set TYPESAFE_API_KEY)",
+      { code: "NO_KEY" },
+    );
+  }
+
+  const endpoint = options.endpoint ?? TYPESAFE_DEFAULT_ENDPOINT;
+  const model = options.model ?? TYPESAFE_DEFAULT_MODEL;
+  const timeoutMs = options.timeoutMs ?? 5000;
+  const fetcher = options.fetchFn ?? fetch;
+
+  const payload = buildJevRequest(request.prompt, candidates, model);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetcher(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new JevError(`Jev request timed out after ${timeoutMs}ms`, {
+        code: "TIMEOUT",
+        cause: error,
+      });
+    }
+    throw new JevError(
+      `failed to connect to TypeSafe API: ${error instanceof Error ? error.message : String(error)}`,
+      { code: "HTTP_ERROR", cause: error },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new JevError(
+      `TypeSafe API returned HTTP ${response.status}: ${errorText || response.statusText}`,
+      { code: "HTTP_ERROR", status: response.status },
+    );
+  }
+
+  let body: JevResponseBody;
+  try {
+    body = (await response.json()) as JevResponseBody;
+  } catch (error) {
+    throw new JevError("failed to parse Jev API response as JSON", {
+      code: "INVALID_RESPONSE",
+      cause: error,
+    });
+  }
+
+  const answer = body.answers?.decision;
+  if (!answer || !answer.choice) {
+    throw new JevError("Jev API response missing 'decision' answer", {
+      code: "NO_CHOICE",
+    });
+  }
+
+  const chosenKey = answer.choice;
+  const candidate =
+    candidates.find((item) => formatCandidateKey(item) === chosenKey) ??
+    candidates.find((item) => item.agent === chosenKey.split(":")[0]) ??
+    candidates[0]!;
+
+  return {
+    agent: candidate.agent,
+    model: candidate.model,
+    candidate,
+    confidence: answer.confidence ?? 0,
+    probabilities: answer.probabilities ?? {},
+    rawChoice: chosenKey,
+    modelName: body.model || model,
+    usage: body.usage
+      ? {
+          inputTokens: body.usage.input_tokens,
+          outputTokens: body.usage.output_tokens,
+        }
+      : undefined,
+  };
+}
+
+/** Convert a JevDecision to the project's standard RouteDecision. */
+export function jevDecisionToRouteDecision(
+  decision: JevDecision,
+): RouteDecision {
+  const percent = Math.round(decision.confidence * 100);
+  return {
+    agent: decision.agent,
+    model: decision.model,
+    candidate: decision.candidate,
+    strategy: "jev",
+    score: decision.confidence,
+    ruleMatches: [],
+    reasons: [
+      `Jev model decision: ${decision.rawChoice} (${percent}% confidence, model: ${decision.modelName})`,
+    ],
+  };
+}

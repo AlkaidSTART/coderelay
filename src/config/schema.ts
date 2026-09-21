@@ -96,8 +96,14 @@ export const RoutingWeightsSchema = z.object({
   context: z.number().default(1),
 });
 
+export const ROUTING_MODES = ["local", "manual", "jev"] as const;
+export type RoutingMode = (typeof ROUTING_MODES)[number];
+
 export const RoutingConfigSchema = z.object({
+  mode: z.enum(ROUTING_MODES).default("local"),
   strategy: z.enum(["rules", "score", "hybrid"]).default("hybrid"),
+  typesafeApiKey: z.string().optional(),
+  typesafeEndpoint: z.string().optional(),
   rules: z.array(RouteRuleSchema).default([]),
   weights: RoutingWeightsSchema.default({
     strength: 1,
@@ -117,6 +123,7 @@ export const ConfigSchema = z.object({
   defaultModel: z.string().optional(),
   agents: z.record(z.string(), AgentConfigSchema).default({}),
   routing: RoutingConfigSchema.default({
+    mode: "local",
     strategy: "hybrid",
     rules: [],
     weights: {

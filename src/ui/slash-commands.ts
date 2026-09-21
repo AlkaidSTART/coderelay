@@ -4,6 +4,7 @@ export interface SlashCommand {
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
+  { name: "/mode", description: "切换决策模式 (local / manual / jev)" },
   { name: "/model", description: "切换 agent，会话上下文保留" },
   { name: "/activate", description: "启用或禁用 CLI，保存到配置" },
   { name: "/new", description: "开始新会话，清空上下文" },
@@ -22,7 +23,12 @@ export function matchSlashCommands(
   if (!trimmed.startsWith("/")) {
     return [];
   }
-  return SLASH_COMMANDS.filter((command) => command.name.startsWith(trimmed));
+  const cmd = trimmed.split(/\s+/)[0] ?? "";
+  const exact = SLASH_COMMANDS.find((command) => command.name === cmd);
+  if (exact) {
+    return [exact];
+  }
+  return SLASH_COMMANDS.filter((command) => command.name.startsWith(cmd));
 }
 
 /** 精确匹配一条命令；找不到返回 undefined。 */
@@ -30,5 +36,6 @@ export function findSlashCommand(
   input: string,
 ): SlashCommand | undefined {
   const trimmed = input.trim();
-  return SLASH_COMMANDS.find((command) => command.name === trimmed);
+  const cmd = trimmed.split(/\s+/)[0] ?? "";
+  return SLASH_COMMANDS.find((command) => command.name === cmd);
 }
