@@ -100,4 +100,60 @@ describe("App Mode & Jev Integration", () => {
     expect(frame).toContain("[决策: JEV]");
     instance.cleanup();
   });
+
+  test("handles /favorite command to set and query favorite agent", async () => {
+    let favorite: string | undefined;
+    let cleared = false;
+    const instance = render(
+      <App
+        clis={CLIS}
+        initialId="codex"
+        favoriteAgent="codex"
+        onLaunch={() => {}}
+        onExit={() => {}}
+        onSetFavoriteAgent={(agent) => {
+          favorite = agent;
+        }}
+        onClearFavoriteAgent={() => {
+          cleared = true;
+        }}
+      />,
+    );
+
+    // Enter picker, then enter chat
+    instance.stdin.write("\r");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    // Query current favorite
+    instance.stdin.write("/favorite");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    let frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("当前最喜欢的初始化 agent 是: Codex (codex)");
+
+    // Set favorite to claude
+    instance.stdin.write("/favorite claude");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(favorite).toBe("claude");
+    frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("已将 Claude Code (claude) 设为最喜欢的初始化 agent");
+
+    // Clear favorite
+    instance.stdin.write("/favorite clear");
+    await nextTick();
+    instance.stdin.write("\r");
+    await nextTick();
+
+    expect(cleared).toBe(true);
+    frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("已清除最喜欢的初始化 agent 偏好设置");
+    instance.cleanup();
+  });
 });
