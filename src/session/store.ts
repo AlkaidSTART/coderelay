@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { Database } from "bun:sqlite";
 
 import { configDirFor } from "../config/loader";
-import type { CliId } from "../models/cli";
+import { CLI_IDS, type CliId } from "../models/cli";
 import type {
   SessionRecord,
   SessionTurn,
@@ -35,6 +35,12 @@ export interface SessionStore {
   listTurns(sessionId: string): readonly SessionTurn[];
   appendTurn(input: AppendTurnInput): SessionTurn;
   pruneSessions(keep: number): number;
+  getPreference(key: string): string | null;
+  setPreference(key: string, value: string): void;
+  deletePreference(key: string): void;
+  getFavoriteAgent(): CliId | null;
+  setFavoriteAgent(cliId: CliId): void;
+  clearFavoriteAgent(): void;
   close(): void;
 }
 
@@ -89,6 +95,11 @@ CREATE TABLE IF NOT EXISTS turns (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, id);
+CREATE TABLE IF NOT EXISTS preferences (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 export const SESSION_RETENTION = 20;
@@ -225,6 +236,17 @@ export function createSessionStore(dbPath: string): SessionStore {
     return deleteOldSessions.run(keep).changes;
   });
 
+  const selectPreference = db.query<{ value: string }, [string]>(
+    "SELECT value FROM preferences WHERE key = ?",
+  );
+  const upsertPreference = db.query<unknown, [string, string, number]>(
+    `INSERT INTO preferences (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  );
+  const deletePreference = db.query<unknown, [string]>(
+    "DELETE FROM preferences WHERE key = ?",
+  );
+
   return {
     createSession(cliId, title) {
       const now = Date.now();
@@ -280,6 +302,35 @@ export function createSessionStore(dbPath: string): SessionStore {
         db.exec("VACUUM;");
       }
       return removed;
+    },
+
+    getPreference(key) {
+      const row = selectPreference.get(key);
+      return row ? row.value : null;
+    },
+
+    setPreference(key, value) {
+      upsertPreference.run(key, value, Date.now());
+    },
+
+    deletePreference(key) {
+      deletePreference.run(key);
+    },
+
+    getFavoriteAgent() {
+      const val = this.getPreference("favorite_agent");
+      if (val && (CLI_IDS as readonly string[]).includes(val)) {
+        return val as CliId;
+      }
+      return null;
+    },
+
+    setFavoriteAgent(cliId) {
+      this.setPreference("favorite_agent", cliId);
+    },
+
+    clearFavoriteAgent() {
+      this.deletePreference("favorite_agent");
     },
 
     close() {

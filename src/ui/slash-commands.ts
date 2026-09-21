@@ -5,6 +5,7 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "/mode", description: "切换决策模式 (local / manual / jev)" },
+  { name: "/favorite", description: "设置最喜欢的初始化 agent (持久化到 SQLite)" },
   { name: "/model", description: "切换 agent，会话上下文保留" },
   { name: "/activate", description: "启用或禁用 CLI，保存到配置" },
   { name: "/new", description: "开始新会话，清空上下文" },

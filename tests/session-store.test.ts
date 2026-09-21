@@ -133,4 +133,27 @@ describe("session store", () => {
     expect(store.getSession(newer.id)).toBeNull();
     store.close();
   });
+
+  test("persists preferences and favorite agent across store instances", () => {
+    const path = tempDbPath();
+    const first = createSessionStore(path);
+
+    expect(first.getFavoriteAgent()).toBeNull();
+    first.setFavoriteAgent("claude");
+    expect(first.getFavoriteAgent()).toBe("claude");
+    expect(first.getPreference("favorite_agent")).toBe("claude");
+    first.close();
+
+    const second = createSessionStore(path);
+    expect(second.getFavoriteAgent()).toBe("claude");
+
+    // update preference
+    second.setFavoriteAgent("codex");
+    expect(second.getFavoriteAgent()).toBe("codex");
+
+    // clear preference
+    second.clearFavoriteAgent();
+    expect(second.getFavoriteAgent()).toBeNull();
+    second.close();
+  });
 });

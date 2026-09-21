@@ -139,6 +139,16 @@ function tree() {
         currentRoutingMode = mode;
         rerender();
       }}
+      favoriteAgent={getStore().getFavoriteAgent()}
+      onSetFavoriteAgent={(agentId) => {
+        getStore().setFavoriteAgent(agentId);
+        initialId = agentId;
+        rerender();
+      }}
+      onClearFavoriteAgent={() => {
+        getStore().clearFavoriteAgent();
+        rerender();
+      }}
       onExit={() => {
         store?.close();
         app?.unmount();
@@ -828,6 +838,15 @@ async function launch(request: LaunchRequest): Promise<void> {
   }
 
   await runPromptFlow(request.prompt);
+}
+
+try {
+  const favorite = getStore().getFavoriteAgent();
+  if (favorite) {
+    initialId = favorite;
+  }
+} catch {
+  // SQLite 读取异常不阻断启动
 }
 
 mount();

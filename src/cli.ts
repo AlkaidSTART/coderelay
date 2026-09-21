@@ -8,6 +8,7 @@ import {
 
 import { runAgentsCommand } from "./commands/agents";
 import { runDoctorCommand } from "./commands/doctor";
+import { runFavoriteCommand } from "./commands/favorite";
 import { runModelsCommand } from "./commands/models";
 import { runRunCommand } from "./commands/run";
 import type { RoutingMode } from "./config/schema";
@@ -173,6 +174,20 @@ export function createProgram(): Command {
           cwd: options.cwd,
           configPath: options.config,
         }),
+      );
+    });
+
+  program
+    .command("favorite")
+    .alias("fav")
+    .description("Set or show favorite initial agent stored in SQLite.")
+    .argument("[agent]", "agent id (codex, claude, pi, omp)")
+    .option("-C, --cwd <path>", "directory containing session database")
+    .action(async (agent: string | undefined, options: CommandCliOptions) => {
+      await applyExitCode(() =>
+        runFavoriteCommand(
+          { agent, cwd: options.cwd },
+        ),
       );
     });
 

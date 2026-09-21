@@ -3,8 +3,9 @@ import { Box, Text, useInput, useWindowSize } from "ink";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 
-import type { CliId, DetectedCli } from "../models/cli";
+import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
 import { cliDiagnostics } from "../models/cli";
+import { isAgentId } from "../agents/registry";
 import {
   installHintLines,
   installPlatformFor,
@@ -101,6 +102,10 @@ export interface AppProps {
   /** 当前决策模式：local / manual / jev。 */
   readonly routingMode?: RoutingMode;
   readonly onModeChange?: (mode: RoutingMode) => void;
+  /** 最喜欢的初始化 agent（来自 SQLite）。 */
+  readonly favoriteAgent?: CliId | null;
+  readonly onSetFavoriteAgent?: (agentId: CliId) => void;
+  readonly onClearFavoriteAgent?: () => void;
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -232,6 +237,9 @@ export function App({
   onRequestActivationManager,
   routingMode = "local",
   onModeChange,
+  favoriteAgent,
+  onSetFavoriteAgent,
+  onClearFavoriteAgent,
 }: AppProps) {
   const [activeMode, setActiveMode] = useState<RoutingMode>(routingMode);
 
@@ -696,6 +704,34 @@ export function App({
             jev: "Jev 模型决策 (TypeSafe Jev System One 第三方决策层)",
           };
           setNotice(`✓ 决策模式已切换为：${modeLabels[nextMode]}`);
+        } else if (command?.name === "/favorite") {
+          const parts = normalized.split(/\s+/);
+          const arg = parts[1]?.toLowerCase();
+          if (!arg) {
+            if (favoriteAgent) {
+              setNotice(
+                `当前最喜欢的初始化 agent 是: ${cliDisplayName(favoriteAgent)} (${favoriteAgent}) · 输入 /favorite <codex|claude|pi|omp> 进行修改`,
+              );
+            } else {
+              setNotice(
+                "尚未设置最喜欢的初始化 agent · 输入 /favorite <codex|claude|pi|omp> 进行设置",
+              );
+            }
+            return;
+          }
+          if (arg === "clear" || arg === "none") {
+            onClearFavoriteAgent?.();
+            setNotice("✓ 已清除最喜欢的初始化 agent 偏好设置");
+            return;
+          }
+          if (isAgentId(arg)) {
+            onSetFavoriteAgent?.(arg);
+            setNotice(
+              `✓ 已将 ${cliDisplayName(arg)} (${arg}) 设为最喜欢的初始化 agent (已保存至 SQLite)`,
+            );
+          } else {
+            setNotice(`未知 agent: "${arg}"，可选: ${CLI_IDS.join(", ")}`);
+          }
         } else if (command?.name === "/model") {
           if (onRequestModelSelector) {
             setModelPickStep("cli");
