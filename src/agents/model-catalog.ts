@@ -11,8 +11,11 @@ import {
   type DetectedCli,
 } from "../models/cli";
 import type { CliCapabilities, ProbeResult } from "./capabilities";
-import type { ModelStrength } from "../models/types";
-import { parseModelRef } from "../models/types";
+import {
+  MODEL_STRENGTHS,
+  parseModelRef,
+  type ModelStrength,
+} from "../models/types";
 import type { RouteCandidate } from "../router/types";
 import { toModelCost } from "../router/scorer";
 
@@ -58,14 +61,7 @@ function detectedFor(
 }
 
 function isStrength(value: unknown): value is ModelStrength {
-  return (
-    value === "code" ||
-    value === "reasoning" ||
-    value === "vision" ||
-    value === "long-context" ||
-    value === "fast" ||
-    value === "cheap"
-  );
+  return (MODEL_STRENGTHS as readonly unknown[]).includes(value);
 }
 
 function configStrengths(

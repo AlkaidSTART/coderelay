@@ -9,6 +9,7 @@ import {
   type ModelOption,
 } from "../src/agents/model-catalog";
 import { CLI_IDS, type CliAdapter, type CliId, type DetectedCli } from "../src/models/cli";
+import { MODEL_STRENGTHS, type ModelStrength } from "../src/models/types";
 
 const CAPS: CliCapabilities = {
   structuredEvents: true,
@@ -107,6 +108,43 @@ describe("probeModelCatalog", () => {
     expect(catalog.options.map((o) => o.modelId)).toEqual(["gpt-5-mini", "gpt-5"]);
     expect(catalog.options.find((o) => o.modelId === "gpt-5-mini")?.label).toBe("Mini!");
     expect(catalog.options.find((o) => o.modelId === "gpt-5-mini")?.cost).toBe(1);
+  });
+
+  test("config strengths preserves all valid MODEL_STRENGTHS and filters invalid entries", async () => {
+    const config = defaultConfig();
+    config.agents["codex"] = {
+      enabled: true,
+      activationDecided: true,
+      models: [
+        {
+          id: "gpt-5",
+          label: "GPT-5",
+          strengths: [
+            ...MODEL_STRENGTHS,
+            // @ts-expect-error invalid strength injected for boundary testing
+            "invalid-strength",
+            // @ts-expect-error legacy typo injected for boundary testing
+            "code",
+          ],
+          cost: 3,
+        },
+      ],
+      extraArgs: [],
+      env: {},
+    };
+    const adapters = fakeAdapters({
+      codex: { ok: true, models: [{ id: "gpt-5" }], capabilities: CAPS },
+      claude: { ok: false, reason: "x" },
+      pi: { ok: false, reason: "x" },
+      omp: { ok: false, reason: "x" },
+    });
+    const catalog = await probeModelCatalog(DETECTED, adapters, config);
+    const option = catalog.options.find((o) => o.modelId === "gpt-5");
+    expect(option?.strengths).toEqual([...MODEL_STRENGTHS]);
+
+    const candidates = toRouteCandidates(catalog, config);
+    const candidate = candidates.find((c) => c.model === "gpt-5");
+    expect(candidate?.strengths).toEqual([...MODEL_STRENGTHS]);
   });
 
   test("validateExplicitTarget rejects unprobed and unknown models with reasons", async () => {
