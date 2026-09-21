@@ -69,9 +69,10 @@ describe("buildJevRequest", () => {
     const req = buildJevRequest("Fix bug in backend", candidates);
     expect(req.state).toBe("Fix bug in backend");
     expect(req.model).toBe("jev-latest");
-    expect(req.questions.decision?.type).toBe("choice");
+    const question = req.questions["decision"];
+    expect(question?.type).toBe("choice");
 
-    const criteria = req.questions.decision.criteria;
+    const criteria = question!.criteria;
     expect(criteria["claude"]).toContain("Claude Code");
     expect(criteria["claude"]).toContain("strengths: reasoning, coding");
     expect(criteria["claude"]).toContain("default agent");
@@ -119,7 +120,7 @@ describe("routeWithJev", () => {
   });
 
   test("routes successfully with mocked fetch", async () => {
-    const mockFetch: typeof fetch = async (url, init) => {
+    const mockFetch = async (url: string | URL | Request, init?: RequestInit) => {
       expect(url).toBe(TYPESAFE_DEFAULT_ENDPOINT);
       expect(init?.method).toBe("POST");
       const headers = init?.headers as Record<string, string>;
@@ -166,7 +167,7 @@ describe("routeWithJev", () => {
   });
 
   test("handles HTTP 401 Unauthorized from API", async () => {
-    const mockFetch: typeof fetch = async () =>
+    const mockFetch = async () =>
       new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -215,7 +216,7 @@ describe("real TypeSafe API integration", () => {
       {
         agent: "claude",
         label: "Claude Code",
-        strengths: ["reasoning", "architecture"],
+        strengths: ["reasoning", "coding"],
         isDefault: true,
       },
       {

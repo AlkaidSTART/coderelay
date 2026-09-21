@@ -78,7 +78,10 @@ export interface JevClientOptions {
   readonly endpoint?: string;
   readonly model?: string;
   readonly timeoutMs?: number;
-  readonly fetchFn?: typeof fetch;
+  readonly fetchFn?: (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>;
   readonly cwd?: string;
 }
 

@@ -18,7 +18,7 @@ import {
   toActivationOptions,
   type ActivationOption,
 } from "./config/activation";
-import { defaultConfig, type Config } from "./config/schema";
+import { defaultConfig, type Config, type RoutingMode } from "./config/schema";
 import { loadConfig, saveActivationDecisions } from "./config/loader";
 import { CLI_IDS, cliLaunchTarget, type CliId, type DetectedCli, type LaunchTarget } from "./models/cli";
 import {
@@ -26,6 +26,7 @@ import {
   type AgentEvent,
 } from "./models/agent-events";
 import type { SessionTurn, TurnContextSource } from "./models/session";
+import { routeWithJev } from "./router/jev";
 import { route } from "./router/router";
 import { compareScores, scoreCandidates } from "./router/scorer";
 import { runAgentStream } from "./runtime/agent-run";
@@ -74,6 +75,7 @@ let manualTarget: { readonly cliId: CliId; readonly modelId?: string } | null = 
 let activeAbort: AbortController | null = null;
 let flowSeq = 0;
 let nativeSessionIds: Partial<Record<CliId, string>> = {};
+let currentRoutingMode: RoutingMode = "local";
 
 function getStore(): SessionStore {
   if (!store) {
@@ -132,6 +134,11 @@ function tree() {
         void handleSelectModel(option);
       }}
       onCancelSelecting={handleCancelSelecting}
+      routingMode={currentRoutingMode}
+      onModeChange={(mode) => {
+        currentRoutingMode = mode;
+        rerender();
+      }}
       onExit={() => {
         store?.close();
         app?.unmount();
@@ -373,6 +380,53 @@ async function runPromptFlow(prompt: string): Promise<void> {
     failTerminal(`没有可用的已探测模型（${reasons}）`, flow);
     return;
   }
+
+  // 模式 1：手动选择 (manual) - 每次直接展示选择器供用户自行挑选
+  if (currentRoutingMode === "manual") {
+    pendingPrompt = text;
+    pendingCatalog = catalog;
+    pendingConfig = config;
+    phase = "selecting";
+    probes = [...catalog.probes];
+    modelOptions = [...catalog.options];
+    rerender();
+    return;
+  }
+
+  // 模式 2：Jev 模型决策 (jev) - 调用 TypeSafe Jev 模型决策，不走自动推断
+  if (currentRoutingMode === "jev") {
+    try {
+      const jevResult = await routeWithJev(
+        { prompt: text },
+        candidates,
+        {
+          apiKey: config.routing.typesafeApiKey,
+          endpoint: config.routing.typesafeEndpoint,
+        },
+      );
+      if (!isAgentId(jevResult.agent)) {
+        throw new Error(`Jev 选择了不支持的 agent: ${jevResult.agent}`);
+      }
+      await startExecution(jevResult.agent, jevResult.model, text, catalog, config, flow);
+      return;
+    } catch (error) {
+      // Jev 决策失败或无 key，绝不走自动推断，转入让用户手动选择
+      pendingPrompt = text;
+      pendingCatalog = catalog;
+      pendingConfig = config;
+      phase = "selecting";
+      probes = [...catalog.probes];
+      modelOptions = [...catalog.options];
+      lastResult = {
+        phase: "failed",
+        message: `Jev 决策未完成 (${error instanceof Error ? error.message : String(error)})，请手动选择目标`,
+      };
+      rerender();
+      return;
+    }
+  }
+
+  // 模式 3：本地推断 (local)
   let decision: { agent: string; model?: string };
   try {
     decision = route({ prompt: text }, config, { candidates });
@@ -785,6 +839,7 @@ void scanCodingClis()
     // 只有「已安装且用户还没决策过」的 CLI 才需要问一次；否则直接进模式页。
     try {
       const config = await loadAppConfig();
+      currentRoutingMode = config.routing.mode;
       enterActivationConfirm(detected, config);
     } catch {
       phase = "idle";

@@ -6,10 +6,11 @@ import {
 } from "../agents/model-catalog";
 import { isAgentId } from "../agents/registry";
 import { loadConfig } from "../config/loader";
-import type { Config } from "../config/schema";
+import type { Config, RoutingMode } from "../config/schema";
 import { CLI_IDS, cliLaunchTarget, type CliId, type DetectedCli, type LaunchTarget } from "../models/cli";
 import type { AgentEvent } from "../models/agent-events";
 import type { ModelStrength } from "../models/types";
+import { jevDecisionToRouteDecision, routeWithJev } from "../router/jev";
 import { route } from "../router/router";
 import type { RouteDecision } from "../router/types";
 import { runAgentStream, type AgentRunHandle } from "../runtime/agent-run";
@@ -22,6 +23,7 @@ export interface RunCommandOptions {
   readonly cwd?: string;
   readonly configPath?: string;
   readonly config?: Config;
+  readonly mode?: RoutingMode;
   /** Explicit agent selection; skips routing when set. */
   readonly agent?: string;
   /** Explicit model or `agent:model` reference; skips routing when set. */
@@ -152,6 +154,8 @@ export async function runRunCommand(
     let agent: CliId;
     let model: string | undefined;
     let decision: RouteDecision | undefined;
+    const routingMode = options.mode ?? config.routing.mode;
+
     if (options.agent || options.model) {
       const explicit = validateExplicitTarget(
         catalog,
@@ -161,6 +165,35 @@ export async function runRunCommand(
       );
       agent = explicit.cliId;
       model = explicit.modelId;
+    } else if (routingMode === "jev") {
+      const candidates = toRouteCandidates(catalog, config);
+      if (candidates.length === 0) {
+        const reasons = catalog.probes
+          .map((probe) => `${probe.cliId}: ${probe.reason ?? probe.status}`)
+          .join("; ");
+        throw new Error(`没有可用的已探测模型（${reasons}）`);
+      }
+      const jevResult = await routeWithJev(
+        {
+          prompt: options.prompt,
+          files: options.files,
+          language: options.language,
+          contextSize: options.contextSize,
+          requiredStrengths: options.requiredStrengths,
+        },
+        candidates,
+        {
+          apiKey: config.routing.typesafeApiKey,
+          endpoint: config.routing.typesafeEndpoint,
+          cwd: options.cwd,
+        },
+      );
+      if (!isAgentId(jevResult.agent)) {
+        throw new Error(`Jev routing selected unsupported agent: ${jevResult.agent}`);
+      }
+      agent = jevResult.agent;
+      model = jevResult.model;
+      decision = jevDecisionToRouteDecision(jevResult);
     } else {
       const candidates = toRouteCandidates(catalog, config);
       if (candidates.length === 0) {

@@ -123,6 +123,7 @@ export const ConfigSchema = z.object({
   defaultModel: z.string().optional(),
   agents: z.record(z.string(), AgentConfigSchema).default({}),
   routing: RoutingConfigSchema.default({
+    mode: "local",
     strategy: "hybrid",
     rules: [],
     weights: {
