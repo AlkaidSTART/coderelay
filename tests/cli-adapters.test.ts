@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -40,5 +44,96 @@ describe("CLI adapters", () => {
     expect(adapters.claude.promptArgs("hello")).toEqual(["-p", "hello"]);
     expect(adapters.pi.promptArgs("hello")).toEqual(["-p", "hello"]);
     expect(adapters.omp.promptArgs("hello")).toEqual(["-p", "hello"]);
+  });
+});
+
+describe("Codex model probing", () => {
+  test("probes models from native models_cache.json and marks default from config.toml", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-codex-test-"));
+    try {
+      const codexDir = join(tempDir, ".codex");
+      await mkdir(codexDir, { recursive: true });
+
+      const modelsCache = {
+        models: [
+          { slug: "gpt-5.6-sol", display_name: "GPT 5.6" },
+          { slug: "gpt-5.5", display_name: "GPT 5.5" },
+        ],
+      };
+      await writeFile(join(codexDir, "models_cache.json"), JSON.stringify(modelsCache));
+      await writeFile(join(codexDir, "config.toml"), 'model = "gpt-5.6-sol"\n');
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.codex.probeModels?.();
+
+      expect(result?.ok).toBe(true);
+      if (result?.ok) {
+        expect(result.models.length).toBe(2);
+        expect(result.models[0]?.id).toBe("gpt-5.6-sol");
+        expect(result.models[0]?.isDefault).toBe(true);
+        expect(result.models[1]?.id).toBe("gpt-5.5");
+        expect(result.models[1]?.isDefault).toBe(false);
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("probes models from custom model_catalog_json specified in config.toml", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-codex-test-"));
+    try {
+      const codexDir = join(tempDir, ".codex");
+      await mkdir(codexDir, { recursive: true });
+
+      const customCatalog = {
+        models: [{ slug: "custom-model", display_name: "Custom Model" }],
+      };
+      await writeFile(join(codexDir, "my-catalog.json"), JSON.stringify(customCatalog));
+      await writeFile(join(codexDir, "config.toml"), 'model_catalog_json = "my-catalog.json"\n');
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.codex.probeModels?.();
+
+      expect(result?.ok).toBe(true);
+      if (result?.ok) {
+        expect(result.models[0]?.id).toBe("custom-model");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to model in config.toml when no catalog file exists", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-codex-test-"));
+    try {
+      const codexDir = join(tempDir, ".codex");
+      await mkdir(codexDir, { recursive: true });
+      await writeFile(join(codexDir, "config.toml"), 'model = "o3-mini"\n');
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.codex.probeModels?.();
+
+      expect(result?.ok).toBe(true);
+      if (result?.ok) {
+        expect(result.models).toEqual([{ id: "o3-mini", isDefault: true }]);
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns error when neither catalog nor model in config.toml is found", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-codex-test-"));
+    try {
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.codex.probeModels?.();
+
+      expect(result?.ok).toBe(false);
+      if (result && !result.ok) {
+        expect(result.reason).toContain("models_cache.json");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

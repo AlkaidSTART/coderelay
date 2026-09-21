@@ -44,6 +44,11 @@ function modelFromToml(text: string): string | undefined {
   return match?.[1];
 }
 
+function modelCatalogFromToml(text: string): string | undefined {
+  const match = text.match(/^\s*model_catalog_json\s*=\s*"([^"]+)"/m);
+  return match?.[1];
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, reason: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -58,12 +63,65 @@ function withTimeout<T>(promise: Promise<T>, ms: number, reason: string): Promis
 async function probeCodexModels(configDir: string): Promise<ProbeResult> {
   try {
     const run = async (): Promise<ProbeResult> => {
-      const catalogFile = path.join(configDir, "cc-switch-model-catalog.json");
       const configFile = path.join(configDir, "config.toml");
-      const catalogRaw = await readJsonFile(catalogFile);
-      if (!isRecord(catalogRaw) || !Array.isArray(catalogRaw["models"])) {
-        return { ok: false, reason: `codex 模型目录格式非法：${catalogFile}` };
+      let defaultId: string | undefined;
+      let configuredCatalog: string | undefined;
+      try {
+        const toml = await readFile(configFile, "utf8");
+        defaultId = modelFromToml(toml);
+        configuredCatalog = modelCatalogFromToml(toml);
+      } catch {
+        defaultId = undefined;
+        configuredCatalog = undefined;
       }
+
+      const candidateFiles: string[] = [];
+      if (configuredCatalog) {
+        candidateFiles.push(
+          path.isAbsolute(configuredCatalog)
+            ? configuredCatalog
+            : path.join(configDir, configuredCatalog),
+        );
+      }
+      candidateFiles.push(path.join(configDir, "models_cache.json"));
+      candidateFiles.push(path.join(configDir, "cc-switch-model-catalog.json"));
+
+      let catalogRaw: unknown;
+      let usedCatalogFile: string | undefined;
+      for (const file of candidateFiles) {
+        try {
+          catalogRaw = await readJsonFile(file);
+          usedCatalogFile = file;
+          break;
+        } catch {
+          // File does not exist or unreadable, try next candidate.
+        }
+      }
+
+      if (!usedCatalogFile || catalogRaw === undefined) {
+        if (defaultId) {
+          return {
+            ok: true,
+            models: [{ id: defaultId, isDefault: true }],
+            capabilities: {
+              structuredEvents: false,
+              nativeResume: true,
+              nonInteractivePrompt: true,
+              explicitModel: true,
+              toolEvents: false,
+            },
+          };
+        }
+        return {
+          ok: false,
+          reason: `codex 模型配置缺失：未找到 models_cache.json`,
+        };
+      }
+
+      if (!isRecord(catalogRaw) || !Array.isArray(catalogRaw["models"])) {
+        return { ok: false, reason: `codex 模型目录格式非法：${usedCatalogFile}` };
+      }
+
       const rawModels: unknown[] = [];
       for (const entry of catalogRaw["models"] as unknown[]) {
         if (!isRecord(entry)) continue;
@@ -75,21 +133,34 @@ async function probeCodexModels(configDir: string): Promise<ProbeResult> {
           description: typeof entry["description"] === "string" ? (entry["description"] as string) : undefined,
         });
       }
+
       const models = validateProbedModels(rawModels);
       if (!models || models.length === 0) {
-        return { ok: false, reason: `codex 模型目录为空：${catalogFile}` };
+        if (defaultId) {
+          return {
+            ok: true,
+            models: [{ id: defaultId, isDefault: true }],
+            capabilities: {
+              structuredEvents: false,
+              nativeResume: true,
+              nonInteractivePrompt: true,
+              explicitModel: true,
+              toolEvents: false,
+            },
+          };
+        }
+        return { ok: false, reason: `codex 模型目录为空：${usedCatalogFile}` };
       }
-      let defaultId: string | undefined;
-      try {
-        const toml = await readFile(configFile, "utf8");
-        defaultId = modelFromToml(toml);
-      } catch {
-        defaultId = undefined;
-      }
+
       const marked: ProbedModel[] = models.map((model) => ({
         ...model,
         isDefault: defaultId ? model.id === defaultId : undefined,
       }));
+
+      if (defaultId && !marked.some((m) => m.id === defaultId)) {
+        marked.unshift({ id: defaultId, isDefault: true });
+      }
+
       return {
         ok: true,
         models: marked,
