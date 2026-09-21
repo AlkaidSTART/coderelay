@@ -3,8 +3,9 @@ import { Box, Text, useInput, useWindowSize } from "ink";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 
-import type { CliId, DetectedCli } from "../models/cli";
+import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
 import { cliDiagnostics } from "../models/cli";
+import { isAgentId } from "../agents/registry";
 import {
   installHintLines,
   installPlatformFor,
@@ -101,6 +102,10 @@ export interface AppProps {
   /** 当前决策模式：local / manual / jev。 */
   readonly routingMode?: RoutingMode;
   readonly onModeChange?: (mode: RoutingMode) => void;
+  /** 最喜欢的初始化 agent（来自 SQLite）。 */
+  readonly favoriteAgent?: CliId | null;
+  readonly onSetFavoriteAgent?: (agentId: CliId) => void;
+  readonly onClearFavoriteAgent?: () => void;
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -232,6 +237,9 @@ export function App({
   onRequestActivationManager,
   routingMode = "local",
   onModeChange,
+  favoriteAgent,
+  onSetFavoriteAgent,
+  onClearFavoriteAgent,
 }: AppProps) {
   const [activeMode, setActiveMode] = useState<RoutingMode>(routingMode);
 
