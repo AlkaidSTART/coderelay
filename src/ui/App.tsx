@@ -123,19 +123,19 @@ export const MODE_OPTIONS: readonly {
   readonly description: string;
 }[] = [
   {
-    id: "local",
-    label: "本地推断",
-    description: "基于内置规则与打分算法本地判定（0ms 离线）",
-  },
-  {
     id: "manual",
     label: "手动选择",
-    description: "每次任务提交由用户自行选择执行的目标 CLI 与模型",
+    description: "自己挑用哪个 CLI 干活",
+  },
+  {
+    id: "local",
+    label: "自动路由",
+    description: "根据任务并结合本机 CLI 自动选择合适的 CLI",
   },
   {
     id: "jev",
-    label: "Jev 模型决策",
-    description: "调用 TypeSafe Jev System One 模型做智能第三方决策",
+    label: "Jev 决策",
+    description: "调用 TypeSafe Jev 模型做第三方决策，不走自动推断",
   },
 ];
 
@@ -308,10 +308,7 @@ export function App({
   const activationRows = activationDraft ?? activationOptions ?? [];
   const activationActive = effectivePhase === "activating" && activationRows.length > 0;
 
-  const [modeIndex, setModeIndex] = useState(() => {
-    const idx = MODE_OPTIONS.findIndex((item) => item.id === routingMode);
-    return idx >= 0 ? idx : 0;
-  });
+  const [modeIndex, setModeIndex] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   // 备用屏里没有终端滚动条，根节点占满窗口，画面才会像全屏应用而不是命令输出。
@@ -797,7 +794,11 @@ export function App({
         </Box>
         <Box marginTop={1} height={1}>
           <Text color={theme.muted} wrap="truncate-end">
-            {MODE_OPTIONS[modeIndex]?.description}
+            {modeIndex === 1
+              ? autoCli
+                ? "根据任务并结合本机 CLI 自动选择合适的 CLI"
+                : "暂无可用 CLI，先手动看看"
+              : MODE_OPTIONS[modeIndex]?.description}
           </Text>
         </Box>
       </Box>

@@ -24,6 +24,10 @@ export function matchSlashCommands(
     return [];
   }
   const cmd = trimmed.split(/\s+/)[0] ?? "";
+  const exact = SLASH_COMMANDS.find((command) => command.name === cmd);
+  if (exact) {
+    return [exact];
+  }
   return SLASH_COMMANDS.filter((command) => command.name.startsWith(cmd));
 }
 
