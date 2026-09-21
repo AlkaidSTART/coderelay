@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { RouteCandidate } from "../src/router/types";
 import {
@@ -41,10 +44,33 @@ describe("resolveTypesafeApiKey", () => {
     expect(key).toBe("explicit_key_123");
   });
 
-  test("reads key from local env file in workspace", async () => {
-    const key = await resolveTypesafeApiKey({ cwd: process.cwd() });
-    expect(key).toBeDefined();
-    expect(key).toStartWith("apikey_");
+  test("reads key from local env file in directory", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
+    try {
+      await writeFile(
+        join(tmpDir, "env.locaj"),
+        "TYPESAFE_API_KEY=apikey_mock_12345\n",
+      );
+      const key = await resolveTypesafeApiKey({ cwd: tmpDir });
+      expect(key).toBe("apikey_mock_12345");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns null when no key is configured", async () => {
+    const original = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
+    try {
+      const key = await resolveTypesafeApiKey({ cwd: tmpDir });
+      expect(key).toBeNull();
+    } finally {
+      if (original) {
+        process.env.TYPESAFE_API_KEY = original;
+      }
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
