@@ -1,7 +1,11 @@
-import { ThemeProvider as InkThemeProvider } from "@inkjs/ui";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
+
+import { ThemeProvider as InkThemeProvider } from "@inkjs/ui";
+import { Box, Text, useInput, useWindowSize } from "ink";
 
 import { CLI_IDS, type CliId, type DetectedCli } from "../models/cli";
 import { cliDiagnostics } from "../models/cli";
@@ -106,6 +110,9 @@ export interface AppProps {
   readonly favoriteAgent?: CliId | null;
   readonly onSetFavoriteAgent?: (agentId: CliId) => void;
   readonly onClearFavoriteAgent?: () => void;
+  /** 当前工作区路径（默认 process.cwd()）。 */
+  readonly workspace?: string;
+  readonly onWorkspaceChange?: (newCwd: string) => void;
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -240,12 +247,23 @@ export function App({
   favoriteAgent,
   onSetFavoriteAgent,
   onClearFavoriteAgent,
+  workspace,
+  onWorkspaceChange,
 }: AppProps) {
   const [activeMode, setActiveMode] = useState<RoutingMode>(routingMode);
+  const [activeWorkspace, setActiveWorkspace] = useState<string>(() =>
+    workspace ? resolve(workspace) : process.cwd(),
+  );
 
   useEffect(() => {
     setActiveMode(routingMode);
   }, [routingMode]);
+
+  useEffect(() => {
+    if (workspace) {
+      setActiveWorkspace(resolve(workspace));
+    }
+  }, [workspace]);
 
   const [screen, setScreen] = useState<Screen>(() => {
     if (isScanning) {
@@ -732,6 +750,36 @@ export function App({
           } else {
             setNotice(`未知 agent: "${arg}"，可选: ${CLI_IDS.join(", ")}`);
           }
+        } else if (command?.name === "/workspace" || command?.name === "/cd") {
+          const parts = normalized.split(/\s+/);
+          let rawTarget = parts.slice(1).join(" ").trim();
+          if (!rawTarget) {
+            setNotice(`当前工作区：${activeWorkspace}`);
+            return;
+          }
+          if (
+            (rawTarget.startsWith('"') && rawTarget.endsWith('"')) ||
+            (rawTarget.startsWith("'") && rawTarget.endsWith("'"))
+          ) {
+            rawTarget = rawTarget.slice(1, -1);
+          }
+          const expanded = rawTarget.startsWith("~")
+            ? rawTarget.replace(/^~(?=$|\/|\\)/, homedir())
+            : rawTarget;
+          const resolvedPath = resolve(activeWorkspace, expanded);
+          try {
+            const stat = statSync(resolvedPath);
+            if (!stat.isDirectory()) {
+              setNotice(`路径不是目录: ${resolvedPath}`);
+              return;
+            }
+          } catch {
+            setNotice(`目录不存在: ${resolvedPath}`);
+            return;
+          }
+          setActiveWorkspace(resolvedPath);
+          onWorkspaceChange?.(resolvedPath);
+          setNotice(`✓ 工作区已切换为: ${resolvedPath}`);
         } else if (command?.name === "/model") {
           if (onRequestModelSelector) {
             setModelPickStep("cli");

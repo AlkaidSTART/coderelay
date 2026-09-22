@@ -111,7 +111,7 @@ coderelay/
 1. `loadConfig({ cwd, path })` 读配置（缺失则用内置默认值）。
 2. `scan()` 探测本机 CLI 安装状态 → `probeModelCatalog()` 对已安装且启用的 CLI 并行探测模型/能力（事实来源是 CLI 原生配置，失败带 `reason` 且禁止执行）。
 3. 若有 `--agent/--model` → `validateExplicitTarget()` 校验目标确实存在于探测结果（不存在/不可探测直接报可读错误，不静默回退）；否则用 `toRouteCandidates()` 把已探测模型 + 配置元数据交给 `route()`（`rules/score/hybrid` 策略不变）。
-4. 目标 CLI 优先用原生 resume 恢复会话（`buildResumeArgs()`）；不支持时用 `buildPromptWithContext()` 做 transcript 注入；跨 CLI 切换一律 transcript 注入。
+4. 目标 CLI 优先用原生 resume 恢复会话（`buildPromptArgs` 携带 `nativeSessionId`）；不支持时用 `buildPromptWithContext()` 做 transcript 注入；跨 CLI 切换一律 transcript 注入。
 5. `adapter.buildPromptArgs()` 组装 argv → `stderr` 打印 `coderelay: routing to …`。
 6. `runAgentStream({ cmd, protocol, onEvent, signal, timeoutMs })` 启动子进程并消费统一事件流（stdout 实时透出，非零退出/超时/取消分别给出诊断并透出退出码）。
 
@@ -261,7 +261,7 @@ coderelay/
   - `turns(id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at)`，`(session_id, id)` 索引。
   - 启动时按 `updated_at` 保留最近 `SESSION_RETENTION = 20` 个会话，多余连同轮次删除。
 - `context.ts`：`buildPromptWithContext()` 把历史轮次拼成 transcript 注入新 prompt 之前，实现跨 CLI 上下文继承（不依赖各 CLI 原生会话）：单轮输出留尾 1.5k 字符、总预算 8k 字符，超限从最旧轮丢弃。
-- 上下文策略：同 CLI 优先原生 resume（`buildResumeArgs()` 返回非空时）；目标 CLI 不支持原生恢复或发生 CLI 切换时，用 transcript 注入；每轮落盘记录 `modelId / protocol / reusedNative / status / eventSummary / contextSource`，UI 标记“原生会话”或“transcript 上下文”。
+- 上下文策略：同 CLI 优先原生 resume（`buildPromptArgs` 携带 `nativeSessionId`）；目标 CLI 不支持原生恢复或发生 CLI 切换时，用 transcript 注入；每轮落盘记录 `modelId / protocol / reusedNative / status / eventSummary / contextSource`，UI 标记“原生会话”或“transcript 上下文”。
 
 ---
 
