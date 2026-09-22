@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSessionStore } from "../src/session/store";
+import { createSessionStore, defaultSessionDbPath } from "../src/session/store";
 
 function tempDbPath(): string {
   return join(mkdtempSync(join(tmpdir(), "coderelay-sessions-")), "sessions.db");
@@ -155,5 +155,12 @@ describe("session store", () => {
     second.clearFavoriteAgent();
     expect(second.getFavoriteAgent()).toBeNull();
     second.close();
+  });
+
+  test("resolves default session db to global .coderelay directory", () => {
+    expect(defaultSessionDbPath()).toBe(join(homedir(), ".coderelay", "sessions.db"));
+
+    const customHome = "/tmp/mock-home";
+    expect(defaultSessionDbPath(customHome)).toBe(join(customHome, ".coderelay", "sessions.db"));
   });
 });

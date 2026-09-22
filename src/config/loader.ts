@@ -8,8 +8,10 @@
  *   4. coderelay.config.yml
  */
 
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
+
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 
@@ -132,6 +134,11 @@ export async function resolveConfigPath(
 /** Directory that holds the config file (created on demand by `init`). */
 export function configDirFor(cwd = process.cwd()): string {
   return join(resolve(cwd), CONFIG_DIR);
+}
+
+/** Global directory that holds user-level config and session data (~/.coderelay). */
+export function globalConfigDir(homeDir = homedir()): string {
+  return join(homeDir, CONFIG_DIR);
 }
 
 /** One CLI's activation choice, as confirmed by the user in the TUI. */
