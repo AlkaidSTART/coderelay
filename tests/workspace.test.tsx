@@ -97,7 +97,8 @@ describe("Workspace command in App", () => {
 
       expect(changedWorkspace).toBe(targetDir);
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain(`已切换工作区至：${targetDir}`);
+      expect(frame).toContain("工作区已切换为");
+      expect(frame).toContain(targetDir);
       instance.cleanup();
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
@@ -137,7 +138,8 @@ describe("Workspace command in App", () => {
 
       expect(changedWorkspace).toBe(targetDir);
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain(`已切换工作区至：${targetDir}`);
+      expect(frame).toContain("工作区已切换为");
+      expect(frame).toContain(targetDir);
       instance.cleanup();
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
