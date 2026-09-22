@@ -257,6 +257,7 @@ export async function runRunCommand(
     const handle = startStream({
       cmd: buildLaunchCmd(executable, args),
       cwd: launchCwd,
+      target: executable,
       env: { ...process.env, ...agentConfig?.env, ...options.env },
       signal: options.signal,
       timeoutMs: options.timeoutMs,

@@ -602,6 +602,7 @@ async function startExecution(
   const handle = runAgentStream({
     cmd: buildLaunchCmd(target, args),
     cwd: resolveLaunchCwd(process.cwd(), target),
+    target,
     env: { ...process.env, ...agentConfig?.env },
     signal: controller.signal,
     protocol,
