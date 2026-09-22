@@ -8,9 +8,8 @@ export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
 export const TYPESAFE_ENV_KEY = "TYPESAFE_API_KEY";
 
 const CANDIDATE_ENV_FILES = [
-  "env.locaj",
-  "env.local",
   ".env.local",
+  "env.local",
   ".env",
 ] as const;
 
@@ -110,7 +109,7 @@ export function formatCandidateKey(candidate: RouteCandidate): string {
  * Resolves the TypeSafe API key in order of priority:
  * 1. Explicitly supplied key
  * 2. process.env.TYPESAFE_API_KEY
- * 3. Local env files (env.locaj, env.local, .env.local, .env) in cwd
+ * 3. Local env files (.env.local, env.local, .env) in cwd
  */
 export async function resolveTypesafeApiKey(
   options: { explicitKey?: string; cwd?: string } = {},
@@ -220,7 +219,7 @@ export async function routeWithJev(
 
   if (!apiKey) {
     throw new JevError(
-      "TYPESAFE_API_KEY is not configured (check env.locaj or set TYPESAFE_API_KEY)",
+      "TYPESAFE_API_KEY is not configured (check .env.local or set TYPESAFE_API_KEY)",
       { code: "NO_KEY" },
     );
   }
