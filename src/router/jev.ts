@@ -21,6 +21,7 @@ export class JevError extends Error {
     | "TIMEOUT"
     | "HTTP_ERROR"
     | "INVALID_RESPONSE"
+    | "INVALID_CHOICE"
     | "NO_CHOICE";
   readonly status?: number;
 
@@ -33,6 +34,7 @@ export class JevError extends Error {
         | "TIMEOUT"
         | "HTTP_ERROR"
         | "INVALID_RESPONSE"
+        | "INVALID_CHOICE"
         | "NO_CHOICE";
       status?: number;
       cause?: unknown;
@@ -287,10 +289,18 @@ export async function routeWithJev(
   }
 
   const chosenKey = answer.choice;
-  const candidate =
-    candidates.find((item) => formatCandidateKey(item) === chosenKey) ??
-    candidates.find((item) => item.agent === chosenKey.split(":")[0]) ??
-    candidates[0]!;
+  const candidate = candidates.find(
+    (item) => formatCandidateKey(item) === chosenKey,
+  );
+
+  if (!candidate) {
+    throw new JevError(
+      `Jev API returned unknown choice '${chosenKey}' (candidates: ${candidates
+        .map((item) => formatCandidateKey(item))
+        .join(", ")})`,
+      { code: "INVALID_CHOICE" },
+    );
+  }
 
   return {
     agent: candidate.agent,
