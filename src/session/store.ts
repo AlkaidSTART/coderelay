@@ -5,7 +5,11 @@ import { dirname, join } from "node:path";
 
 import { Database } from "bun:sqlite";
 
-import { globalConfigDir } from "../config/loader";
+import {
+  crossPlatformDirname,
+  crossPlatformJoin,
+  globalConfigDir,
+} from "../config/loader";
 import { CLI_IDS, type CliId } from "../models/cli";
 import type {
   SessionRecord,
@@ -112,8 +116,12 @@ CREATE TABLE IF NOT EXISTS preferences (
 export const SESSION_RETENTION = 20;
 
 /** Session database lives in the global .coderelay directory so history is shared across workspaces. */
-export function defaultSessionDbPath(homeDir = homedir()): string {
-  return join(globalConfigDir(homeDir), "sessions.db");
+export function defaultSessionDbPath(
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return crossPlatformJoin(globalConfigDir(homeDir, env, platform), "sessions.db");
 }
 
 function rowToSession(row: SessionRow): SessionRecord {
@@ -193,7 +201,7 @@ function migrateTurnColumns(db: { exec: (sql: string) => void }): void {
 }
 
 export function createSessionStore(dbPath: string): SessionStore {
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(crossPlatformDirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);

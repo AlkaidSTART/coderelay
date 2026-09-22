@@ -8,6 +8,8 @@ import {
   CONFIG_FILE_NAMES,
   ConfigError,
   defaultConfigPath,
+  findWslWindowsHome,
+  globalConfigDir,
   loadConfig,
   saveActivationDecisions,
 } from "../src/config/loader";
@@ -271,5 +273,54 @@ describe("saveActivationDecisions", () => {
         expect(loaded.config.agents["pi"]?.enabled).toBe(false);
       });
     });
+  });
+
+  test("adapts storage location to Windows paths and environment", () => {
+    // Windows path directly passed
+    expect(defaultConfigPath("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay\\config.yaml");
+    expect(globalConfigDir("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay");
+
+    // Windows resolved via USERPROFILE
+    expect(
+      defaultConfigPath(undefined, { USERPROFILE: "C:\\Users\\winuser" }, "win32"),
+    ).toBe("C:\\Users\\winuser\\.coderelay\\config.yaml");
+
+    // Windows resolved via HOMEDRIVE + HOMEPATH
+    expect(
+      defaultConfigPath(undefined, { HOMEDRIVE: "D:", HOMEPATH: "\\Users\\winuser" }, "win32"),
+    ).toBe("D:\\Users\\winuser\\.coderelay\\config.yaml");
+  });
+
+  test("adapts storage location to WSL and Linux environments", () => {
+    // Standard Linux / WSL HOME
+    expect(
+      defaultConfigPath(undefined, { HOME: "/home/wsluser" }, "linux"),
+    ).toBe("/home/wsluser/.coderelay/config.yaml");
+
+    // WSL Windows profile discovery via USERPROFILE
+    expect(
+      findWslWindowsHome({ USERPROFILE: "C:\\Users\\alice" }),
+    ).toBe("/mnt/c/Users/alice");
+
+    // WSL Windows profile discovery via USER
+    expect(
+      findWslWindowsHome({ USER: "bob" }),
+    ).toBe("/mnt/c/Users/bob");
+  });
+
+  test("supports CODERELAY_HOME override across all platforms", () => {
+    // Custom path without .coderelay suffix appends it
+    expect(
+      globalConfigDir(undefined, { CODERELAY_HOME: "/opt/custom_storage" }),
+    ).toBe("/opt/custom_storage/.coderelay");
+
+    // Custom path already having .coderelay suffix keeps it intact
+    expect(
+      globalConfigDir(undefined, { CODERELAY_HOME: "C:\\custom\\.coderelay" }),
+    ).toBe("C:\\custom\\.coderelay");
+
+    expect(
+      defaultConfigPath(undefined, { CODERELAY_HOME: "C:\\custom\\.coderelay" }),
+    ).toBe("C:\\custom\\.coderelay\\config.yaml");
   });
 });

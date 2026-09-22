@@ -254,8 +254,19 @@ export function configDirFor(cwd = process.cwd()): string {
 }
 
 /** Global directory that holds user-level config and session data (~/.coderelay). */
-export function globalConfigDir(homeDir = homedir()): string {
-  return join(homeDir, CONFIG_DIR);
+export function globalConfigDir(
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const explicit = env.CODERELAY_HOME?.trim();
+  if (explicit && !homeDir) {
+    return explicit.endsWith(CONFIG_DIR)
+      ? explicit
+      : crossPlatformJoin(explicit, CONFIG_DIR);
+  }
+  const base = resolveGlobalBaseDir(homeDir, env, platform);
+  return crossPlatformJoin(base, CONFIG_DIR);
 }
 
 /** One CLI's activation choice, as confirmed by the user in the TUI. */
@@ -269,13 +280,21 @@ export interface SaveActivationOptions {
   cwd?: string;
   /** Home directory for user-level config (~/.coderelay/config.yaml). */
   homeDir?: string;
+  /** Environment variables override (for tests and cross-platform resolution). */
+  env?: NodeJS.ProcessEnv;
+  /** Platform identifier (for tests and cross-platform resolution). */
+  platform?: NodeJS.Platform;
   /** Explicit config file to update; defaults to `~/.coderelay/config.yaml`. */
   path?: string | null;
 }
 
 /** Path `saveActivationDecisions` writes to when no explicit path is given (~/.coderelay/config.yaml). */
-export function defaultConfigPath(dir = homedir()): string {
-  return join(globalConfigDir(dir), "config.yaml");
+export function defaultConfigPath(
+  dir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return crossPlatformJoin(globalConfigDir(dir, env, platform), "config.yaml");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -297,8 +316,8 @@ export async function saveActivationDecisions(
   const path = options.path
     ? resolve(options.path)
     : options.cwd
-      ? join(resolve(options.cwd), CONFIG_DIR, "config.yaml")
-      : defaultConfigPath(options.homeDir);
+      ? crossPlatformJoin(resolve(options.cwd), CONFIG_DIR, "config.yaml")
+      : defaultConfigPath(options.homeDir, options.env, options.platform);
 
   let raw: Record<string, unknown> = {};
   const file = Bun.file(path);
@@ -333,7 +352,7 @@ export async function saveActivationDecisions(
   raw.agents = agents;
 
   try {
-    await mkdir(dirname(path), { recursive: true });
+    await mkdir(crossPlatformDirname(path), { recursive: true });
     // The `yaml` package emits block style; `Bun.YAML.stringify` writes flow
     // style (one dense line), which is valid but unreadable for a file users
     // are expected to hand-edit.

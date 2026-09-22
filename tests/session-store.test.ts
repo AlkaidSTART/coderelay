@@ -158,11 +158,32 @@ describe("session store", () => {
     second.close();
   });
 
-  test("resolves default session db to global .coderelay directory", () => {
+  test("resolves default session db to global .coderelay directory across platforms", () => {
     expect(defaultSessionDbPath()).toBe(join(homedir(), ".coderelay", "sessions.db"));
 
     const customHome = "/tmp/mock-home";
     expect(defaultSessionDbPath(customHome)).toBe(join(customHome, ".coderelay", "sessions.db"));
+
+    // Windows paths with backslashes
+    expect(defaultSessionDbPath("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay\\sessions.db");
+    expect(
+      defaultSessionDbPath(undefined, { USERPROFILE: "C:\\Users\\winuser" }, "win32"),
+    ).toBe("C:\\Users\\winuser\\.coderelay\\sessions.db");
+
+    // WSL / Linux
+    expect(
+      defaultSessionDbPath(undefined, { HOME: "/home/wsluser" }, "linux"),
+    ).toBe("/home/wsluser/.coderelay/sessions.db");
+
+    // macOS
+    expect(
+      defaultSessionDbPath(undefined, { HOME: "/Users/macuser" }, "darwin"),
+    ).toBe("/Users/macuser/.coderelay/sessions.db");
+
+    // CODERELAY_HOME override
+    expect(
+      defaultSessionDbPath(undefined, { CODERELAY_HOME: "/custom/global" }),
+    ).toBe("/custom/global/.coderelay/sessions.db");
   });
 
   test("persists workspace info on sessions and queries by workspace", async () => {
