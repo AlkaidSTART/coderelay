@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { homedir } from "node:os";
+
 import { render, type Instance } from "ink";
 
 import { createCliAdapters, getCliAdapter } from "./agents/cli-adapters";
@@ -82,6 +84,11 @@ function handleWorkspaceChange(newCwd: string): void {
   try {
     process.chdir(newCwd);
     currentWorkspace = newCwd;
+    try {
+      getStore().setLastWorkspace(newCwd);
+    } catch {
+      // 存储异常不阻断
+    }
   } catch {
     // 目录切换异常已在 UI 校验过，这里兜底
   }
@@ -210,7 +217,11 @@ function failTerminal(message: string, flow: number): void {
 
 async function loadAppConfig(): Promise<Config> {
   try {
-    const loaded = await loadConfig({ allowMissing: true });
+    const loaded = await loadConfig({
+      cwd: currentWorkspace,
+      homeDir: homedir(),
+      allowMissing: true,
+    });
     return loaded.config;
   } catch {
     return defaultConfig();
@@ -501,7 +512,7 @@ async function startExecution(
   const startedAt = Date.now();
   let currentSessionId = sessionId;
   if (!currentSessionId) {
-    currentSessionId = sessionStore.createSession(cliId, prompt.slice(0, 60)).id;
+    currentSessionId = sessionStore.createSession(cliId, prompt.slice(0, 60), currentWorkspace).id;
     sessionId = currentSessionId;
   }
   const previousTurns = sessionStore.listTurns(currentSessionId);
@@ -854,7 +865,9 @@ async function launch(request: LaunchRequest): Promise<void> {
 }
 
 try {
-  const favorite = getStore().getFavoriteAgent();
+  const currentStore = getStore();
+  currentStore.setLastWorkspace(currentWorkspace);
+  const favorite = currentStore.getFavoriteAgent();
   if (favorite) {
     initialId = favorite;
   }

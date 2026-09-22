@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
@@ -235,6 +235,41 @@ describe("saveActivationDecisions", () => {
         saveActivationDecisions([{ cliId: "codex", enabled: true }], { cwd }),
       ).rejects.toBeInstanceOf(ConfigError);
       expect(await readYaml(cwd)).toBe(broken);
+    });
+  });
+
+  test("resolves default config path to global .coderelay directory", () => {
+    expect(defaultConfigPath()).toBe(join(homedir(), ".coderelay", "config.yaml"));
+
+    const customHome = "/tmp/mock-home";
+    expect(defaultConfigPath(customHome)).toBe(join(customHome, ".coderelay", "config.yaml"));
+  });
+
+  test("saves activation decisions to global .coderelay by default", async () => {
+    await withTempDir(async (mockHome) => {
+      const savedPath = await saveActivationDecisions(
+        [{ cliId: "claude", enabled: true }],
+        { homeDir: mockHome },
+      );
+      expect(savedPath).toBe(join(mockHome, ".coderelay", "config.yaml"));
+      const content = await readFile(savedPath, "utf8");
+      expect(content).toContain("claude:");
+      expect(content).toContain("enabled: true");
+    });
+  });
+
+  test("loadConfig falls back to global .coderelay when workspace has no config", async () => {
+    await withTempDir(async (mockHome) => {
+      await withTempDir(async (workspaceCwd) => {
+        // Seed config in global directory only
+        const globalPath = join(mockHome, ".coderelay", "config.yaml");
+        await mkdir(dirname(globalPath), { recursive: true });
+        await writeFile(globalPath, "agents:\n  pi:\n    enabled: false\n", "utf8");
+
+        const loaded = await loadConfig({ cwd: workspaceCwd, homeDir: mockHome });
+        expect(loaded.path).toBe(globalPath);
+        expect(loaded.config.agents["pi"]?.enabled).toBe(false);
+      });
     });
   });
 });

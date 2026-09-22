@@ -9,6 +9,8 @@ export interface SessionRecord {
   readonly title: string;
   readonly createdAt: number;
   readonly updatedAt: number;
+  /** Workspace directory where the session was created. */
+  readonly workspace?: string;
 }
 
 /** 统一运行元数据：只追加可选字段，保持旧会话/旧测试兼容。 */

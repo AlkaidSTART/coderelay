@@ -43,6 +43,8 @@ export interface LoadConfigOptions {
   cwd?: string;
   /** Explicit config file; skips discovery and errors when missing. */
   path?: string;
+  /** Home directory to check for global config (~/.coderelay/config.yaml). */
+  homeDir?: string;
   /** Return defaults instead of throwing when no config file is found. */
   allowMissing?: boolean;
 }
@@ -61,8 +63,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Walk up from `startDir` looking for a config file. */
-export async function findConfigPath(startDir: string): Promise<string | null> {
+/** Walk up from `startDir` looking for a config file, falling back to global config if homeDir is provided. */
+export async function findConfigPath(
+  startDir: string,
+  homeDir?: string,
+): Promise<string | null> {
   let dir = resolve(startDir);
 
   while (true) {
@@ -75,10 +80,22 @@ export async function findConfigPath(startDir: string): Promise<string | null> {
 
     const parent = dirname(dir);
     if (parent === dir) {
-      return null;
+      break;
     }
     dir = parent;
   }
+
+  if (homeDir) {
+    const globalDir = globalConfigDir(homeDir);
+    for (const name of ["config.yaml", "config.yml"]) {
+      const candidate = join(globalDir, name);
+      if (await Bun.file(candidate).exists()) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
 }
 
 /** Load and validate the config, falling back to defaults when allowed. */
@@ -86,12 +103,14 @@ export async function loadConfig(
   options: LoadConfigOptions = {},
 ): Promise<LoadedConfig> {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const path = options.path ? resolve(options.path) : await findConfigPath(cwd);
+  const path = options.path
+    ? resolve(options.path)
+    : await findConfigPath(cwd, options.homeDir);
 
   if (!path) {
     if (options.allowMissing === false) {
       throw new ConfigError(
-        `no config file found from ${cwd}; create ${CONFIG_DIR}/config.yaml`,
+        `no config file found from ${cwd}; create ${defaultConfigPath(options.homeDir)}`,
       );
     }
 
@@ -127,8 +146,9 @@ export async function loadConfig(
 /** Absolute path of the config file `loadConfig` would use, if any. */
 export async function resolveConfigPath(
   cwd = process.cwd(),
+  homeDir?: string,
 ): Promise<string | null> {
-  return findConfigPath(cwd);
+  return findConfigPath(cwd, homeDir);
 }
 
 /** Directory that holds the config file (created on demand by `init`). */
@@ -150,13 +170,15 @@ export interface ActivationDecision {
 export interface SaveActivationOptions {
   /** Directory the default config path is derived from. */
   cwd?: string;
-  /** Explicit config file to update; defaults to `<cwd>/.coderelay/config.yaml`. */
+  /** Home directory for user-level config (~/.coderelay/config.yaml). */
+  homeDir?: string;
+  /** Explicit config file to update; defaults to `~/.coderelay/config.yaml`. */
   path?: string | null;
 }
 
-/** Path `saveActivationDecisions` writes to when no explicit path is given. */
-export function defaultConfigPath(cwd = process.cwd()): string {
-  return join(resolve(cwd), CONFIG_FILE_NAMES[0]);
+/** Path `saveActivationDecisions` writes to when no explicit path is given (~/.coderelay/config.yaml). */
+export function defaultConfigPath(dir = homedir()): string {
+  return join(globalConfigDir(dir), "config.yaml");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -177,7 +199,9 @@ export async function saveActivationDecisions(
 ): Promise<string> {
   const path = options.path
     ? resolve(options.path)
-    : defaultConfigPath(options.cwd);
+    : options.cwd
+      ? join(resolve(options.cwd), CONFIG_DIR, "config.yaml")
+      : defaultConfigPath(options.homeDir);
 
   let raw: Record<string, unknown> = {};
   const file = Bun.file(path);

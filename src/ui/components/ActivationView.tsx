@@ -112,7 +112,7 @@ export function ActivationView({ mode, options, cursor }: ActivationViewProps) {
           </Text>
         ) : null}
         <Text color={theme.muted}>
-          激活状态会保存到 .coderelay/config.yaml
+          激活状态会保存到 ~/.coderelay/config.yaml
         </Text>
       </Box>
     </Box>

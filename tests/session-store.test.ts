@@ -163,4 +163,53 @@ describe("session store", () => {
     const customHome = "/tmp/mock-home";
     expect(defaultSessionDbPath(customHome)).toBe(join(customHome, ".coderelay", "sessions.db"));
   });
+
+  test("persists workspace info on sessions and queries by workspace", async () => {
+    const store = createSessionStore(tempDbPath());
+
+    const sessionA = store.createSession("codex", "Workspace A task", "/workspace/a");
+    await Bun.sleep(3);
+    const sessionB = store.createSession("claude", "Workspace B task", "/workspace/b");
+    await Bun.sleep(3);
+    const sessionA2 = store.createSession("pi", "Workspace A second task", "/workspace/a");
+
+    expect(sessionA.workspace).toBe("/workspace/a");
+    expect(sessionB.workspace).toBe("/workspace/b");
+    expect(store.getSession(sessionA.id)?.workspace).toBe("/workspace/a");
+
+    const sessionsForA = store.listSessions({ workspace: "/workspace/a" });
+    expect(sessionsForA.length).toBe(2);
+    expect(sessionsForA.map((s) => s.id)).toEqual([sessionA2.id, sessionA.id]);
+
+    const sessionsForB = store.listSessions({ workspace: "/workspace/b" });
+    expect(sessionsForB.length).toBe(1);
+    expect(sessionsForB[0]?.id).toBe(sessionB.id);
+
+    const allSessions = store.listSessions();
+    expect(allSessions.length).toBe(3);
+
+    store.close();
+  });
+
+  test("persists last workspace and retrieves recent workspaces", () => {
+    const path = tempDbPath();
+    const first = createSessionStore(path);
+
+    expect(first.getLastWorkspace()).toBeNull();
+    first.setLastWorkspace("/projects/alpha");
+    expect(first.getLastWorkspace()).toBe("/projects/alpha");
+
+    first.createSession("codex", "Task 1", "/projects/alpha");
+    first.createSession("claude", "Task 2", "/projects/beta");
+    first.createSession("pi", "Task 3", "/projects/alpha");
+
+    const recent = first.getRecentWorkspaces();
+    expect(recent).toEqual(["/projects/alpha", "/projects/beta"]);
+
+    first.close();
+
+    const second = createSessionStore(path);
+    expect(second.getLastWorkspace()).toBe("/projects/alpha");
+    second.close();
+  });
 });
