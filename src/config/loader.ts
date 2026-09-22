@@ -144,7 +144,7 @@ export function findWslWindowsHome(
   return null;
 }
 
-/** Walk up from `startDir` looking for a config file, falling back to global config if homeDir is provided. */
+/** Walk up from `startDir` looking for a config file, falling back to global config (~/.coderelay/config.yaml). */
 export async function findConfigPath(
   startDir: string,
   homeDir?: string,
@@ -168,13 +168,11 @@ export async function findConfigPath(
     dir = parent;
   }
 
-  if (homeDir || env.CODERELAY_HOME) {
-    const globalDir = globalConfigDir(homeDir, env, platform);
-    for (const name of ["config.yaml", "config.yml"]) {
-      const candidate = crossPlatformJoin(globalDir, name);
-      if (await Bun.file(candidate).exists()) {
-        return candidate;
-      }
+  const globalDir = globalConfigDir(homeDir, env, platform);
+  for (const name of ["config.yaml", "config.yml"]) {
+    const candidate = crossPlatformJoin(globalDir, name);
+    if (await Bun.file(candidate).exists()) {
+      return candidate;
     }
   }
 
@@ -244,8 +242,10 @@ export async function loadConfig(
 export async function resolveConfigPath(
   cwd = process.cwd(),
   homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<string | null> {
-  return findConfigPath(cwd, homeDir);
+  return findConfigPath(cwd, homeDir, env, platform);
 }
 
 /** Directory that holds the config file (created on demand by `init`). */

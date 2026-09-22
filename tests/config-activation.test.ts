@@ -8,9 +8,11 @@ import {
   CONFIG_FILE_NAMES,
   ConfigError,
   defaultConfigPath,
+  findConfigPath,
   findWslWindowsHome,
   globalConfigDir,
   loadConfig,
+  resolveConfigPath,
   saveActivationDecisions,
 } from "../src/config/loader";
 import { ConfigSchema } from "../src/config/schema";
@@ -24,12 +26,21 @@ const DETECTED: DetectedCli[] = [
   { id: "omp", bin: "omp", path: "", version: null, available: false },
 ];
 
-/** Every test gets its own cwd so nothing lands in the repository. */
+/** Every test gets its own cwd and isolated global home so nothing lands in the repository or uses user config. */
 async function withTempDir<T>(run: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), "coderelay-activation-"));
+  const isolatedHome = await mkdtemp(join(tmpdir(), "coderelay-isolated-home-"));
+  const prevHome = process.env.CODERELAY_HOME;
+  process.env.CODERELAY_HOME = isolatedHome;
   try {
     return await run(cwd);
   } finally {
+    if (prevHome === undefined) {
+      delete process.env.CODERELAY_HOME;
+    } else {
+      process.env.CODERELAY_HOME = prevHome;
+    }
+    await rm(isolatedHome, { recursive: true, force: true });
     await rm(cwd, { recursive: true, force: true });
   }
 }
@@ -273,6 +284,52 @@ describe("saveActivationDecisions", () => {
         expect(loaded.path).toBe(globalPath);
         expect(loaded.config.agents["pi"]?.enabled).toBe(false);
       });
+    });
+  });
+
+  test("loadConfig falls back to global .coderelay by default without homeDir", async () => {
+    await withTempDir(async (workspaceCwd) => {
+      const mockHome = await mkdtemp(join(tmpdir(), "coderelay-global-"));
+      try {
+        const globalPath = join(mockHome, ".coderelay", "config.yaml");
+        await mkdir(dirname(globalPath), { recursive: true });
+        await writeFile(globalPath, "agents:\n  pi:\n    enabled: false\n", "utf8");
+
+        const loaded = await loadConfig({
+          cwd: workspaceCwd,
+          env: { CODERELAY_HOME: mockHome },
+        });
+        expect(loaded.path).toBe(globalPath);
+        expect(loaded.config.agents["pi"]?.enabled).toBe(false);
+
+        const resolved = await resolveConfigPath(workspaceCwd, undefined, {
+          CODERELAY_HOME: mockHome,
+        });
+        expect(resolved).toBe(globalPath);
+      } finally {
+        await rm(mockHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("loadConfig discovers global config via HOME without explicit homeDir", async () => {
+    await withTempDir(async (workspaceCwd) => {
+      const mockHome = await mkdtemp(join(tmpdir(), "coderelay-home-"));
+      try {
+        const globalPath = join(mockHome, ".coderelay", "config.yaml");
+        await mkdir(dirname(globalPath), { recursive: true });
+        await writeFile(globalPath, "defaultAgent: pi\n", "utf8");
+
+        const loaded = await loadConfig({
+          cwd: workspaceCwd,
+          env: { HOME: mockHome },
+          platform: "darwin",
+        });
+        expect(loaded.path).toBe(globalPath);
+        expect(loaded.config.defaultAgent).toBe("pi");
+      } finally {
+        await rm(mockHome, { recursive: true, force: true });
+      }
     });
   });
 

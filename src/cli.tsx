@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-import { homedir } from "node:os";
-
 import { render, type Instance } from "ink";
 
 import { createCliAdapters, getCliAdapter } from "./agents/cli-adapters";
@@ -218,7 +216,6 @@ function failTerminal(message: string, flow: number): void {
 async function loadAppConfig(): Promise<Config> {
   const loaded = await loadConfig({
     cwd: currentWorkspace,
-    homeDir: homedir(),
     allowMissing: true,
   });
   return loaded.config;
