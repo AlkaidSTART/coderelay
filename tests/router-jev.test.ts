@@ -48,11 +48,25 @@ describe("resolveTypesafeApiKey", () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
     try {
       await writeFile(
-        join(tmpDir, "env.locaj"),
+        join(tmpDir, ".env.local"),
         "TYPESAFE_API_KEY=apikey_mock_12345\n",
       );
       const key = await resolveTypesafeApiKey({ cwd: tmpDir });
       expect(key).toBe("apikey_mock_12345");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores deprecated env.locaj typo file", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
+    try {
+      await writeFile(
+        join(tmpDir, "env.locaj"),
+        "TYPESAFE_API_KEY=apikey_mock_12345\n",
+      );
+      const key = await resolveTypesafeApiKey({ cwd: tmpDir });
+      expect(key).toBeNull();
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
@@ -137,7 +151,9 @@ describe("routeWithJev", () => {
           apiKey: undefined,
           cwd: "/empty-non-existent-dir",
         }),
-      ).rejects.toThrow(JevError);
+      ).rejects.toThrow(
+        "TYPESAFE_API_KEY is not configured (check .env.local or set TYPESAFE_API_KEY)",
+      );
     } finally {
       if (originalEnv) {
         process.env.TYPESAFE_API_KEY = originalEnv;
