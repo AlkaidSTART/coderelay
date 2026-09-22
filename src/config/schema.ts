@@ -194,8 +194,7 @@ export const ConfigSchema = BaseConfigSchema.superRefine((config, ctx) => {
     }
 
     const seenModelIds = new Set<string>();
-    for (let i = 0; i < agent.models.length; i++) {
-      const model = agent.models[i];
+    for (const [i, model] of agent.models.entries()) {
       if (seenModelIds.has(model.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

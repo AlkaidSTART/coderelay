@@ -13,6 +13,7 @@ import {
   loadConfig,
   saveActivationDecisions,
 } from "../src/config/loader";
+import { ConfigSchema } from "../src/config/schema";
 import { toActivationOptions, pendingActivation } from "../src/config/activation";
 import { CLI_IDS, type DetectedCli } from "../src/models/cli";
 
@@ -322,5 +323,22 @@ describe("saveActivationDecisions", () => {
     expect(
       defaultConfigPath(undefined, { CODERELAY_HOME: "C:\\custom\\.coderelay" }),
     ).toBe("C:\\custom\\.coderelay\\config.yaml");
+  });
+
+  test("ConfigSchema rejects duplicate model ids for an agent", () => {
+    const result = ConfigSchema.safeParse({
+      agents: {
+        claude: {
+          models: [
+            { id: "opus", name: "Opus" },
+            { id: "opus", name: "Opus Duplicate" },
+          ],
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('duplicate model id "opus"'))).toBe(true);
+    }
   });
 });
