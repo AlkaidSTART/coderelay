@@ -206,6 +206,116 @@ describe("routeWithJev", () => {
       }),
     ).rejects.toThrow(JevError);
   });
+
+  test("throws JevError with INVALID_CHOICE when choice matches no candidate", async () => {
+    const mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "jev-1.13.0",
+          answers: {
+            decision: {
+              type: "choice",
+              choice: "unknown-agent:unknown-model",
+              confidence: 0.9,
+              probabilities: { "unknown-agent:unknown-model": 0.9 },
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+
+    const error = await routeWithJev({ prompt: "Refactor" }, candidates, {
+      apiKey: "test_key",
+      fetchFn: mockFetch,
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(JevError);
+    expect((error as JevError).code).toBe("INVALID_CHOICE");
+  });
+
+  test("does not fall back to agent name when the model is unknown", async () => {
+    const modeledCandidates: RouteCandidate[] = [
+      {
+        agent: "codex",
+        model: "gpt-5.6",
+        strengths: ["coding"],
+        isDefault: true,
+      },
+      {
+        agent: "codex",
+        model: "o3-mini",
+        strengths: ["fast"],
+        isDefault: false,
+      },
+    ];
+
+    const mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "jev-1.13.0",
+          answers: {
+            decision: {
+              type: "choice",
+              choice: "codex:unknown-model",
+              confidence: 0.9,
+              probabilities: { "codex:unknown-model": 0.9 },
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+
+    const error = await routeWithJev({ prompt: "Refactor" }, modeledCandidates, {
+      apiKey: "test_key",
+      fetchFn: mockFetch,
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(JevError);
+    expect((error as JevError).code).toBe("INVALID_CHOICE");
+  });
+
+  test("selects the exact model when several candidates share an agent", async () => {
+    const modeledCandidates: RouteCandidate[] = [
+      {
+        agent: "codex",
+        model: "gpt-5.6",
+        strengths: ["coding"],
+        isDefault: true,
+      },
+      {
+        agent: "codex",
+        model: "o3-mini",
+        strengths: ["fast"],
+        isDefault: false,
+      },
+    ];
+
+    const mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "jev-1.13.0",
+          answers: {
+            decision: {
+              type: "choice",
+              choice: "codex:o3-mini",
+              confidence: 0.7,
+              probabilities: { "codex:o3-mini": 0.7 },
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+
+    const decision = await routeWithJev(
+      { prompt: "Refactor" },
+      modeledCandidates,
+      { apiKey: "test_key", fetchFn: mockFetch },
+    );
+
+    expect(decision.agent).toBe("codex");
+    expect(decision.model).toBe("o3-mini");
+    expect(decision.rawChoice).toBe("codex:o3-mini");
+  });
 });
 
 describe("jevDecisionToRouteDecision", () => {
