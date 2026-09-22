@@ -16,6 +16,7 @@ export const AGENT_LABELS: Readonly<Record<CliId, string>> = {
 export interface FavoriteCommandOptions {
   readonly agent?: string;
   readonly cwd?: string;
+  readonly homeDir?: string;
 }
 
 export interface FavoriteCommandDependencies {
@@ -34,7 +35,7 @@ export async function runFavoriteCommand(
   const write = dependencies.write ?? ((text: string) => process.stdout.write(text));
   const store =
     dependencies.store ??
-    createSessionStore(defaultSessionDbPath(options.cwd));
+    createSessionStore(defaultSessionDbPath(options.homeDir));
 
   try {
     const rawAgent = options.agent?.trim().toLowerCase();

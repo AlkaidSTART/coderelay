@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { Database } from "bun:sqlite";
 
-import { configDirFor } from "../config/loader";
+import { globalConfigDir } from "../config/loader";
 import { CLI_IDS, type CliId } from "../models/cli";
 import type {
   SessionRecord,
@@ -104,9 +105,9 @@ CREATE TABLE IF NOT EXISTS preferences (
 
 export const SESSION_RETENTION = 20;
 
-/** Session database lives beside the config so history follows the repo. */
-export function defaultSessionDbPath(cwd = process.cwd()): string {
-  return join(configDirFor(cwd), "sessions.db");
+/** Session database lives in the global .coderelay directory so history is shared across workspaces. */
+export function defaultSessionDbPath(homeDir = homedir()): string {
+  return join(globalConfigDir(homeDir), "sessions.db");
 }
 
 function rowToSession(row: SessionRow): SessionRecord {

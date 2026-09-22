@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -30,10 +30,17 @@ import { probeVersion } from "./version-probe";
 import { scanWslClis, type WslCliLocation, type WslScanResult } from "./wsl";
 
 export type FileAccess = (path: string, mode?: number) => Promise<void>;
+export type FileRead = (
+  path: string,
+  encoding: BufferEncoding,
+) => Promise<string>;
+export type DirRead = (path: string) => Promise<string[]>;
 
 export interface ScannerOptions {
   readonly execFile?: ExecFileRunner;
   readonly access?: FileAccess;
+  readonly readFile?: FileRead;
+  readonly readdir?: DirRead;
   readonly platform?: NodeJS.Platform;
   readonly homeDir?: string;
   readonly env?: NodeJS.ProcessEnv;
@@ -52,6 +59,8 @@ export interface ScannerOptions {
 interface ResolvedScannerOptions {
   readonly execFile: ExecFileRunner;
   readonly access: FileAccess;
+  readonly readFile: FileRead;
+  readonly readdir: DirRead;
   readonly platform: NodeJS.Platform;
   readonly homeDir: string;
   readonly env: NodeJS.ProcessEnv;
@@ -83,6 +92,8 @@ function resolveScannerOptions(
   return {
     execFile: options.execFile ?? defaultExecFile,
     access: options.access ?? access,
+    readFile: options.readFile ?? ((p, enc) => readFile(p, enc)),
+    readdir: options.readdir ?? ((p) => readdir(p)),
     platform,
     homeDir: options.homeDir ?? homedir(),
     env: options.env ?? process.env,
@@ -218,6 +229,105 @@ export async function getWindowsClaudeFallback(
   return null;
 }
 
+/**
+ * Read the CLI executable path from ~/.codex/config.toml (or CODEX_HOME)
+ * if specified via `CODEX_CLI_PATH`, or standard app bundles on macOS.
+ */
+export async function getCodexConfigFallback(
+  options: ScannerOptions = {},
+): Promise<string | null> {
+  const resolved = resolveScannerOptions(options);
+  const codexDir =
+    resolved.env.CODEX_HOME?.trim() ||
+    (resolved.platform === "win32"
+      ? path.win32.join(resolved.homeDir, ".codex")
+      : path.posix.join(resolved.homeDir, ".codex"));
+  const configFile =
+    resolved.platform === "win32"
+      ? path.win32.join(codexDir, "config.toml")
+      : path.posix.join(codexDir, "config.toml");
+
+  try {
+    const content = await resolved.readFile(configFile, "utf8");
+    const match = content.match(/^\s*CODEX_CLI_PATH\s*=\s*["']([^"']+)["']/m);
+    if (match?.[1]) {
+      const cliPath = match[1].trim();
+      try {
+        await resolved.access(cliPath, constants.X_OK);
+        return cliPath;
+      } catch {
+        // Fall through to app bundle candidate if configured path is invalid
+      }
+    }
+  } catch {
+    // Config file missing or unreadable
+  }
+
+  if (resolved.platform === "darwin") {
+    const appCandidates = [
+      "/Applications/ChatGPT.app/Contents/Resources/codex",
+      path.posix.join(
+        resolved.homeDir,
+        "Applications",
+        "ChatGPT.app",
+        "Contents",
+        "Resources",
+        "codex",
+      ),
+    ];
+    for (const candidate of appCandidates) {
+      try {
+        await resolved.access(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // Continue through candidates
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Detect native Claude Code versions in ~/.local/share/claude/versions.
+ */
+export async function getUnixClaudeVersionFallback(
+  options: ScannerOptions = {},
+): Promise<string | null> {
+  const resolved = resolveScannerOptions(options);
+  if (resolved.platform === "win32") {
+    return null;
+  }
+
+  const versionsDir = path.posix.join(
+    resolved.homeDir,
+    ".local",
+    "share",
+    "claude",
+    "versions",
+  );
+
+  try {
+    const entries = await resolved.readdir(versionsDir);
+    const sorted = [...entries].sort((a, b) =>
+      b.localeCompare(a, undefined, { numeric: true }),
+    );
+    for (const entry of sorted) {
+      const candidate = path.posix.join(versionsDir, entry);
+      try {
+        await resolved.access(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // Continue through candidates
+      }
+    }
+  } catch {
+    // Directory unreadable or missing
+  }
+
+  return null;
+}
+
 /** Global bin directories published by package managers, probed once per scan. */
 async function probePackageBinDirs(
   resolved: ResolvedScannerOptions,
@@ -336,15 +446,55 @@ async function collectLocalCandidates(
     ordered.push({ path: found, source: sourceOf(found) });
   }
 
-  if (definition.id === "claude" && resolved.platform === "win32") {
-    const fallback = await getWindowsClaudeFallback({
+  if (definition.id === "codex") {
+    const codexDir =
+      resolved.env.CODEX_HOME?.trim() ||
+      (resolved.platform === "win32"
+        ? path.win32.join(resolved.homeDir, ".codex")
+        : path.posix.join(resolved.homeDir, ".codex"));
+    searchedDirs.push(codexDir);
+    const fallback = await getCodexConfigFallback({
       platform: resolved.platform,
       homeDir: resolved.homeDir,
       env: resolved.env,
       access: resolved.access,
+      readFile: resolved.readFile,
     });
     if (fallback) {
-      ordered.push({ path: fallback, source: "fallback" });
+      ordered.push({ path: fallback, source: "installer" });
+    }
+  }
+
+  if (definition.id === "claude") {
+    if (resolved.platform === "win32") {
+      const fallback = await getWindowsClaudeFallback({
+        platform: resolved.platform,
+        homeDir: resolved.homeDir,
+        env: resolved.env,
+        access: resolved.access,
+      });
+      if (fallback) {
+        ordered.push({ path: fallback, source: "fallback" });
+      }
+    } else {
+      const versionsDir = path.posix.join(
+        resolved.homeDir,
+        ".local",
+        "share",
+        "claude",
+        "versions",
+      );
+      searchedDirs.push(versionsDir);
+      const fallback = await getUnixClaudeVersionFallback({
+        platform: resolved.platform,
+        homeDir: resolved.homeDir,
+        env: resolved.env,
+        access: resolved.access,
+        readdir: resolved.readdir,
+      });
+      if (fallback) {
+        ordered.push({ path: fallback, source: "installer" });
+      }
     }
   }
 
