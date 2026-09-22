@@ -4,6 +4,8 @@ import type { ExecFileRunner } from "../src/models/cli";
 import {
   detectHostAgent,
   getCliVersion,
+  getCodexConfigFallback,
+  getUnixClaudeVersionFallback,
   getWindowsClaudeFallback,
   resolveOnPath,
   scanCodingClis,
@@ -146,5 +148,133 @@ describe("CLI scanner", () => {
     expect(detectHostAgent({ PI_CODING_AGENT: "1" })).toBe("pi");
     expect(detectHostAgent({ PI_CODING_AGENT: "yes" })).toBeNull();
     expect(detectHostAgent({})).toBeNull();
+  });
+
+  test("extracts CODEX_CLI_PATH from codex config.toml fallback", async () => {
+    const accessible = new Set(["/custom/bin/codex"]);
+    const fallback = await getCodexConfigFallback({
+      platform: "linux",
+      homeDir: "/home/tester",
+      env: { CODEX_HOME: "/home/tester/.custom-codex" },
+      readFile: async (filePath) => {
+        if (filePath === "/home/tester/.custom-codex/config.toml") {
+          return 'model = "o3"\nCODEX_CLI_PATH = "/custom/bin/codex"\n';
+        }
+        throw new Error("file not found");
+      },
+      access: async (candidate) => {
+        if (!accessible.has(candidate)) {
+          throw new Error("not found");
+        }
+      },
+    });
+
+    expect(fallback).toBe("/custom/bin/codex");
+  });
+
+  test("falls back to macOS ChatGPT app bundle when config.toml has no path", async () => {
+    const accessible = new Set([
+      "/Applications/ChatGPT.app/Contents/Resources/codex",
+    ]);
+    const fallback = await getCodexConfigFallback({
+      platform: "darwin",
+      homeDir: "/Users/tester",
+      env: {},
+      readFile: async () => {
+        throw new Error("no config.toml");
+      },
+      access: async (candidate) => {
+        if (!accessible.has(candidate)) {
+          throw new Error("not found");
+        }
+      },
+    });
+
+    expect(fallback).toBe("/Applications/ChatGPT.app/Contents/Resources/codex");
+  });
+
+  test("probes latest Claude version from ~/.local/share/claude/versions on Unix", async () => {
+    const accessible = new Set([
+      "/home/tester/.local/share/claude/versions/2.1.275",
+      "/home/tester/.local/share/claude/versions/2.1.278",
+    ]);
+
+    const fallback = await getUnixClaudeVersionFallback({
+      platform: "linux",
+      homeDir: "/home/tester",
+      readdir: async (dirPath) => {
+        if (dirPath === "/home/tester/.local/share/claude/versions") {
+          return ["2.1.275", "2.1.278", "2.1.270"];
+        }
+        throw new Error("dir not found");
+      },
+      access: async (candidate) => {
+        if (!accessible.has(candidate)) {
+          throw new Error("inaccessible");
+        }
+      },
+    });
+
+    expect(fallback).toBe("/home/tester/.local/share/claude/versions/2.1.278");
+  });
+
+  test("scans codex and claude from custom config/version dirs when missing from PATH", async () => {
+    const execFile: ExecFileRunner = async (file, args) => {
+      if (file === "which") {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      }
+      if (file === "/opt/custom/codex" && args[0] === "--version") {
+        return { stdout: "codex-cli 0.155.0\n", stderr: "" };
+      }
+      if (file === "/home/tester/.local/share/claude/versions/2.1.278" && args[0] === "--version") {
+        return { stdout: "2.1.278\n", stderr: "" };
+      }
+      throw Object.assign(new Error("failed"), { code: 1 });
+    };
+
+    const installed = new Set([
+      "/opt/custom/codex",
+      "/home/tester/.local/share/claude/versions/2.1.278",
+    ]);
+
+    const detected = await scanCodingClis({
+      platform: "linux",
+      execFile,
+      access: async (candidate) => {
+        if (!installed.has(candidate)) {
+          throw Object.assign(new Error("not found"), { code: "ENOENT" });
+        }
+      },
+      readFile: async (file) => {
+        if (file === "/home/tester/.codex/config.toml") {
+          return 'CODEX_CLI_PATH = "/opt/custom/codex"\n';
+        }
+        throw new Error("not found");
+      },
+      readdir: async (dir) => {
+        if (dir === "/home/tester/.local/share/claude/versions") {
+          return ["2.1.278"];
+        }
+        throw new Error("not found");
+      },
+      env: {},
+      homeDir: "/home/tester",
+    });
+
+    const codex = detected.find((cli) => cli.id === "codex");
+    const claude = detected.find((cli) => cli.id === "claude");
+
+    expect(codex).toMatchObject({
+      available: true,
+      path: "/opt/custom/codex",
+      source: "installer",
+      version: "codex-cli 0.155.0",
+    });
+    expect(claude).toMatchObject({
+      available: true,
+      path: "/home/tester/.local/share/claude/versions/2.1.278",
+      source: "installer",
+      version: "2.1.278",
+    });
   });
 });
