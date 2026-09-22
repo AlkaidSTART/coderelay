@@ -63,6 +63,21 @@ export function toWslPath(windowsPath: string): string | null {
 }
 
 /**
+ * Convert a WSL Linux path (/mnt/<drive>/...) back into the equivalent Windows path.
+ * Returns null when not a mounted Windows drive.
+ */
+export function toWindowsPath(wslPath: string): string | null {
+  const value = wslPath.trim();
+  const match = /^\/mnt\/([a-zA-Z])(?:\/(.*))?$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const drive = match[1]?.toUpperCase();
+  const rest = (match[2] ?? "").replaceAll("/", "\\");
+  return rest ? `${drive}:\\${rest}` : `${drive}:\\`;
+}
+
+/**
  * `wsl.exe -l -q` writes UTF-16LE on most builds, which arrives as NUL-padded
  * text once decoded as UTF-8. Drop the padding and normalise line endings.
  */

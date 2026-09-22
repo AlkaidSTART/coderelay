@@ -64,7 +64,7 @@ coderelay/
 │   ├── cli-ui-plan.md        # TUI 详细设计（视觉 token / 页面流 / 会话层）
 │   └── codex等cli接入方式.md  # 各 CLI 检测与接入指南
 ├── assets/                   # 架构图（html/png）
-└── .coderelay/               # 运行时数据：config.yaml + sessions.db（跟随仓库）
+└── ~/.coderelay/             # 全局运行时数据：config.yaml + sessions.db（跨工作区共享，不在工作区新建）
 ```
 
 ---
@@ -149,7 +149,7 @@ coderelay/
 
 `toActivationOptions(detected, config)` 把扫描结果与配置合成每个 CLI 一行（`{ cliId, available, enabled, decided }`）；`activationConfirmTargets` 只取「可用且未决」（首次激活页），`activationManageTargets` 取全部（`/activate` 管理页）。
 
-`saveActivationDecisions(decisions, { cwd?, path? })` 是配置的唯一写路径，默认写 `<cwd>/.coderelay/config.yaml`：
+`saveActivationDecisions(decisions, { cwd?, homeDir?, path? })` 是配置的唯一写路径，默认写全局 `~/.coderelay/config.yaml`（不在工作区新建目录）：
 
 - **读原始 YAML 对象再合并**，而不是从解析后的 `Config` 重新序列化——`models` / `routing` / `extraArgs` / `env` 以及本版本 schema 不认识的键都原样保留。
 - 只对 `agents.<cliId>` 合并 `{ enabled, activationDecided: true }`，其余内容一字不动。
@@ -256,8 +256,8 @@ coderelay/
 
 ## 9. 会话层（`src/session/`，`bun:sqlite`）
 
-- `store.ts`：库文件 `<cwd>/.coderelay/sessions.db`（跟随仓库，跨 CLI 共享同一份事实），WAL 模式。
-  - `sessions(id, cli_id, title, created_at, updated_at)`，`title` 取首条 prompt 前 60 字符。
+- `store.ts`：全局库文件 `~/.coderelay/sessions.db`（跨工作区共享同一份事实，会话持久化 workspace 路径），WAL 模式。
+  - `sessions(id, cli_id, title, created_at, updated_at, workspace)`，`title` 取首条 prompt 前 60 字符。
   - `turns(id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at)`，`(session_id, id)` 索引。
   - 启动时按 `updated_at` 保留最近 `SESSION_RETENTION = 20` 个会话，多余连同轮次删除。
 - `context.ts`：`buildPromptWithContext()` 把历史轮次拼成 transcript 注入新 prompt 之前，实现跨 CLI 上下文继承（不依赖各 CLI 原生会话）：单轮输出留尾 1.5k 字符、总预算 8k 字符，超限从最旧轮丢弃。
@@ -281,7 +281,7 @@ coderelay/
 
 - `Enter`：提交 prompt，默认走自动路由（已探测模型候选 + 配置元数据）；激活页为「保存」。
 - `/model`：打开两段式 CLI + 模型选择器（`selecting`）；`Esc` 从模型步退回 CLI 步，在 CLI 步才取消。
-- `/activate`：打开激活管理页（`activating`），可逐个启用/禁用 CLI，保存到 `.coderelay/config.yaml`。
+- `/activate`：打开激活管理页（`activating`），可逐个启用/禁用 CLI，保存到 `~/.coderelay/config.yaml`。
 - `Esc`（返回键）：退回上一层——`detail` / `chat` 回 CLI 列表、CLI 列表回首屏、模型选择器退一步（模型步→CLI 步，CLI 步才取消）、激活页取消（不写盘）；`probing` 取消探测；`starting` / `running` 中止当前任务回到输入态。首屏没有上一层，`Esc` 不做事。
 - `Ctrl-C`（相位感知，退出键）：`idle`（首屏 / CLI 列表 / 对话区 / 未就绪页）退出 coderelay；`probing` / `selecting` / `activating` 取消当前操作；`starting` / `running` 经 `abort()` 终止整个子进程组并记 `aborted`——执行中不退出程序，避免把 agent 子进程留成孤儿进程。`q` 不再是退出键。
 - `/new`：清理当前会话上下文并创建新会话（`slash-commands.ts`）。

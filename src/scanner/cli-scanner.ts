@@ -255,11 +255,17 @@ export async function getCodexConfigFallback(
       try {
         await resolved.access(cliPath, constants.X_OK);
         return cliPath;
-      } catch {
-        // Fall through to app bundle candidate if configured path is invalid
+      } catch (error) {
+        throw new Error(
+          `invalid CODEX_CLI_PATH in ${configFile}: "${cliPath}" does not exist or is not executable`,
+          { cause: error },
+        );
       }
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("invalid CODEX_CLI_PATH")) {
+      throw error;
+    }
     // Config file missing or unreadable
   }
 

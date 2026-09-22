@@ -5,7 +5,11 @@ import { dirname, join } from "node:path";
 
 import { Database } from "bun:sqlite";
 
-import { globalConfigDir } from "../config/loader";
+import {
+  crossPlatformDirname,
+  crossPlatformJoin,
+  globalConfigDir,
+} from "../config/loader";
 import { CLI_IDS, type CliId } from "../models/cli";
 import type {
   SessionRecord,
@@ -31,8 +35,9 @@ export interface AppendTurnInput {
 }
 
 export interface SessionStore {
-  createSession(cliId: CliId, title: string): SessionRecord;
+  createSession(cliId: CliId, title: string, workspace?: string): SessionRecord;
   getSession(id: string): SessionRecord | null;
+  listSessions(options?: { workspace?: string; limit?: number }): readonly SessionRecord[];
   listTurns(sessionId: string): readonly SessionTurn[];
   appendTurn(input: AppendTurnInput): SessionTurn;
   pruneSessions(keep: number): number;
@@ -42,6 +47,9 @@ export interface SessionStore {
   getFavoriteAgent(): CliId | null;
   setFavoriteAgent(cliId: CliId): void;
   clearFavoriteAgent(): void;
+  getLastWorkspace(): string | null;
+  setLastWorkspace(workspace: string): void;
+  getRecentWorkspaces(limit?: number): readonly string[];
   close(): void;
 }
 
@@ -51,6 +59,7 @@ interface SessionRow {
   readonly title: string;
   readonly created_at: number;
   readonly updated_at: number;
+  readonly workspace?: string | null;
 }
 
 interface TurnRow {
@@ -72,7 +81,7 @@ interface TurnRow {
 }
 
 const SESSION_COLUMNS =
-  "id, cli_id, title, created_at, updated_at";
+  "id, cli_id, title, created_at, updated_at, workspace";
 const TURN_COLUMNS =
   "id, session_id, cli_id, prompt, output, exit_code, signal, duration_ms, created_at, model_id, protocol, reused_native, status, event_summary, context_source";
 
@@ -82,7 +91,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   cli_id TEXT NOT NULL,
   title TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  workspace TEXT
 );
 CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,8 +116,12 @@ CREATE TABLE IF NOT EXISTS preferences (
 export const SESSION_RETENTION = 20;
 
 /** Session database lives in the global .coderelay directory so history is shared across workspaces. */
-export function defaultSessionDbPath(homeDir = homedir()): string {
-  return join(globalConfigDir(homeDir), "sessions.db");
+export function defaultSessionDbPath(
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return crossPlatformJoin(globalConfigDir(homeDir, env, platform), "sessions.db");
 }
 
 function rowToSession(row: SessionRow): SessionRecord {
@@ -117,6 +131,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     title: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    workspace: row.workspace ?? undefined,
   };
 }
 
@@ -167,6 +182,14 @@ const TURN_MIGRATIONS: readonly string[] = [
   "ALTER TABLE turns ADD COLUMN context_source TEXT",
 ];
 
+function migrateSessionColumns(db: { exec: (sql: string) => void }): void {
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
+  } catch {
+    // Ignore if column already exists.
+  }
+}
+
 function migrateTurnColumns(db: { exec: (sql: string) => void }): void {
   for (const sql of TURN_MIGRATIONS) {
     try {
@@ -178,17 +201,30 @@ function migrateTurnColumns(db: { exec: (sql: string) => void }): void {
 }
 
 export function createSessionStore(dbPath: string): SessionStore {
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(crossPlatformDirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);
+  migrateSessionColumns(db);
   migrateTurnColumns(db);
 
-  const insertSession = db.query<unknown, [string, string, string, number, number]>(
-    `INSERT INTO sessions (${SESSION_COLUMNS}) VALUES (?, ?, ?, ?, ?)`,
+  const insertSession = db.query<
+    unknown,
+    [string, string, string, number, number, string | null]
+  >(
+    `INSERT INTO sessions (${SESSION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)`,
   );
   const selectSession = db.query<SessionRow, [string]>(
     `SELECT ${SESSION_COLUMNS} FROM sessions WHERE id = ?`,
+  );
+  const selectSessionsByWorkspace = db.query<SessionRow, [string, number]>(
+    `SELECT ${SESSION_COLUMNS} FROM sessions WHERE workspace = ? ORDER BY updated_at DESC, id DESC LIMIT ?`,
+  );
+  const selectAllSessions = db.query<SessionRow, [number]>(
+    `SELECT ${SESSION_COLUMNS} FROM sessions ORDER BY updated_at DESC, id DESC LIMIT ?`,
+  );
+  const selectRecentWorkspaces = db.query<{ workspace: string }, [number]>(
+    "SELECT workspace FROM sessions WHERE workspace IS NOT NULL AND workspace != '' GROUP BY workspace ORDER BY MAX(updated_at) DESC LIMIT ?",
   );
   const touchSession = db.query<unknown, [number, string]>(
     "UPDATE sessions SET updated_at = ? WHERE id = ?",
@@ -249,10 +285,10 @@ export function createSessionStore(dbPath: string): SessionStore {
   );
 
   return {
-    createSession(cliId, title) {
+    createSession(cliId, title, workspace = process.cwd()) {
       const now = Date.now();
       const id = randomUUID();
-      insertSession.run(id, cliId, title, now, now);
+      insertSession.run(id, cliId, title, now, now, workspace);
       const row = selectSession.get(id);
       if (!row) {
         throw new Error(`session insert failed: ${id}`);
@@ -263,6 +299,14 @@ export function createSessionStore(dbPath: string): SessionStore {
     getSession(id) {
       const row = selectSession.get(id);
       return row ? rowToSession(row) : null;
+    },
+
+    listSessions(options) {
+      const limit = options?.limit ?? 50;
+      if (options?.workspace) {
+        return selectSessionsByWorkspace.all(options.workspace, limit).map(rowToSession);
+      }
+      return selectAllSessions.all(limit).map(rowToSession);
     },
 
     listTurns(sessionId) {
@@ -332,6 +376,18 @@ export function createSessionStore(dbPath: string): SessionStore {
 
     clearFavoriteAgent() {
       this.deletePreference("favorite_agent");
+    },
+
+    getLastWorkspace() {
+      return this.getPreference("last_workspace");
+    },
+
+    setLastWorkspace(workspace) {
+      this.setPreference("last_workspace", workspace);
+    },
+
+    getRecentWorkspaces(limit = 10) {
+      return selectRecentWorkspaces.all(limit).map((r) => r.workspace);
     },
 
     close() {

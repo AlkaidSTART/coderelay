@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createSessionStore, defaultSessionDbPath } from "../src/session/store";
 
@@ -85,7 +86,7 @@ describe("session store", () => {
         durationMs: 100,
       });
       sessions.push(session);
-      await Bun.sleep(3);
+      await sleep(3);
     }
 
     expect(store.pruneSessions(3)).toBe(2);
@@ -114,9 +115,9 @@ describe("session store", () => {
   test("keeps the most recently active session instead of the newest created", async () => {
     const store = createSessionStore(tempDbPath());
     const older = store.createSession("codex", "旧会话");
-    await Bun.sleep(3);
+    await sleep(3);
     const newer = store.createSession("claude", "新会话");
-    await Bun.sleep(3);
+    await sleep(3);
     store.appendTurn({
       sessionId: older.id,
       cliId: "codex",
@@ -157,10 +158,82 @@ describe("session store", () => {
     second.close();
   });
 
-  test("resolves default session db to global .coderelay directory", () => {
+  test("resolves default session db to global .coderelay directory across platforms", () => {
     expect(defaultSessionDbPath()).toBe(join(homedir(), ".coderelay", "sessions.db"));
 
     const customHome = "/tmp/mock-home";
     expect(defaultSessionDbPath(customHome)).toBe(join(customHome, ".coderelay", "sessions.db"));
+
+    // Windows paths with backslashes
+    expect(defaultSessionDbPath("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay\\sessions.db");
+    expect(
+      defaultSessionDbPath(undefined, { USERPROFILE: "C:\\Users\\winuser" }, "win32"),
+    ).toBe("C:\\Users\\winuser\\.coderelay\\sessions.db");
+
+    // WSL / Linux
+    expect(
+      defaultSessionDbPath(undefined, { HOME: "/home/wsluser" }, "linux"),
+    ).toBe("/home/wsluser/.coderelay/sessions.db");
+
+    // macOS
+    expect(
+      defaultSessionDbPath(undefined, { HOME: "/Users/macuser" }, "darwin"),
+    ).toBe("/Users/macuser/.coderelay/sessions.db");
+
+    // CODERELAY_HOME override
+    expect(
+      defaultSessionDbPath(undefined, { CODERELAY_HOME: "/custom/global" }),
+    ).toBe("/custom/global/.coderelay/sessions.db");
+  });
+
+  test("persists workspace info on sessions and queries by workspace", async () => {
+    const store = createSessionStore(tempDbPath());
+
+    const sessionA = store.createSession("codex", "Workspace A task", "/workspace/a");
+    await sleep(3);
+    const sessionB = store.createSession("claude", "Workspace B task", "/workspace/b");
+    await sleep(3);
+    const sessionA2 = store.createSession("pi", "Workspace A second task", "/workspace/a");
+
+    expect(sessionA.workspace).toBe("/workspace/a");
+    expect(sessionB.workspace).toBe("/workspace/b");
+    expect(store.getSession(sessionA.id)?.workspace).toBe("/workspace/a");
+
+    const sessionsForA = store.listSessions({ workspace: "/workspace/a" });
+    expect(sessionsForA.length).toBe(2);
+    expect(sessionsForA.map((s) => s.id)).toEqual([sessionA2.id, sessionA.id]);
+
+    const sessionsForB = store.listSessions({ workspace: "/workspace/b" });
+    expect(sessionsForB.length).toBe(1);
+    expect(sessionsForB[0]?.id).toBe(sessionB.id);
+
+    const allSessions = store.listSessions();
+    expect(allSessions.length).toBe(3);
+
+    store.close();
+  });
+
+  test("persists last workspace and retrieves recent workspaces", async () => {
+    const path = tempDbPath();
+    const first = createSessionStore(path);
+
+    expect(first.getLastWorkspace()).toBeNull();
+    first.setLastWorkspace("/projects/alpha");
+    expect(first.getLastWorkspace()).toBe("/projects/alpha");
+
+    first.createSession("codex", "Task 1", "/projects/alpha");
+    await sleep(3);
+    first.createSession("claude", "Task 2", "/projects/beta");
+    await sleep(3);
+    first.createSession("pi", "Task 3", "/projects/alpha");
+
+    const recent = first.getRecentWorkspaces();
+    expect(recent).toEqual(["/projects/alpha", "/projects/beta"]);
+
+    first.close();
+
+    const second = createSessionStore(path);
+    expect(second.getLastWorkspace()).toBe("/projects/alpha");
+    second.close();
   });
 });

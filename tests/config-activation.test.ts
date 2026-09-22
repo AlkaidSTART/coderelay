@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
@@ -8,9 +8,12 @@ import {
   CONFIG_FILE_NAMES,
   ConfigError,
   defaultConfigPath,
+  findWslWindowsHome,
+  globalConfigDir,
   loadConfig,
   saveActivationDecisions,
 } from "../src/config/loader";
+import { ConfigSchema } from "../src/config/schema";
 import { toActivationOptions, pendingActivation } from "../src/config/activation";
 import { CLI_IDS, type DetectedCli } from "../src/models/cli";
 
@@ -236,5 +239,106 @@ describe("saveActivationDecisions", () => {
       ).rejects.toBeInstanceOf(ConfigError);
       expect(await readYaml(cwd)).toBe(broken);
     });
+  });
+
+  test("resolves default config path to global .coderelay directory", () => {
+    expect(defaultConfigPath()).toBe(join(homedir(), ".coderelay", "config.yaml"));
+
+    const customHome = "/tmp/mock-home";
+    expect(defaultConfigPath(customHome)).toBe(join(customHome, ".coderelay", "config.yaml"));
+  });
+
+  test("saves activation decisions to global .coderelay by default", async () => {
+    await withTempDir(async (mockHome) => {
+      const savedPath = await saveActivationDecisions(
+        [{ cliId: "claude", enabled: true }],
+        { homeDir: mockHome },
+      );
+      expect(savedPath).toBe(join(mockHome, ".coderelay", "config.yaml"));
+      const content = await readFile(savedPath, "utf8");
+      expect(content).toContain("claude:");
+      expect(content).toContain("enabled: true");
+    });
+  });
+
+  test("loadConfig falls back to global .coderelay when workspace has no config", async () => {
+    await withTempDir(async (mockHome) => {
+      await withTempDir(async (workspaceCwd) => {
+        // Seed config in global directory only
+        const globalPath = join(mockHome, ".coderelay", "config.yaml");
+        await mkdir(dirname(globalPath), { recursive: true });
+        await writeFile(globalPath, "agents:\n  pi:\n    enabled: false\n", "utf8");
+
+        const loaded = await loadConfig({ cwd: workspaceCwd, homeDir: mockHome });
+        expect(loaded.path).toBe(globalPath);
+        expect(loaded.config.agents["pi"]?.enabled).toBe(false);
+      });
+    });
+  });
+
+  test("adapts storage location to Windows paths and environment", () => {
+    // Windows path directly passed
+    expect(defaultConfigPath("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay\\config.yaml");
+    expect(globalConfigDir("C:\\Users\\tester")).toBe("C:\\Users\\tester\\.coderelay");
+
+    // Windows resolved via USERPROFILE
+    expect(
+      defaultConfigPath(undefined, { USERPROFILE: "C:\\Users\\winuser" }, "win32"),
+    ).toBe("C:\\Users\\winuser\\.coderelay\\config.yaml");
+
+    // Windows resolved via HOMEDRIVE + HOMEPATH
+    expect(
+      defaultConfigPath(undefined, { HOMEDRIVE: "D:", HOMEPATH: "\\Users\\winuser" }, "win32"),
+    ).toBe("D:\\Users\\winuser\\.coderelay\\config.yaml");
+  });
+
+  test("adapts storage location to WSL and Linux environments", () => {
+    // Standard Linux / WSL HOME
+    expect(
+      defaultConfigPath(undefined, { HOME: "/home/wsluser" }, "linux"),
+    ).toBe("/home/wsluser/.coderelay/config.yaml");
+
+    // WSL Windows profile discovery via USERPROFILE
+    expect(
+      findWslWindowsHome({ USERPROFILE: "C:\\Users\\alice" }),
+    ).toBe("/mnt/c/Users/alice");
+
+    // WSL Windows profile discovery via USER
+    expect(
+      findWslWindowsHome({ USER: "bob" }),
+    ).toBe("/mnt/c/Users/bob");
+  });
+
+  test("supports CODERELAY_HOME override across all platforms", () => {
+    // Custom path without .coderelay suffix appends it
+    expect(
+      globalConfigDir(undefined, { CODERELAY_HOME: "/opt/custom_storage" }),
+    ).toBe("/opt/custom_storage/.coderelay");
+
+    // Custom path already having .coderelay suffix keeps it intact
+    expect(
+      globalConfigDir(undefined, { CODERELAY_HOME: "C:\\custom\\.coderelay" }),
+    ).toBe("C:\\custom\\.coderelay");
+
+    expect(
+      defaultConfigPath(undefined, { CODERELAY_HOME: "C:\\custom\\.coderelay" }),
+    ).toBe("C:\\custom\\.coderelay\\config.yaml");
+  });
+
+  test("ConfigSchema rejects duplicate model ids for an agent", () => {
+    const result = ConfigSchema.safeParse({
+      agents: {
+        claude: {
+          models: [
+            { id: "opus", name: "Opus" },
+            { id: "opus", name: "Opus Duplicate" },
+          ],
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('duplicate model id "opus"'))).toBe(true);
+    }
   });
 });

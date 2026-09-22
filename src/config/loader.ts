@@ -8,13 +8,14 @@
  *   4. coderelay.config.yml
  */
 
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import path, { dirname, join, resolve } from "node:path";
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 
+import { toWslPath } from "../runtime/wsl";
 import { ConfigSchema, defaultConfig, type Config } from "./schema";
 
 export const CONFIG_DIR = ".coderelay";
@@ -43,6 +44,12 @@ export interface LoadConfigOptions {
   cwd?: string;
   /** Explicit config file; skips discovery and errors when missing. */
   path?: string;
+  /** Home directory to check for global config (~/.coderelay/config.yaml). */
+  homeDir?: string;
+  /** Environment variables override (for tests and cross-platform resolution). */
+  env?: NodeJS.ProcessEnv;
+  /** Platform identifier (for tests and cross-platform resolution). */
+  platform?: NodeJS.Platform;
   /** Return defaults instead of throwing when no config file is found. */
   allowMissing?: boolean;
 }
@@ -61,24 +68,131 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Walk up from `startDir` looking for a config file. */
-export async function findConfigPath(startDir: string): Promise<string | null> {
+/** Determine whether a path looks like a Windows path (e.g. C:\... or \\server\share or Windows backslashes). */
+export function isWindowsStylePath(p: string): boolean {
+  return (
+    /^[A-Za-z]:[\\/]/.test(p) ||
+    p.startsWith("\\\\") ||
+    (process.platform === "win32" && !p.startsWith("/"))
+  );
+}
+
+/** Join path segments respecting platform style (Windows backslashes vs POSIX slashes). */
+export function crossPlatformJoin(base: string, ...parts: string[]): string {
+  return isWindowsStylePath(base)
+    ? path.win32.join(base, ...parts)
+    : path.posix.join(base, ...parts);
+}
+
+/** Get directory name respecting platform style. */
+export function crossPlatformDirname(p: string): string {
+  return isWindowsStylePath(p)
+    ? path.win32.dirname(p)
+    : path.posix.dirname(p);
+}
+
+/**
+ * Resolve the user's home/base directory across macOS, Windows, and WSL.
+ * Order of precedence:
+ *   1. Explicit homeDir argument
+ *   2. CODERELAY_HOME environment variable
+ *   3. Windows: USERPROFILE > HOMEDRIVE+HOMEPATH > os.homedir()
+ *   4. macOS / Linux / WSL: HOME > os.homedir()
+ */
+export function resolveGlobalBaseDir(
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (homeDir) {
+    return homeDir;
+  }
+  const explicit = env.CODERELAY_HOME?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  if (platform === "win32") {
+    const userProfile = env.USERPROFILE?.trim();
+    if (userProfile) {
+      return userProfile;
+    }
+    const homeDrive = env.HOMEDRIVE?.trim();
+    const homePath = env.HOMEPATH?.trim();
+    if (homeDrive && homePath) {
+      return `${homeDrive}${homePath}`;
+    }
+  }
+  const home = env.HOME?.trim();
+  if (home) {
+    return home;
+  }
+  return homedir();
+}
+
+/** Inside WSL, find the mounted Windows user home directory (e.g. /mnt/c/Users/<user>). */
+export function findWslWindowsHome(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const userProfile = env.USERPROFILE?.trim();
+  if (userProfile) {
+    return toWslPath(userProfile);
+  }
+  const username = env.USER || env.LOGNAME;
+  if (username) {
+    return `/mnt/c/Users/${username}`;
+  }
+  return null;
+}
+
+/** Walk up from `startDir` looking for a config file, falling back to global config if homeDir is provided. */
+export async function findConfigPath(
+  startDir: string,
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | null> {
   let dir = resolve(startDir);
 
   while (true) {
     for (const name of CONFIG_FILE_NAMES) {
-      const candidate = join(dir, name);
+      const candidate = crossPlatformJoin(dir, name);
       if (await Bun.file(candidate).exists()) {
         return candidate;
       }
     }
 
-    const parent = dirname(dir);
+    const parent = crossPlatformDirname(dir);
     if (parent === dir) {
-      return null;
+      break;
     }
     dir = parent;
   }
+
+  if (homeDir || env.CODERELAY_HOME) {
+    const globalDir = globalConfigDir(homeDir, env, platform);
+    for (const name of ["config.yaml", "config.yml"]) {
+      const candidate = crossPlatformJoin(globalDir, name);
+      if (await Bun.file(candidate).exists()) {
+        return candidate;
+      }
+    }
+  }
+
+  // If in WSL and no config found yet, check Windows home profile if available
+  if (platform === "linux" && (env.WSL_DISTRO_NAME || env.WSL_INTEROP)) {
+    const wslWinHome = findWslWindowsHome(env);
+    if (wslWinHome) {
+      const winGlobalDir = crossPlatformJoin(wslWinHome, CONFIG_DIR);
+      for (const name of ["config.yaml", "config.yml"]) {
+        const candidate = crossPlatformJoin(winGlobalDir, name);
+        if (await Bun.file(candidate).exists()) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /** Load and validate the config, falling back to defaults when allowed. */
@@ -86,12 +200,14 @@ export async function loadConfig(
   options: LoadConfigOptions = {},
 ): Promise<LoadedConfig> {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const path = options.path ? resolve(options.path) : await findConfigPath(cwd);
+  const path = options.path
+    ? resolve(options.path)
+    : await findConfigPath(cwd, options.homeDir, options.env, options.platform);
 
   if (!path) {
     if (options.allowMissing === false) {
       throw new ConfigError(
-        `no config file found from ${cwd}; create ${CONFIG_DIR}/config.yaml`,
+        `no config file found from ${cwd}; create ${defaultConfigPath(options.homeDir, options.env, options.platform)}`,
       );
     }
 
@@ -127,8 +243,9 @@ export async function loadConfig(
 /** Absolute path of the config file `loadConfig` would use, if any. */
 export async function resolveConfigPath(
   cwd = process.cwd(),
+  homeDir?: string,
 ): Promise<string | null> {
-  return findConfigPath(cwd);
+  return findConfigPath(cwd, homeDir);
 }
 
 /** Directory that holds the config file (created on demand by `init`). */
@@ -137,8 +254,19 @@ export function configDirFor(cwd = process.cwd()): string {
 }
 
 /** Global directory that holds user-level config and session data (~/.coderelay). */
-export function globalConfigDir(homeDir = homedir()): string {
-  return join(homeDir, CONFIG_DIR);
+export function globalConfigDir(
+  homeDir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const explicit = env.CODERELAY_HOME?.trim();
+  if (explicit && !homeDir) {
+    return explicit.endsWith(CONFIG_DIR)
+      ? explicit
+      : crossPlatformJoin(explicit, CONFIG_DIR);
+  }
+  const base = resolveGlobalBaseDir(homeDir, env, platform);
+  return crossPlatformJoin(base, CONFIG_DIR);
 }
 
 /** One CLI's activation choice, as confirmed by the user in the TUI. */
@@ -150,13 +278,23 @@ export interface ActivationDecision {
 export interface SaveActivationOptions {
   /** Directory the default config path is derived from. */
   cwd?: string;
-  /** Explicit config file to update; defaults to `<cwd>/.coderelay/config.yaml`. */
+  /** Home directory for user-level config (~/.coderelay/config.yaml). */
+  homeDir?: string;
+  /** Environment variables override (for tests and cross-platform resolution). */
+  env?: NodeJS.ProcessEnv;
+  /** Platform identifier (for tests and cross-platform resolution). */
+  platform?: NodeJS.Platform;
+  /** Explicit config file to update; defaults to `~/.coderelay/config.yaml`. */
   path?: string | null;
 }
 
-/** Path `saveActivationDecisions` writes to when no explicit path is given. */
-export function defaultConfigPath(cwd = process.cwd()): string {
-  return join(resolve(cwd), CONFIG_FILE_NAMES[0]);
+/** Path `saveActivationDecisions` writes to when no explicit path is given (~/.coderelay/config.yaml). */
+export function defaultConfigPath(
+  dir?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return crossPlatformJoin(globalConfigDir(dir, env, platform), "config.yaml");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -177,7 +315,9 @@ export async function saveActivationDecisions(
 ): Promise<string> {
   const path = options.path
     ? resolve(options.path)
-    : defaultConfigPath(options.cwd);
+    : options.cwd
+      ? crossPlatformJoin(resolve(options.cwd), CONFIG_DIR, "config.yaml")
+      : defaultConfigPath(options.homeDir, options.env, options.platform);
 
   let raw: Record<string, unknown> = {};
   const file = Bun.file(path);
@@ -212,7 +352,7 @@ export async function saveActivationDecisions(
   raw.agents = agents;
 
   try {
-    await mkdir(dirname(path), { recursive: true });
+    await mkdir(crossPlatformDirname(path), { recursive: true });
     // The `yaml` package emits block style; `Bun.YAML.stringify` writes flow
     // style (one dense line), which is valid but unreadable for a file users
     // are expected to hand-edit.
