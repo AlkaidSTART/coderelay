@@ -372,10 +372,10 @@ function buildArgsFor(
   const modelArgs = options.model ? ["--model", options.model] : [];
   switch (id) {
     case "codex": {
-      // codex exec [options] [PROMPT]；resume 走 --last。
+      // codex exec [options] [PROMPT]；resume 传入 nativeSessionId。
       const args: string[] = ["exec", ...modelArgs, ...extra];
       if (options.nativeSessionId) {
-        args.push("resume", "--last");
+        args.push("resume", options.nativeSessionId);
       }
       args.push(options.prompt);
       return Object.freeze(args);
@@ -463,7 +463,6 @@ export function createCliAdapters(
       probeModels: () => probeCodexModels(codexDir),
       probeCapabilities: () => staticCapabilities.codex,
       buildPromptArgs: (promptOptions: PromptBuildOptions) => buildArgsFor("codex", promptOptions),
-      buildResumeArgs: (sessionId: string) => ["exec", "resume", "--last", sessionId],
       parseOutputChunk: (chunk: string, source: "stdout" | "stderr") => parseChunk(chunk, source),
       defaultModel: () => undefined,
     }),
@@ -477,7 +476,6 @@ export function createCliAdapters(
       probeModels: () => probeClaudeModels(claudeDir),
       probeCapabilities: () => staticCapabilities.claude,
       buildPromptArgs: (promptOptions: PromptBuildOptions) => buildArgsFor("claude", promptOptions),
-      buildResumeArgs: (sessionId: string) => ["-p", "--resume", sessionId],
       parseOutputChunk: (chunk: string, source: "stdout" | "stderr") => parseChunk(chunk, source),
       defaultModel: () => undefined,
     }),
@@ -491,7 +489,6 @@ export function createCliAdapters(
       probeModels: () => probePiModels(piDir),
       probeCapabilities: () => staticCapabilities.pi,
       buildPromptArgs: (promptOptions: PromptBuildOptions) => buildArgsFor("pi", promptOptions),
-      buildResumeArgs: (sessionId: string) => ["-p", "--resume", sessionId],
       parseOutputChunk: (chunk: string, source: "stdout" | "stderr") => parseChunk(chunk, source),
       defaultModel: () => undefined,
     }),
@@ -505,7 +502,6 @@ export function createCliAdapters(
       probeModels: () => probeOmpModels(ompDir),
       probeCapabilities: () => staticCapabilities.omp,
       buildPromptArgs: (promptOptions: PromptBuildOptions) => buildArgsFor("omp", promptOptions),
-      buildResumeArgs: (sessionId: string) => ["-p", "--resume", sessionId],
       parseOutputChunk: (chunk: string, source: "stdout" | "stderr"): readonly AgentEvent[] => parseChunk(chunk, source),
       defaultModel: () => undefined,
     }),

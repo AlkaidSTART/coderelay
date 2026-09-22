@@ -76,6 +76,17 @@ let activeAbort: AbortController | null = null;
 let flowSeq = 0;
 let nativeSessionIds: Partial<Record<CliId, string>> = {};
 let currentRoutingMode: RoutingMode = "local";
+let currentWorkspace = process.cwd();
+
+function handleWorkspaceChange(newCwd: string): void {
+  try {
+    process.chdir(newCwd);
+    currentWorkspace = newCwd;
+  } catch {
+    // 目录切换异常已在 UI 校验过，这里兜底
+  }
+  rerender();
+}
 
 function getStore(): SessionStore {
   if (!store) {
@@ -149,6 +160,8 @@ function tree() {
         getStore().clearFavoriteAgent();
         rerender();
       }}
+      workspace={currentWorkspace}
+      onWorkspaceChange={handleWorkspaceChange}
       onExit={() => {
         store?.close();
         app?.unmount();

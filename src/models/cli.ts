@@ -148,11 +148,6 @@ export interface CliAdapter {
   readonly probeCapabilities?: () => CliCapabilities;
   /** 非交互任务参数（含模型选择与原生恢复）。 */
   readonly buildPromptArgs?: (options: PromptBuildOptions) => readonly string[];
-  /** 原生会话恢复参数；不支持时返回 null，调用方走 transcript 注入。 */
-  readonly buildResumeArgs?: (
-    sessionId: string,
-    options?: Omit<PromptBuildOptions, "nativeSessionId" | "prompt"> & { readonly prompt?: string },
-  ) => readonly string[] | null;
   /** 将原始 stdout/stderr 片段解析为统一事件。 */
   readonly parseOutputChunk?: (
     chunk: string,

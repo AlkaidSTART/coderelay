@@ -45,6 +45,22 @@ describe("CLI adapters", () => {
     expect(adapters.pi.promptArgs("hello")).toEqual(["-p", "hello"]);
     expect(adapters.omp.promptArgs("hello")).toEqual(["-p", "hello"]);
   });
+
+  test("codex buildPromptArgs resumes with nativeSessionId without --last", () => {
+    const adapters = createCliAdapters({ homeDir: "/home/tester", env: {} });
+
+    const withoutResume = adapters.codex.buildPromptArgs?.({
+      prompt: "do work",
+    });
+    expect(withoutResume).toEqual(["exec", "do work"]);
+
+    const withResume = adapters.codex.buildPromptArgs?.({
+      prompt: "continue work",
+      nativeSessionId: "session-xyz-123",
+    });
+    expect(withResume).toEqual(["exec", "resume", "session-xyz-123", "continue work"]);
+    expect(withResume).not.toContain("--last");
+  });
 });
 
 describe("Codex model probing", () => {

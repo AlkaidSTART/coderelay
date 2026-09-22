@@ -7,6 +7,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "/mode", description: "切换决策模式 (local / manual / jev)" },
   { name: "/favorite", description: "设置最喜欢的初始化 agent (持久化到 SQLite)" },
   { name: "/model", description: "切换 agent，会话上下文保留" },
+  { name: "/workspace", description: "切换或查看当前工作区路径 (/cd 别名)" },
+  { name: "/cd", description: "切换工作区路径 (/workspace 别名)" },
   { name: "/activate", description: "启用或禁用 CLI，保存到配置" },
   { name: "/new", description: "开始新会话，清空上下文" },
   { name: "/help", description: "显示可用命令" },
