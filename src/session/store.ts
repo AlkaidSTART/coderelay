@@ -47,8 +47,6 @@ export interface SessionStore {
   getFavoriteAgent(): CliId | null;
   setFavoriteAgent(cliId: CliId): void;
   clearFavoriteAgent(): void;
-  getLastWorkspace(): string | null;
-  setLastWorkspace(workspace: string): void;
   getRecentWorkspaces(limit?: number): readonly string[];
   close(): void;
 }
@@ -376,14 +374,6 @@ export function createSessionStore(dbPath: string): SessionStore {
 
     clearFavoriteAgent() {
       this.deletePreference("favorite_agent");
-    },
-
-    getLastWorkspace() {
-      return this.getPreference("last_workspace");
-    },
-
-    setLastWorkspace(workspace) {
-      this.setPreference("last_workspace", workspace);
     },
 
     getRecentWorkspaces(limit = 10) {

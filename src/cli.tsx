@@ -82,11 +82,6 @@ function handleWorkspaceChange(newCwd: string): void {
   try {
     process.chdir(newCwd);
     currentWorkspace = newCwd;
-    try {
-      getStore().setLastWorkspace(newCwd);
-    } catch {
-      // 存储异常不阻断
-    }
   } catch {
     // 目录切换异常已在 UI 校验过，这里兜底
   }
@@ -889,7 +884,6 @@ async function launch(request: LaunchRequest): Promise<void> {
 
 try {
   const currentStore = getStore();
-  currentStore.setLastWorkspace(currentWorkspace);
   const favorite = currentStore.getFavoriteAgent();
   if (favorite) {
     initialId = favorite;
