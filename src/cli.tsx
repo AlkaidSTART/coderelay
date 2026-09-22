@@ -216,16 +216,12 @@ function failTerminal(message: string, flow: number): void {
 }
 
 async function loadAppConfig(): Promise<Config> {
-  try {
-    const loaded = await loadConfig({
-      cwd: currentWorkspace,
-      homeDir: homedir(),
-      allowMissing: true,
-    });
-    return loaded.config;
-  } catch {
-    return defaultConfig();
-  }
+  const loaded = await loadConfig({
+    cwd: currentWorkspace,
+    homeDir: homedir(),
+    allowMissing: true,
+  });
+  return loaded.config;
 }
 
 function resolveTarget(
@@ -290,7 +286,18 @@ async function requestActivationManager(): Promise<void> {
   flowSeq += 1;
   const flow = flowSeq;
   lastResult = null;
-  const config = await loadAppConfig();
+  let config: Config;
+  try {
+    config = await loadAppConfig();
+  } catch (error) {
+    phase = "failed";
+    lastResult = {
+      phase: "failed",
+      message: `配置无效：${error instanceof Error ? error.message : String(error)}`,
+    };
+    rerender();
+    return;
+  }
   if (flow !== flowSeq) {
     return;
   }
@@ -373,7 +380,16 @@ async function runPromptFlow(prompt: string): Promise<void> {
   lastResult = null;
   rerender();
 
-  const config = await loadAppConfig();
+  let config: Config;
+  try {
+    config = await loadAppConfig();
+  } catch (error) {
+    failTerminal(
+      `配置无效：${error instanceof Error ? error.message : String(error)}`,
+      flow,
+    );
+    return;
+  }
   if (flow !== flowSeq) {
     return;
   }
@@ -715,7 +731,16 @@ async function requestModelSelector(): Promise<void> {
   lastResult = null;
   rerender();
 
-  const config = await loadAppConfig();
+  let config: Config;
+  try {
+    config = await loadAppConfig();
+  } catch (error) {
+    failTerminal(
+      `配置无效：${error instanceof Error ? error.message : String(error)}`,
+      flow,
+    );
+    return;
+  }
   if (flow !== flowSeq) {
     return;
   }
@@ -886,14 +911,22 @@ void scanCodingClis()
       const config = await loadAppConfig();
       currentRoutingMode = config.routing.mode;
       enterActivationConfirm(detected, config);
-    } catch {
-      phase = "idle";
+    } catch (error) {
+      phase = "failed";
+      lastResult = {
+        phase: "failed",
+        message: `配置无效：${error instanceof Error ? error.message : String(error)}`,
+      };
     }
     rerender();
   })
-  .catch(() => {
+  .catch((error) => {
     clis = [];
     isScanning = false;
-    phase = "idle";
+    phase = "failed";
+    lastResult = {
+      phase: "failed",
+      message: `扫描失败：${error instanceof Error ? error.message : String(error)}`,
+    };
     rerender();
   });

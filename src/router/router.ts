@@ -176,7 +176,12 @@ function routeWithRules(
     );
 
     if (matchingCandidates.length === 0) {
-      continue;
+      const target = [match.rule.use.agent, match.rule.use.model]
+        .filter(Boolean)
+        .join(":");
+      throw new RouteError(
+        `rule "${match.rule.name}" matched, but target "${target}" is not available; refusing silent fallback`,
+      );
     }
 
     const [best] = scoreCandidates(
@@ -271,15 +276,6 @@ export function selectCandidate(
   const candidate = matched.find((item) => item.isDefault) ?? matched[0];
   if (candidate) {
     return candidate;
-  }
-
-  if (agent) {
-    return {
-      agent,
-      model,
-      strengths: [],
-      isDefault: false,
-    };
   }
 
   throw new RouteError(
