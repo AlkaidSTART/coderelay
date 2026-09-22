@@ -216,7 +216,7 @@ export function createSessionStore(dbPath: string): SessionStore {
     `SELECT ${SESSION_COLUMNS} FROM sessions ORDER BY updated_at DESC, id DESC LIMIT ?`,
   );
   const selectRecentWorkspaces = db.query<{ workspace: string }, [number]>(
-    "SELECT DISTINCT workspace FROM sessions WHERE workspace IS NOT NULL AND workspace != '' ORDER BY updated_at DESC LIMIT ?",
+    "SELECT workspace FROM sessions WHERE workspace IS NOT NULL AND workspace != '' GROUP BY workspace ORDER BY MAX(updated_at) DESC LIMIT ?",
   );
   const touchSession = db.query<unknown, [number, string]>(
     "UPDATE sessions SET updated_at = ? WHERE id = ?",

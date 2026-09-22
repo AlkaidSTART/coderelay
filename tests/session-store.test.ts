@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createSessionStore, defaultSessionDbPath } from "../src/session/store";
 
@@ -85,7 +86,7 @@ describe("session store", () => {
         durationMs: 100,
       });
       sessions.push(session);
-      await Bun.sleep(3);
+      await sleep(3);
     }
 
     expect(store.pruneSessions(3)).toBe(2);
@@ -114,9 +115,9 @@ describe("session store", () => {
   test("keeps the most recently active session instead of the newest created", async () => {
     const store = createSessionStore(tempDbPath());
     const older = store.createSession("codex", "旧会话");
-    await Bun.sleep(3);
+    await sleep(3);
     const newer = store.createSession("claude", "新会话");
-    await Bun.sleep(3);
+    await sleep(3);
     store.appendTurn({
       sessionId: older.id,
       cliId: "codex",
@@ -168,9 +169,9 @@ describe("session store", () => {
     const store = createSessionStore(tempDbPath());
 
     const sessionA = store.createSession("codex", "Workspace A task", "/workspace/a");
-    await Bun.sleep(3);
+    await sleep(3);
     const sessionB = store.createSession("claude", "Workspace B task", "/workspace/b");
-    await Bun.sleep(3);
+    await sleep(3);
     const sessionA2 = store.createSession("pi", "Workspace A second task", "/workspace/a");
 
     expect(sessionA.workspace).toBe("/workspace/a");
@@ -191,7 +192,7 @@ describe("session store", () => {
     store.close();
   });
 
-  test("persists last workspace and retrieves recent workspaces", () => {
+  test("persists last workspace and retrieves recent workspaces", async () => {
     const path = tempDbPath();
     const first = createSessionStore(path);
 
@@ -200,7 +201,9 @@ describe("session store", () => {
     expect(first.getLastWorkspace()).toBe("/projects/alpha");
 
     first.createSession("codex", "Task 1", "/projects/alpha");
+    await sleep(3);
     first.createSession("claude", "Task 2", "/projects/beta");
+    await sleep(3);
     first.createSession("pi", "Task 3", "/projects/alpha");
 
     const recent = first.getRecentWorkspaces();
