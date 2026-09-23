@@ -224,4 +224,126 @@ describe("Workspace command in App", () => {
       rmSync(baseDir, { recursive: true, force: true });
     }
   });
+
+  test("shows recent workspaces list when /workspace has no arguments and recentWorkspaces provided", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "coderelay-ws-recents-"));
+    const ws1 = join(baseDir, "project-alpha");
+    const ws2 = join(baseDir, "project-beta");
+    mkdirSync(ws1, { recursive: true });
+    mkdirSync(ws2, { recursive: true });
+
+    try {
+      const instance = render(
+        <App
+          clis={CLIS}
+          initialId="codex"
+          workspace={baseDir}
+          recentWorkspaces={[ws1, ws2]}
+          onLaunch={() => {}}
+          onExit={() => {}}
+        />,
+      );
+
+      // Enter chat
+      instance.stdin.write("\r");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      instance.stdin.write("/workspace");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      const frame = instance.lastFrame() ?? "";
+      expect(frame).toContain(`当前工作区：${baseDir}`);
+      expect(frame).toContain("最近工作区：");
+      expect(frame).toContain(`[1] ${ws1}`);
+      expect(frame).toContain(`[2] ${ws2}`);
+      instance.cleanup();
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test("switches workspace by numeric index referencing recent workspaces", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "coderelay-ws-idx-"));
+    const ws1 = join(baseDir, "project-alpha");
+    const ws2 = join(baseDir, "project-beta");
+    mkdirSync(ws1, { recursive: true });
+    mkdirSync(ws2, { recursive: true });
+
+    try {
+      let changedWorkspace: string | undefined;
+      const instance = render(
+        <App
+          clis={CLIS}
+          initialId="codex"
+          workspace={baseDir}
+          recentWorkspaces={[ws1, ws2]}
+          onWorkspaceChange={(dir) => {
+            changedWorkspace = dir;
+          }}
+          onLaunch={() => {}}
+          onExit={() => {}}
+        />,
+      );
+
+      // Enter chat
+      instance.stdin.write("\r");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      // Switch using index 2 (project-beta)
+      instance.stdin.write("/workspace 2");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      expect(changedWorkspace).toBe(ws2);
+      const frame = instance.lastFrame() ?? "";
+      expect(frame).toContain("工作区已切换为");
+      expect(frame).toContain(ws2);
+      instance.cleanup();
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test("shows suggestions when typing /workspace with recent workspaces", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "coderelay-ws-sug-"));
+    const ws1 = join(baseDir, "alpha-repo");
+    mkdirSync(ws1, { recursive: true });
+
+    try {
+      const instance = render(
+        <App
+          clis={CLIS}
+          initialId="codex"
+          workspace={baseDir}
+          recentWorkspaces={[ws1]}
+          onLaunch={() => {}}
+          onExit={() => {}}
+        />,
+      );
+
+      // Enter chat
+      instance.stdin.write("\r");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      // Type /workspace with space to trigger recent workspace suggestions
+      instance.stdin.write("/workspace ");
+      await nextTick();
+
+      const frame = instance.lastFrame() ?? "";
+      expect(frame).toContain("/workspace 1");
+      expect(frame).toContain(ws1);
+      instance.cleanup();
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
 });

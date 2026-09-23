@@ -14,7 +14,7 @@ import type { DetectedCli } from "../src/models/cli";
 import { resolveRoutingMode } from "../src/router/router";
 import { resolveLaunchCwd } from "../src/runtime/launcher";
 import { createSessionStore, defaultSessionDbPath } from "../src/session/store";
-import { App } from "../src/ui/App";
+import { App, type LaunchRequest } from "../src/ui/App";
 
 const MOCK_CLIS: DetectedCli[] = [
   {
@@ -64,11 +64,11 @@ describe("Cross-workspace session store", () => {
       // Querying by workspace isolates sessions
       const sessionsA = store.listSessions({ workspace: wsA });
       expect(sessionsA).toHaveLength(1);
-      expect(sessionsA[0].id).toBe(sessionA.id);
+      expect(sessionsA[0]?.id).toBe(sessionA.id);
 
       const sessionsB = store.listSessions({ workspace: wsB });
       expect(sessionsB).toHaveLength(1);
-      expect(sessionsB[0].id).toBe(sessionB.id);
+      expect(sessionsB[0]?.id).toBe(sessionB.id);
 
       // Global query without workspace returns sessions across all workspaces
       const allSessions = store.listSessions();
@@ -129,8 +129,8 @@ describe("Cross-workspace session store", () => {
 
       const turns = store.listTurns(session.id);
       expect(turns).toHaveLength(1);
-      expect(turns[0].id).toBe(turn1.id);
-      expect(turns[0].prompt).toBe("echo hello");
+      expect(turns[0]?.id).toBe(turn1.id);
+      expect(turns[0]?.prompt).toBe("echo hello");
     } finally {
       store.close();
       rmSync(tempDir, { recursive: true, force: true });
@@ -216,6 +216,32 @@ describe("Cross-workspace config resolution", () => {
       const pathB = await resolveConfigPath(workspaceB, mockHome);
       expect(pathA).toBe(join(workspaceA, ".coderelay", "config.yaml"));
       expect(pathB).toBe(join(mockHome, ".coderelay", "config.yaml"));
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("global activation decisions apply across workspaces lacking local config", async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "coderelay-act-cross-"));
+    const mockHome = join(tempRoot, "home");
+    const workspace1 = join(tempRoot, "ws-1");
+    const workspace2 = join(tempRoot, "ws-2");
+
+    mkdirSync(workspace1, { recursive: true });
+    mkdirSync(workspace2, { recursive: true });
+
+    try {
+      // Save global activation decision
+      await saveActivationDecisions([{ cliId: "codex", enabled: false }], {
+        homeDir: mockHome,
+      });
+
+      // Both workspace 1 and workspace 2 read the same global decision
+      const loaded1 = await loadConfig({ cwd: workspace1, homeDir: mockHome });
+      const loaded2 = await loadConfig({ cwd: workspace2, homeDir: mockHome });
+
+      expect(loaded1.config.agents.codex?.enabled).toBe(false);
+      expect(loaded2.config.agents.codex?.enabled).toBe(false);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -351,6 +377,7 @@ describe("Cross-workspace navigation in App TUI", () => {
 
     try {
       const history: string[] = [];
+      const launched: LaunchRequest[] = [];
       const instance = render(
         <App
           clis={MOCK_CLIS}
@@ -359,7 +386,9 @@ describe("Cross-workspace navigation in App TUI", () => {
           onWorkspaceChange={(dir) => {
             history.push(dir);
           }}
-          onLaunch={() => {}}
+          onLaunch={(req) => {
+            launched.push(req);
+          }}
           onExit={() => {}}
         />,
       );
@@ -391,9 +420,83 @@ describe("Cross-workspace navigation in App TUI", () => {
       expect(history).toEqual([ws2, ws3]);
       expect(instance.lastFrame() ?? "").toContain(`当前工作区：${ws3}`);
 
+      // Submitting prompt in the newly switched workspace triggers launch
+      instance.stdin.write("fix tests in ws-3");
+      await nextTick();
+      instance.stdin.write("\r");
+      await nextTick();
+
+      expect(launched).toHaveLength(1);
+      expect(launched[0]).toEqual({
+        id: "codex",
+        mode: "prompt",
+        prompt: "fix tests in ws-3",
+      });
+
       instance.cleanup();
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("switching workspace creates distinct sessions per workspace in SQLite store", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "coderelay-session-iso-"));
+    const dbPath = join(tempDir, "sessions.db");
+    const store = createSessionStore(dbPath);
+
+    try {
+      const wsA = "/project/workspace-a";
+      const wsB = "/project/workspace-b";
+
+      // User starts in wsA and runs prompt 1
+      let currentSessionId: string | null = null;
+      let currentWorkspace = wsA;
+
+      // First prompt in wsA creates session in wsA
+      const sessionA = store.createSession("codex", "prompt in A", currentWorkspace);
+      currentSessionId = sessionA.id;
+      store.appendTurn({
+        sessionId: currentSessionId,
+        cliId: "codex",
+        prompt: "prompt in A",
+        output: "result A",
+        exitCode: 0,
+        signal: null,
+        durationMs: 100,
+      });
+
+      // User changes workspace to wsB -> session resets
+      currentWorkspace = wsB;
+      currentSessionId = null;
+
+      // Next prompt in wsB creates a new session in wsB
+      const sessionB = store.createSession("codex", "prompt in B", currentWorkspace);
+      currentSessionId = sessionB.id;
+      store.appendTurn({
+        sessionId: currentSessionId,
+        cliId: "codex",
+        prompt: "prompt in B",
+        output: "result B",
+        exitCode: 0,
+        signal: null,
+        durationMs: 100,
+      });
+
+      // Verify sessions are completely separated across workspaces
+      expect(sessionA.id).not.toBe(sessionB.id);
+      expect(sessionA.workspace).toBe(wsA);
+      expect(sessionB.workspace).toBe(wsB);
+
+      const sessionsInA = store.listSessions({ workspace: wsA });
+      expect(sessionsInA).toHaveLength(1);
+      expect(sessionsInA[0]?.id).toBe(sessionA.id);
+
+      const sessionsInB = store.listSessions({ workspace: wsB });
+      expect(sessionsInB).toHaveLength(1);
+      expect(sessionsInB[0]?.id).toBe(sessionB.id);
+    } finally {
+      store.close();
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 });
