@@ -1,5 +1,7 @@
 import { join, resolve } from "node:path";
 
+import { z } from "zod";
+
 import type { AgentId } from "../models/types";
 import type { RouteCandidate, RouteDecision, RouteRequest } from "./types";
 
@@ -8,9 +10,8 @@ export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
 export const TYPESAFE_ENV_KEY = "TYPESAFE_API_KEY";
 
 const CANDIDATE_ENV_FILES = [
-  "env.locaj",
-  "env.local",
   ".env.local",
+  "env.local",
   ".env",
 ] as const;
 
@@ -59,21 +60,30 @@ export interface JevRequestBody {
   readonly questions: Record<string, JevQuestionChoice>;
 }
 
-export interface JevChoiceAnswer {
-  readonly type: "choice";
-  readonly choice: string;
-  readonly confidence: number;
-  readonly probabilities: Record<string, number>;
-}
+export const JevChoiceAnswerSchema = z.object({
+  type: z.literal("choice"),
+  choice: z.string(),
+  confidence: z.number(),
+  probabilities: z.record(z.string(), z.number()),
+});
 
-export interface JevResponseBody {
-  readonly model: string;
-  readonly answers: Record<string, JevChoiceAnswer | undefined>;
-  readonly usage?: {
-    readonly input_tokens: number;
-    readonly output_tokens: number;
-  };
-}
+export type JevChoiceAnswer = z.infer<typeof JevChoiceAnswerSchema>;
+
+export const JevUsageSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+});
+
+export type JevUsage = z.infer<typeof JevUsageSchema>;
+
+// ponytail: validates choice answers only; upgrade to discriminated union when jev supports other question types
+export const JevResponseBodySchema = z.object({
+  model: z.string(),
+  answers: z.record(z.string(), JevChoiceAnswerSchema.optional()),
+  usage: JevUsageSchema.nullish(),
+});
+
+export type JevResponseBody = z.infer<typeof JevResponseBodySchema>;
 
 export interface JevClientOptions {
   readonly apiKey?: string;
@@ -110,7 +120,7 @@ export function formatCandidateKey(candidate: RouteCandidate): string {
  * Resolves the TypeSafe API key in order of priority:
  * 1. Explicitly supplied key
  * 2. process.env.TYPESAFE_API_KEY
- * 3. Local env files (env.locaj, env.local, .env.local, .env) in cwd
+ * 3. Local env files (.env.local, env.local, .env) in cwd
  */
 export async function resolveTypesafeApiKey(
   options: { explicitKey?: string; cwd?: string } = {},
@@ -220,7 +230,7 @@ export async function routeWithJev(
 
   if (!apiKey) {
     throw new JevError(
-      "TYPESAFE_API_KEY is not configured (check env.locaj or set TYPESAFE_API_KEY)",
+      "TYPESAFE_API_KEY is not configured (check .env.local or set TYPESAFE_API_KEY)",
       { code: "NO_KEY" },
     );
   }
@@ -271,9 +281,9 @@ export async function routeWithJev(
     );
   }
 
-  let body: JevResponseBody;
+  let rawJson: unknown;
   try {
-    body = (await response.json()) as JevResponseBody;
+    rawJson = await response.json();
   } catch (error) {
     throw new JevError("failed to parse Jev API response as JSON", {
       code: "INVALID_RESPONSE",
@@ -281,7 +291,20 @@ export async function routeWithJev(
     });
   }
 
-  const answer = body.answers?.decision;
+  const parsed = JevResponseBodySchema.safeParse(rawJson);
+  if (!parsed.success) {
+    throw new JevError(
+      `invalid Jev API response structure: ${parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join(", ")}`,
+      {
+        code: "INVALID_RESPONSE",
+        cause: parsed.error,
+      },
+    );
+  }
+
+  const body = parsed.data;
+
+  const answer = body.answers.decision;
   if (!answer || !answer.choice) {
     throw new JevError("Jev API response missing 'decision' answer", {
       code: "NO_CHOICE",
@@ -306,8 +329,8 @@ export async function routeWithJev(
     agent: candidate.agent,
     model: candidate.model,
     candidate,
-    confidence: answer.confidence ?? 0,
-    probabilities: answer.probabilities ?? {},
+    confidence: answer.confidence,
+    probabilities: answer.probabilities,
     rawChoice: chosenKey,
     modelName: body.model || model,
     usage: body.usage

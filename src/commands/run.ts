@@ -11,7 +11,7 @@ import { CLI_IDS, cliLaunchTarget, type CliId, type DetectedCli, type LaunchTarg
 import type { AgentEvent } from "../models/agent-events";
 import type { ModelStrength } from "../models/types";
 import { jevDecisionToRouteDecision, routeWithJev } from "../router/jev";
-import { route } from "../router/router";
+import { resolveRoutingMode, route } from "../router/router";
 import type { RouteDecision } from "../router/types";
 import { runAgentStream, type AgentRunHandle } from "../runtime/agent-run";
 import { buildLaunchCmd, resolveLaunchCwd } from "../runtime/launcher";
@@ -154,7 +154,7 @@ export async function runRunCommand(
     let agent: CliId;
     let model: string | undefined;
     let decision: RouteDecision | undefined;
-    const routingMode = options.mode ?? config.routing.mode;
+    const routingMode = resolveRoutingMode(config.routing.mode, options.mode);
 
     if (options.agent || options.model) {
       const explicit = validateExplicitTarget(
@@ -257,6 +257,7 @@ export async function runRunCommand(
     const handle = startStream({
       cmd: buildLaunchCmd(executable, args),
       cwd: launchCwd,
+      target: executable,
       env: { ...process.env, ...agentConfig?.env, ...options.env },
       signal: options.signal,
       timeoutMs: options.timeoutMs,

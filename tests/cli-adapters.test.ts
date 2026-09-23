@@ -153,3 +153,101 @@ describe("Codex model probing", () => {
     }
   });
 });
+
+describe("Pi model probing", () => {
+  test("probes provider-scoped models from models.json without dropping provider identity", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-pi-test-"));
+    try {
+      const piDir = join(tempDir, ".pi", "agent");
+      await mkdir(piDir, { recursive: true });
+
+      const modelsJson = {
+        providers: {
+          openai: {
+            models: [{ id: "gpt-4o", name: "GPT-4o" }],
+          },
+          proxy: {
+            models: [{ id: "gpt-4o", name: "Proxy GPT-4o" }],
+          },
+        },
+      };
+      await writeFile(join(piDir, "models.json"), JSON.stringify(modelsJson));
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.pi.probeModels?.();
+
+      expect(result?.ok).toBe(true);
+      if (result?.ok) {
+        expect(result.models.length).toBe(2);
+        expect(result.models[0]).toEqual({ id: "openai/gpt-4o", label: "GPT-4o" });
+        expect(result.models[1]).toEqual({ id: "proxy/gpt-4o", label: "Proxy GPT-4o" });
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not double-prefix if model id already has provider prefix", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-pi-test-"));
+    try {
+      const piDir = join(tempDir, ".pi", "agent");
+      await mkdir(piDir, { recursive: true });
+
+      const modelsJson = {
+        providers: {
+          anthropic: {
+            models: [{ id: "anthropic/claude-3-5-sonnet" }],
+          },
+        },
+      };
+      await writeFile(join(piDir, "models.json"), JSON.stringify(modelsJson));
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.pi.probeModels?.();
+
+      expect(result?.ok).toBe(true);
+      if (result?.ok) {
+        expect(result.models[0]?.id).toBe("anthropic/claude-3-5-sonnet");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns error when models.json missing", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-pi-test-"));
+    try {
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.pi.probeModels?.();
+
+      expect(result?.ok).toBe(false);
+      if (result && !result.ok) {
+        expect(result.reason).toContain("models.json");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns error when models list is empty", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "coderelay-pi-test-"));
+    try {
+      const piDir = join(tempDir, ".pi", "agent");
+      await mkdir(piDir, { recursive: true });
+      await writeFile(
+        join(piDir, "models.json"),
+        JSON.stringify({ providers: { openai: { models: [] } } }),
+      );
+
+      const adapters = createCliAdapters({ homeDir: tempDir });
+      const result = await adapters.pi.probeModels?.();
+
+      expect(result?.ok).toBe(false);
+      if (result && !result.ok) {
+        expect(result.reason).toContain("pi 模型列表为空");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});

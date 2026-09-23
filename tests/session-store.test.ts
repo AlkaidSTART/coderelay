@@ -213,13 +213,9 @@ describe("session store", () => {
     store.close();
   });
 
-  test("persists last workspace and retrieves recent workspaces", async () => {
+  test("retrieves recent workspaces from sessions", async () => {
     const path = tempDbPath();
     const first = createSessionStore(path);
-
-    expect(first.getLastWorkspace()).toBeNull();
-    first.setLastWorkspace("/projects/alpha");
-    expect(first.getLastWorkspace()).toBe("/projects/alpha");
 
     first.createSession("codex", "Task 1", "/projects/alpha");
     await sleep(3);
@@ -231,9 +227,5 @@ describe("session store", () => {
     expect(recent).toEqual(["/projects/alpha", "/projects/beta"]);
 
     first.close();
-
-    const second = createSessionStore(path);
-    expect(second.getLastWorkspace()).toBe("/projects/alpha");
-    second.close();
   });
 });

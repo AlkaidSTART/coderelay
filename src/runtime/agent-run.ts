@@ -14,6 +14,25 @@ import {
   summarizeEvents,
   type AgentEvent,
 } from "../models/agent-events";
+import type { LaunchTarget } from "../models/cli";
+
+export type AgentSpawnRunner = (
+  file: string,
+  args: readonly string[],
+  options: {
+    readonly cwd?: string;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly stdio: ["pipe", "pipe", "pipe"];
+    readonly detached: boolean;
+    readonly windowsHide: boolean;
+    readonly shell: boolean;
+  },
+) => ChildProcess;
+
+export interface AgentRunDependencies {
+  readonly spawn: AgentSpawnRunner;
+  readonly platform: NodeJS.Platform;
+}
 
 export interface AgentRunOptions {
   readonly cmd: readonly string[];
@@ -32,6 +51,9 @@ export interface AgentRunOptions {
     chunk: string,
     source: "stdout" | "stderr",
   ) => readonly AgentEvent[];
+  readonly target?: LaunchTarget;
+  readonly shell?: boolean;
+  readonly dependencies?: Partial<AgentRunDependencies>;
 }
 
 export interface AgentRunResult {
@@ -135,6 +157,39 @@ function tail(text: string, maxChars: number): string {
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
+const defaultSpawn: AgentSpawnRunner = (file, args, options) =>
+  spawn(file, [...args], options);
+
+/**
+ * Determine if spawn requires shell execution.
+ * Windows .cmd/.bat shims (e.g. npm global binaries) require cmd.exe to launch.
+ * WSL targets must spawn wsl.exe directly without cmd.exe re-parsing.
+ */
+export function resolveAgentShell(
+  options: {
+    readonly shell?: boolean;
+    readonly target?: LaunchTarget;
+  },
+  bin: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (options.shell !== undefined) {
+    return options.shell;
+  }
+  if (platform !== "win32") {
+    return false;
+  }
+  if (options.target?.runtime === "wsl") {
+    return false;
+  }
+  const normalized = bin.toLowerCase();
+  return (
+    normalized !== "wsl.exe" &&
+    !normalized.endsWith("\\wsl.exe") &&
+    !normalized.endsWith("/wsl.exe")
+  );
+}
+
 /**
  * 以事件流方式运行一条 agent 命令。prompt 应已由调用方编码进 cmd
  *（适配器 buildPromptArgs），本函数只负责进程组生命周期与流式解析。
@@ -147,6 +202,8 @@ export function runAgentStream(options: AgentRunOptions): AgentRunHandle {
     options.onEvent(event);
   };
   const parse = options.parseChunk ?? defaultParse;
+  const spawnFn = options.dependencies?.spawn ?? defaultSpawn;
+  const platform = options.dependencies?.platform ?? process.platform;
 
   const [bin, ...args] = options.cmd;
   const result = ((): AgentRunHandle | { readonly spawnError: Error } => {
@@ -154,14 +211,15 @@ export function runAgentStream(options: AgentRunOptions): AgentRunHandle {
       if (!bin) {
         throw new Error("runAgentStream requires a non-empty cmd array");
       }
-      const child = spawn(bin, args, {
+      const shell = resolveAgentShell(options, bin, platform);
+      const child = spawnFn(bin, args, {
         cwd: options.cwd,
         env: options.env ?? process.env,
         stdio: ["pipe", "pipe", "pipe"],
-        // Unix 独立进程组，便于 Ctrl-C 时整体终止；Windows 用 taskkill /t。
-        detached: process.platform !== "win32",
+        // Unix detached process group; Windows process tree kill via taskkill /t.
+        detached: platform !== "win32",
         windowsHide: true,
-        shell: false,
+        shell,
       });
       return { child } as AgentRunHandle;
     } catch (error) {

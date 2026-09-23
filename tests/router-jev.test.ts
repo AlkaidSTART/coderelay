@@ -7,8 +7,11 @@ import type { RouteCandidate } from "../src/router/types";
 import {
   buildJevRequest,
   formatCandidateKey,
+  JevChoiceAnswerSchema,
   jevDecisionToRouteDecision,
   JevError,
+  JevResponseBodySchema,
+  JevUsageSchema,
   resolveTypesafeApiKey,
   routeWithJev,
   TYPESAFE_DEFAULT_ENDPOINT,
@@ -48,11 +51,25 @@ describe("resolveTypesafeApiKey", () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
     try {
       await writeFile(
-        join(tmpDir, "env.locaj"),
+        join(tmpDir, ".env.local"),
         "TYPESAFE_API_KEY=apikey_mock_12345\n",
       );
       const key = await resolveTypesafeApiKey({ cwd: tmpDir });
       expect(key).toBe("apikey_mock_12345");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores deprecated env.locaj typo file", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "coderelay-env-test-"));
+    try {
+      await writeFile(
+        join(tmpDir, "env.locaj"),
+        "TYPESAFE_API_KEY=apikey_mock_12345\n",
+      );
+      const key = await resolveTypesafeApiKey({ cwd: tmpDir });
+      expect(key).toBeNull();
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
@@ -137,7 +154,9 @@ describe("routeWithJev", () => {
           apiKey: undefined,
           cwd: "/empty-non-existent-dir",
         }),
-      ).rejects.toThrow(JevError);
+      ).rejects.toThrow(
+        "TYPESAFE_API_KEY is not configured (check .env.local or set TYPESAFE_API_KEY)",
+      );
     } finally {
       if (originalEnv) {
         process.env.TYPESAFE_API_KEY = originalEnv;
@@ -315,6 +334,189 @@ describe("routeWithJev", () => {
     expect(decision.agent).toBe("codex");
     expect(decision.model).toBe("o3-mini");
     expect(decision.rawChoice).toBe("codex:o3-mini");
+  });
+
+  describe("runtime validation of upstream response", () => {
+    const testCandidates: RouteCandidate[] = [
+      { agent: "claude", strengths: ["reasoning"], isDefault: true },
+      { agent: "codex", strengths: ["coding"], isDefault: false },
+    ];
+
+    const testInvalidResponse = async (body: unknown, rawText?: string) => {
+      const mockFetch = async () =>
+        new Response(rawText ?? JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+
+      const err = await routeWithJev({ prompt: "task" }, testCandidates, {
+        apiKey: "test_key",
+        fetchFn: mockFetch,
+      }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(JevError);
+      expect((err as JevError).code).toBe("INVALID_RESPONSE");
+      return err as JevError;
+    };
+
+    test("throws INVALID_RESPONSE when response body is null", async () => {
+      await testInvalidResponse(null);
+    });
+
+    test("throws INVALID_RESPONSE when response is not an object", async () => {
+      await testInvalidResponse("invalid-string");
+      await testInvalidResponse(12345);
+      await testInvalidResponse([1, 2, 3]);
+    });
+
+    test("throws INVALID_RESPONSE when response is malformed JSON syntax", async () => {
+      await testInvalidResponse(undefined, "not a { valid json");
+    });
+
+    test("throws INVALID_RESPONSE when model is missing or non-string", async () => {
+      await testInvalidResponse({
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+      await testInvalidResponse({
+        model: 123,
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+    });
+
+    test("throws INVALID_RESPONSE when answers is missing or not an object", async () => {
+      await testInvalidResponse({ model: "jev-1.0" });
+      await testInvalidResponse({ model: "jev-1.0", answers: null });
+      await testInvalidResponse({ model: "jev-1.0", answers: "not-an-object" });
+    });
+
+    test("throws INVALID_RESPONSE when decision answer has invalid type", async () => {
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "text",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+    });
+
+    test("throws INVALID_RESPONSE when decision choice is not a string", async () => {
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: 123,
+            confidence: 0.9,
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+    });
+
+    test("throws INVALID_RESPONSE when confidence is not a number", async () => {
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: "0.9",
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: { value: 0.9 },
+            probabilities: { claude: 0.9 },
+          },
+        },
+      });
+    });
+
+    test("throws INVALID_RESPONSE when probabilities is not Record<string, number>", async () => {
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: "not-an-object",
+          },
+        },
+      });
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: { claude: "high" },
+          },
+        },
+      });
+    });
+
+    test("throws INVALID_RESPONSE when usage contains non-numeric tokens", async () => {
+      await testInvalidResponse({
+        model: "jev-1.0",
+        answers: {
+          decision: {
+            type: "choice",
+            choice: "claude",
+            confidence: 0.9,
+            probabilities: { claude: 0.9 },
+          },
+        },
+        usage: {
+          input_tokens: "many",
+          output_tokens: 10,
+        },
+      });
+    });
+
+    test("throws NO_CHOICE when answers is valid but missing decision answer", async () => {
+      const mockFetch = async () =>
+        new Response(
+          JSON.stringify({
+            model: "jev-1.0",
+            answers: {},
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+
+      const err = await routeWithJev({ prompt: "task" }, testCandidates, {
+        apiKey: "test_key",
+        fetchFn: mockFetch,
+      }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(JevError);
+      expect((err as JevError).code).toBe("NO_CHOICE");
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import type { Config, RouteRule } from "../config/schema";
+import type { Config, RouteRule, RoutingMode } from "../config/schema";
 import { formatModelRef, parseModelRef } from "../models/types";
 import { matchRules, ruleMatchesCandidate } from "./rules";
 import {
@@ -281,6 +281,17 @@ export function selectCandidate(
   throw new RouteError(
     `no candidate matches ${[agent, model].filter(Boolean).join(":")}`,
   );
+}
+
+/**
+ * Resolve effective routing mode:
+ * Explicit user override takes precedence over workspace configuration.
+ */
+export function resolveRoutingMode(
+  configMode: RoutingMode,
+  override?: RoutingMode | null,
+): RoutingMode {
+  return override ?? configMode;
 }
 
 export { scoreCandidate };

@@ -247,12 +247,14 @@ async function probePiModels(configDir: string): Promise<ProbeResult> {
       }
       const providers = raw["providers"] as Record<string, unknown>;
       const models: ProbedModel[] = [];
-      for (const provider of Object.values(providers)) {
-        if (!isRecord(provider) || !Array.isArray(provider["models"])) continue;
+      for (const [providerKey, provider] of Object.entries(providers)) {
+        const trimmedKey = providerKey.trim();
+        if (!trimmedKey || !isRecord(provider) || !Array.isArray(provider["models"])) continue;
         for (const entry of provider["models"] as unknown[]) {
           if (!isRecord(entry)) continue;
-          const id = entry["id"];
-          if (typeof id !== "string" || !id) continue;
+          const rawId = typeof entry["id"] === "string" ? entry["id"].trim() : "";
+          if (!rawId) continue;
+          const id = rawId.startsWith(`${trimmedKey}/`) ? rawId : `${trimmedKey}/${rawId}`;
           models.push({
             id,
             label: typeof entry["name"] === "string" ? (entry["name"] as string) : undefined,

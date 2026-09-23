@@ -635,7 +635,13 @@ export async function runDoctorCommand(
   try {
     const loaded =
       options.config === undefined
-        ? await loadConfig({ cwd: options.cwd, path: options.configPath })
+        ? await loadConfig({
+            cwd: options.cwd,
+            path: options.configPath,
+            homeDir: dependencies.homeDir,
+            env: dependencies.env,
+            platform: dependencies.platform,
+          })
         : { config: options.config, path: options.configPath ?? null };
     const detected = await scan(options.scanner);
     const report = buildDoctorReport(loaded.config, detected, {
