@@ -158,7 +158,7 @@ function tail(text: string, maxChars: number): string {
 }
 
 const defaultSpawn: AgentSpawnRunner = (file, args, options) =>
-  spawn(file, [...args], options);
+  spawn(file, [...args], { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
 /**
  * Determine if spawn requires shell execution.

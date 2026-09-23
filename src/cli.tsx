@@ -27,7 +27,7 @@ import {
 } from "./models/agent-events";
 import type { SessionTurn, TurnContextSource } from "./models/session";
 import { routeWithJev } from "./router/jev";
-import { route } from "./router/router";
+import { resolveRoutingMode, route } from "./router/router";
 import { compareScores, scoreCandidates } from "./router/scorer";
 import { runAgentStream } from "./runtime/agent-run";
 import { buildLaunchCmd, launchInteractive, resolveLaunchCwd } from "./runtime/launcher";
@@ -75,13 +75,21 @@ let manualTarget: { readonly cliId: CliId; readonly modelId?: string } | null = 
 let activeAbort: AbortController | null = null;
 let flowSeq = 0;
 let nativeSessionIds: Partial<Record<CliId, string>> = {};
+let userModeOverride: RoutingMode | null = null;
 let currentRoutingMode: RoutingMode = "local";
 let currentWorkspace = process.cwd();
 
-function handleWorkspaceChange(newCwd: string): void {
+async function handleWorkspaceChange(newCwd: string): Promise<void> {
   try {
     process.chdir(newCwd);
     currentWorkspace = newCwd;
+    userModeOverride = null;
+    try {
+      const config = await loadAppConfig();
+      currentRoutingMode = resolveRoutingMode(config.routing.mode, userModeOverride);
+    } catch {
+      currentRoutingMode = resolveRoutingMode(defaultConfig().routing.mode, userModeOverride);
+    }
   } catch {
     // 目录切换异常已在 UI 校验过，这里兜底
   }
@@ -147,6 +155,7 @@ function tree() {
       onCancelSelecting={handleCancelSelecting}
       routingMode={currentRoutingMode}
       onModeChange={(mode) => {
+        userModeOverride = mode;
         currentRoutingMode = mode;
         rerender();
       }}
@@ -385,6 +394,8 @@ async function runPromptFlow(prompt: string): Promise<void> {
   if (flow !== flowSeq) {
     return;
   }
+  const effectiveMode = resolveRoutingMode(config.routing.mode, userModeOverride);
+  currentRoutingMode = effectiveMode;
   const adapters = createCliAdapters();
   const catalog = await probeModelCatalog(clis, adapters, config);
   if (flow !== flowSeq) {
@@ -424,7 +435,7 @@ async function runPromptFlow(prompt: string): Promise<void> {
   }
 
   // 模式 1：手动选择 (manual) - 每次直接展示选择器供用户自行挑选
-  if (currentRoutingMode === "manual") {
+  if (effectiveMode === "manual") {
     pendingPrompt = text;
     pendingCatalog = catalog;
     pendingConfig = config;
@@ -436,7 +447,7 @@ async function runPromptFlow(prompt: string): Promise<void> {
   }
 
   // 模式 2：Jev 模型决策 (jev) - 调用 TypeSafe Jev 模型决策，不走自动推断
-  if (currentRoutingMode === "jev") {
+  if (effectiveMode === "jev") {
     try {
       const jevResult = await routeWithJev(
         { prompt: text },
@@ -901,7 +912,8 @@ void scanCodingClis()
     // 只有「已安装且用户还没决策过」的 CLI 才需要问一次；否则直接进模式页。
     try {
       const config = await loadAppConfig();
-      currentRoutingMode = config.routing.mode;
+      userModeOverride = null;
+      currentRoutingMode = resolveRoutingMode(config.routing.mode, userModeOverride);
       enterActivationConfirm(detected, config);
     } catch (error) {
       phase = "failed";

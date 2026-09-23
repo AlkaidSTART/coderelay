@@ -112,7 +112,7 @@ export interface AppProps {
   readonly onClearFavoriteAgent?: () => void;
   /** 当前工作区路径（默认 process.cwd()）。 */
   readonly workspace?: string;
-  readonly onWorkspaceChange?: (newCwd: string) => void;
+  readonly onWorkspaceChange?: (newCwd: string) => void | Promise<void>;
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -778,7 +778,7 @@ export function App({
             return;
           }
           setActiveWorkspace(resolvedPath);
-          onWorkspaceChange?.(resolvedPath);
+          void onWorkspaceChange?.(resolvedPath);
           setNotice(`✓ 工作区已切换为: ${resolvedPath}`);
         } else if (command?.name === "/model") {
           if (onRequestModelSelector) {
