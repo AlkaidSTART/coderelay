@@ -86,6 +86,18 @@ describe("resolveLaunchCwd", () => {
     expect(resolveLaunchCwd("C:\\Users\\me\\project", WSL_TARGET)).toBe(
       "/mnt/c/Users/me/project",
     );
+    expect(
+      resolveLaunchCwd("C:\\Users\\me\\project", {
+        ...WSL_TARGET,
+        mountRoot: "/windir",
+      }),
+    ).toBe("/windir/c/Users/me/project");
+    expect(
+      resolveLaunchCwd("C:\\Users\\me\\project", {
+        ...WSL_TARGET,
+        mountRoot: "/",
+      }),
+    ).toBe("/c/Users/me/project");
   });
 
   test("gives up on a directory WSL cannot express", () => {

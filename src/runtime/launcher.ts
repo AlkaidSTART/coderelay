@@ -129,13 +129,25 @@ export function buildLaunchCmd(
  */
 export function resolveLaunchCwd(
   cwd: string | undefined,
-  target: LaunchTarget | undefined,
+  target:
+    | LaunchTarget
+    | {
+        readonly runtime?: string;
+        readonly distro?: string;
+        readonly mountRoot?: string;
+      }
+    | undefined,
 ): string | undefined {
   if (!cwd || target?.runtime !== "wsl") {
     return cwd;
   }
 
-  return toWslPath(cwd) ?? undefined;
+  return (
+    toWslPath(cwd, {
+      distro: target.distro,
+      mountRoot: target.mountRoot,
+    }) ?? undefined
+  );
 }
 
 export function createSpawnOptions(

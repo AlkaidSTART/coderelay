@@ -539,6 +539,7 @@ function toWslCandidates(
     runtime: "wsl" as const,
     source: "installer" as const,
     distro: location.distro,
+    ...(location.mountRoot ? { mountRoot: location.mountRoot } : {}),
     version: location.version,
   }));
 }
@@ -660,6 +661,7 @@ async function scanCli(
     runtime: selected.runtime,
     source: selected.source,
     ...(selected.distro ? { distro: selected.distro } : {}),
+    ...(selected.mountRoot ? { mountRoot: selected.mountRoot } : {}),
     candidates,
     diagnostics,
   };
