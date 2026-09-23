@@ -15,6 +15,7 @@ function fakeChild(): ChildProcess {
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
+  child.kill = (() => true) as unknown as ChildProcess["kill"];
   return child;
 }
 
@@ -104,6 +105,81 @@ describe("runAgentStream", () => {
     const countAfterSettle = events.length;
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(events.length).toBe(countAfterSettle);
+  });
+
+  test("user abort is not overwritten by subsequent timeout before process close", async () => {
+    const child = fakeChild();
+    const events: AgentEvent[] = [];
+    const handle = runAgentStream({
+      cmd: ["dummy"],
+      protocol: "text",
+      timeoutMs: 40,
+      onEvent: (event) => events.push(event),
+      dependencies: {
+        spawn: () => child,
+      },
+    });
+
+    handle.abort();
+    // 等待 timeoutMs 定时器触发窗口
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    child.emit("close", null, "SIGTERM");
+
+    const result = await handle.done;
+    expect(result.status).toBe("aborted");
+    expect(result.timedOut).toBe(false);
+    expect(events.some((e) => e.kind === "aborted" && e.reason.includes("用户取消"))).toBe(true);
+    expect(events.some((e) => e.kind === "aborted" && e.reason.includes("执行超时"))).toBe(false);
+  });
+
+  test("timeout termination is not overwritten by subsequent abort before process close", async () => {
+    const child = fakeChild();
+    const events: AgentEvent[] = [];
+    const handle = runAgentStream({
+      cmd: ["dummy"],
+      protocol: "text",
+      timeoutMs: 30,
+      onEvent: (event) => events.push(event),
+      dependencies: {
+        spawn: () => child,
+      },
+    });
+
+    // 等待 timeout 先行触发
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    handle.abort();
+    child.emit("close", null, "SIGTERM");
+
+    const result = await handle.done;
+    expect(result.status).toBe("timeout");
+    expect(result.timedOut).toBe(true);
+    expect(events.some((e) => e.kind === "aborted" && e.reason.includes("执行超时"))).toBe(true);
+    expect(events.some((e) => e.kind === "aborted" && e.reason.includes("用户取消"))).toBe(false);
+  });
+
+  test("pre-aborted signal terminates as aborted and ignores timeout", async () => {
+    const child = fakeChild();
+    const controller = new AbortController();
+    controller.abort();
+    const events: AgentEvent[] = [];
+    const handle = runAgentStream({
+      cmd: ["dummy"],
+      protocol: "text",
+      signal: controller.signal,
+      timeoutMs: 40,
+      onEvent: (event) => events.push(event),
+      dependencies: {
+        spawn: () => child,
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    child.emit("close", null, "SIGTERM");
+
+    const result = await handle.done;
+    expect(result.status).toBe("aborted");
+    expect(result.timedOut).toBe(false);
+    expect(events.some((e) => e.kind === "aborted" && e.reason.includes("用户取消"))).toBe(true);
   });
 
   test("cleans up streams and listeners after exit", async () => {

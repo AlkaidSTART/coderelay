@@ -92,7 +92,7 @@ function defaultParse(
 function killProcessTree(child: ChildProcess): void {
   const pid = child.pid;
   if (pid === undefined) {
-    child.kill("SIGKILL");
+    child.kill?.("SIGKILL");
     return;
   }
   if (process.platform === "win32") {
@@ -307,10 +307,14 @@ export function runAgentStream(options: AgentRunOptions): AgentRunHandle {
   };
 
   const terminate = (reason: "timeout" | "abort"): void => {
-    if (settled) {
+    if (settled || abortReason !== null) {
       return;
     }
     abortReason = reason;
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+      timeoutTimer = undefined;
+    }
     killProcessTree(child);
     killTimer = setTimeout(() => {
       forceKill(child);
@@ -321,9 +325,13 @@ export function runAgentStream(options: AgentRunOptions): AgentRunHandle {
   function onAbort(): void {
     terminate("abort");
   }
-  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) {
+    terminate("abort");
+  } else {
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+  }
 
-  if (options.timeoutMs !== undefined && options.timeoutMs > 0) {
+  if (options.timeoutMs !== undefined && options.timeoutMs > 0 && abortReason === null) {
     timeoutTimer = setTimeout(() => {
       terminate("timeout");
     }, options.timeoutMs);
@@ -405,11 +413,12 @@ export function runAgentStream(options: AgentRunOptions): AgentRunHandle {
     });
     // close 在 stdio 排空后触发，比 exit 更适合结算。
     child.once("close", (code: number | null, signal: NodeJS.Signals | null) => {
-      if (abortReason === "timeout") {
+      const finalReason = abortReason ?? (options.signal?.aborted ? "abort" : null);
+      if (finalReason === "timeout") {
         settle("timeout", code, signal, true);
         return;
       }
-      if (abortReason === "abort" || options.signal?.aborted) {
+      if (finalReason === "abort") {
         settle("aborted", code, signal, false);
         return;
       }
