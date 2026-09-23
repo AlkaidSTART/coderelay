@@ -41,9 +41,8 @@ export function normalizeMountRoot(raw: string): string {
   if (!trimmed) {
     return DEFAULT_WSL_MOUNT_ROOT;
   }
-  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  const withoutTrailing = withSlash.replace(/\/+$/, "");
-  return withoutTrailing === "" ? "/" : withoutTrailing;
+  const clean = trimmed.replace(/^\/+/, "").replace(/\/+$/, "");
+  return clean === "" ? "/" : `/${clean}`;
 }
 
 /**
@@ -73,23 +72,34 @@ export function parseWslConfAutomount(content: string): WslAutomountConfig {
         continue;
       }
       const key = line.slice(0, eqIdx).trim().toLowerCase();
-      let rawVal = line.slice(eqIdx + 1).trim();
+      const rawVal = line.slice(eqIdx + 1).trim();
 
-      // Strip inline comments if not inside quotes
-      if (!rawVal.startsWith('"') && !rawVal.startsWith("'")) {
+      let val = "";
+      const quoteMatch = /^("[^"]*"|'[^']*')/.exec(rawVal);
+      if (quoteMatch) {
+        val = (quoteMatch[1] ?? "").slice(1, -1).trim();
+      } else {
         const commentIdx = rawVal.search(/[#;]/);
-        if (commentIdx !== -1) {
-          rawVal = rawVal.slice(0, commentIdx).trim();
-        }
+        const withoutComment =
+          commentIdx !== -1 ? rawVal.slice(0, commentIdx) : rawVal;
+        val = withoutComment.trim();
       }
-
-      const val = rawVal.replace(/^["']|["']$/g, "").trim();
 
       if (key === "enabled") {
         const lower = val.toLowerCase();
-        if (lower === "false" || lower === "0" || lower === "no" || lower === "off") {
+        if (
+          lower === "false" ||
+          lower === "0" ||
+          lower === "no" ||
+          lower === "off"
+        ) {
           enabled = false;
-        } else if (lower === "true" || lower === "1" || lower === "yes" || lower === "on") {
+        } else if (
+          lower === "true" ||
+          lower === "1" ||
+          lower === "yes" ||
+          lower === "on"
+        ) {
           enabled = true;
         }
       } else if (key === "root") {
