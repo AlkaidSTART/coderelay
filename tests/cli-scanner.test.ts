@@ -206,9 +206,6 @@ describe("CLI scanner", () => {
       platform: "darwin",
       homeDir: "/Users/tester",
       env: {},
-      readFile: async () => {
-        throw new Error("no config.toml");
-      },
       access: async (candidate) => {
         if (!accessible.has(candidate)) {
           throw new Error("not found");

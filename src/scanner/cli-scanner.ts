@@ -435,18 +435,11 @@ async function collectLocalCandidates(
   }
 
   if (definition.id === "codex") {
-    const codexDir =
-      resolved.env.CODEX_HOME?.trim() ||
-      (resolved.platform === "win32"
-        ? path.win32.join(resolved.homeDir, ".codex")
-        : path.posix.join(resolved.homeDir, ".codex"));
-    searchedDirs.push(codexDir);
     const fallback = await getCodexConfigFallback({
       platform: resolved.platform,
       homeDir: resolved.homeDir,
       env: resolved.env,
       access: resolved.access,
-      readFile: resolved.readFile,
     });
     if (fallback) {
       ordered.push({ path: fallback, source: "installer" });
