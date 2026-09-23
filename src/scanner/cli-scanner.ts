@@ -230,43 +230,25 @@ export async function getWindowsClaudeFallback(
 }
 
 /**
- * Read the CLI executable path from ~/.codex/config.toml (or CODEX_HOME)
- * if specified via `CODEX_CLI_PATH`, or standard app bundles on macOS.
+ * Read the CLI executable path from CODEX_CLI_PATH environment variable,
+ * or standard app bundles on macOS.
  */
 export async function getCodexConfigFallback(
   options: ScannerOptions = {},
 ): Promise<string | null> {
   const resolved = resolveScannerOptions(options);
-  const codexDir =
-    resolved.env.CODEX_HOME?.trim() ||
-    (resolved.platform === "win32"
-      ? path.win32.join(resolved.homeDir, ".codex")
-      : path.posix.join(resolved.homeDir, ".codex"));
-  const configFile =
-    resolved.platform === "win32"
-      ? path.win32.join(codexDir, "config.toml")
-      : path.posix.join(codexDir, "config.toml");
 
-  try {
-    const content = await resolved.readFile(configFile, "utf8");
-    const match = content.match(/^\s*CODEX_CLI_PATH\s*=\s*["']([^"']+)["']/m);
-    if (match?.[1]) {
-      const cliPath = match[1].trim();
-      try {
-        await resolved.access(cliPath, constants.X_OK);
-        return cliPath;
-      } catch (error) {
-        throw new Error(
-          `invalid CODEX_CLI_PATH in ${configFile}: "${cliPath}" does not exist or is not executable`,
-          { cause: error },
-        );
-      }
+  const envCliPath = resolved.env.CODEX_CLI_PATH?.trim();
+  if (envCliPath) {
+    try {
+      await resolved.access(envCliPath, constants.X_OK);
+      return envCliPath;
+    } catch (error) {
+      throw new Error(
+        `invalid CODEX_CLI_PATH: "${envCliPath}" does not exist or is not executable`,
+        { cause: error },
+      );
     }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("invalid CODEX_CLI_PATH")) {
-      throw error;
-    }
-    // Config file missing or unreadable
   }
 
   if (resolved.platform === "darwin") {
