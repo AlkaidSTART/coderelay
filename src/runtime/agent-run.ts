@@ -22,7 +22,7 @@ export type AgentSpawnRunner = (
   options: {
     readonly cwd?: string;
     readonly env?: NodeJS.ProcessEnv;
-    readonly stdio: readonly ["pipe", "pipe", "pipe"];
+    readonly stdio: ["pipe", "pipe", "pipe"];
     readonly detached: boolean;
     readonly windowsHide: boolean;
     readonly shell: boolean;
@@ -158,7 +158,7 @@ function tail(text: string, maxChars: number): string {
 }
 
 const defaultSpawn: AgentSpawnRunner = (file, args, options) =>
-  spawn(file, [...args], { ...options, stdio: ["pipe", "pipe", "pipe"] });
+  spawn(file, [...args], options);
 
 /**
  * Determine if spawn requires shell execution.
