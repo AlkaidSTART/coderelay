@@ -84,6 +84,11 @@ async function handleWorkspaceChange(newCwd: string): Promise<void> {
     process.chdir(newCwd);
     currentWorkspace = newCwd;
     userModeOverride = null;
+    sessionId = null;
+    turns = [];
+    nativeSessionIds = {};
+    manualTarget = null;
+    lastResult = null;
     try {
       const config = await loadAppConfig();
       currentRoutingMode = resolveRoutingMode(config.routing.mode, userModeOverride);
@@ -171,6 +176,8 @@ function tree() {
       }}
       workspace={currentWorkspace}
       onWorkspaceChange={handleWorkspaceChange}
+      recentWorkspaces={getStore().getRecentWorkspaces()}
+      onGetRecentWorkspaces={() => getStore().getRecentWorkspaces()}
       onExit={() => {
         store?.close();
         app?.unmount();

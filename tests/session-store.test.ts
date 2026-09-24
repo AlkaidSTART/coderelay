@@ -4,7 +4,14 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { createSessionStore, defaultSessionDbPath } from "../src/session/store";
+import { Database } from "bun:sqlite";
+
+import {
+  applyColumnMigration,
+  createSessionStore,
+  defaultSessionDbPath,
+  isDuplicateColumnError,
+} from "../src/session/store";
 
 function tempDbPath(): string {
   return join(mkdtempSync(join(tmpdir(), "coderelay-sessions-")), "sessions.db");
@@ -227,5 +234,80 @@ describe("session store", () => {
     expect(recent).toEqual(["/projects/alpha", "/projects/beta"]);
 
     first.close();
+  });
+
+  test("migration ignores duplicate column error", () => {
+    let executed = false;
+    const db = {
+      exec: () => {
+        executed = true;
+        throw new Error("duplicate column name: workspace");
+      },
+    };
+    expect(() =>
+      applyColumnMigration(db, "ALTER TABLE sessions ADD COLUMN workspace TEXT"),
+    ).not.toThrow();
+    expect(executed).toBe(true);
+  });
+
+  test("migration throws and includes SQL and column info on non-duplicate error", () => {
+    const db = {
+      exec: () => {
+        throw new Error("attempt to write a readonly database");
+      },
+    };
+    const sql = "ALTER TABLE sessions ADD COLUMN workspace TEXT";
+    expect(() => applyColumnMigration(db, sql)).toThrowError(
+      /Migration failed for column "workspace" \(ALTER TABLE sessions ADD COLUMN workspace TEXT\): attempt to write a readonly database/,
+    );
+  });
+
+  test("migration preserves cause on error", () => {
+    const originalError = new Error("database is locked");
+    const db = {
+      exec: () => {
+        throw originalError;
+      },
+    };
+    try {
+      applyColumnMigration(db, "ALTER TABLE turns ADD COLUMN model_id TEXT");
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toContain("model_id");
+      expect((err as Error).message).toContain("ALTER TABLE turns ADD COLUMN model_id TEXT");
+      expect((err as { cause?: unknown }).cause).toBe(originalError);
+    }
+  });
+
+  test("isDuplicateColumnError accurately identifies duplicate column errors", () => {
+    expect(isDuplicateColumnError(new Error("duplicate column name: workspace"), "workspace")).toBe(true);
+    expect(isDuplicateColumnError(new Error("duplicate column name: WORKSPACE"), "workspace")).toBe(true);
+    expect(isDuplicateColumnError(new Error("duplicate column name: model_id"), "workspace")).toBe(false);
+    expect(isDuplicateColumnError(new Error("attempt to write a readonly database"), "workspace")).toBe(false);
+    expect(isDuplicateColumnError(new Error("database is locked"), "workspace")).toBe(false);
+    expect(isDuplicateColumnError(new Error("disk I/O error"), "workspace")).toBe(false);
+    expect(isDuplicateColumnError(new Error("database disk image is malformed"), "workspace")).toBe(false);
+    expect(isDuplicateColumnError(null)).toBe(false);
+  });
+
+  test("migration handles real SQLite database duplicate columns and syntax errors", () => {
+    const path = tempDbPath();
+    const store = createSessionStore(path);
+    store.close();
+
+    // Reopening runs migrations on already migrated database without throwing
+    const reopened = createSessionStore(path);
+    expect(reopened.listSessions()).toEqual([]);
+    reopened.close();
+
+    const db = new Database(path);
+    try {
+      expect(() =>
+        applyColumnMigration(db, "ALTER TABLE sessions ADD COLUMN"),
+      ).toThrowError(/Migration failed for column/);
+    } finally {
+      db.close();
+    }
   });
 });

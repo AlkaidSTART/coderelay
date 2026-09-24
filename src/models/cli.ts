@@ -60,6 +60,8 @@ export interface CliCandidate {
   readonly source: CliSource;
   /** WSL distribution name; only set when `runtime` is `"wsl"`. */
   readonly distro?: string;
+  /** WSL mount root for Windows drives; e.g. `/mnt` or custom automount root. */
+  readonly mountRoot?: string;
   readonly version: string | null;
 }
 
@@ -84,6 +86,7 @@ export interface DetectedCli {
   readonly available: boolean;
   readonly runtime?: CliRuntime;
   readonly distro?: string;
+  readonly mountRoot?: string;
   readonly source?: CliSource;
   /** Every candidate found, selected one first, in resolution order. */
   readonly candidates?: readonly CliCandidate[];
@@ -95,10 +98,15 @@ export interface LaunchTarget {
   readonly path: string;
   readonly runtime: CliRuntime;
   readonly distro?: string;
+  readonly mountRoot?: string;
 }
 
 export function cliRuntime(cli: DetectedCli): CliRuntime {
   return cli.runtime ?? "local";
+}
+
+export function cliMountRoot(cli: DetectedCli): string | undefined {
+  return cli.mountRoot;
 }
 
 export function cliSource(cli: DetectedCli): CliSource {
@@ -120,10 +128,12 @@ export function cliLaunchTarget(cli: DetectedCli): LaunchTarget | null {
   }
 
   const distro = cli.distro;
+  const mountRoot = cli.mountRoot;
   return {
     path: cli.path,
     runtime: cliRuntime(cli),
     ...(distro ? { distro } : {}),
+    ...(mountRoot ? { mountRoot } : {}),
   };
 }
 

@@ -364,6 +364,22 @@ describe("saveActivationDecisions", () => {
     expect(
       findWslWindowsHome({ USER: "bob" }),
     ).toBe("/mnt/c/Users/bob");
+
+    // WSL Windows profile discovery respects custom mount root
+    expect(
+      findWslWindowsHome(
+        { USERPROFILE: "C:\\Users\\alice", WSL_AUTOMOUNT_ROOT: "/windir" },
+      ),
+    ).toBe("/windir/c/Users/alice");
+    expect(
+      findWslWindowsHome({ USER: "bob" }, "/windir"),
+    ).toBe("/windir/c/Users/bob");
+    expect(
+      findWslWindowsHome({ USER: "bob" }, "/"),
+    ).toBe("/c/Users/bob");
+    expect(
+      findWslWindowsHome({ USER: "bob" }, { mountRoot: null }),
+    ).toBeNull();
   });
 
   test("supports CODERELAY_HOME override across all platforms", () => {

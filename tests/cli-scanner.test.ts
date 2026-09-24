@@ -150,18 +150,12 @@ describe("CLI scanner", () => {
     expect(detectHostAgent({})).toBeNull();
   });
 
-  test("extracts CODEX_CLI_PATH from codex config.toml fallback", async () => {
+  test("extracts CODEX_CLI_PATH from process/env override", async () => {
     const accessible = new Set(["/custom/bin/codex"]);
     const fallback = await getCodexConfigFallback({
       platform: "linux",
       homeDir: "/home/tester",
-      env: { CODEX_HOME: "/home/tester/.custom-codex" },
-      readFile: async (filePath) => {
-        if (filePath === "/home/tester/.custom-codex/config.toml") {
-          return 'model = "o3"\nCODEX_CLI_PATH = "/custom/bin/codex"\n';
-        }
-        throw new Error("file not found");
-      },
+      env: { CODEX_CLI_PATH: "/custom/bin/codex" },
       access: async (candidate) => {
         if (!accessible.has(candidate)) {
           throw new Error("not found");
@@ -172,7 +166,39 @@ describe("CLI scanner", () => {
     expect(fallback).toBe("/custom/bin/codex");
   });
 
-  test("falls back to macOS ChatGPT app bundle when config.toml has no path", async () => {
+  test("throws when CODEX_CLI_PATH does not exist or is not executable", async () => {
+    await expect(
+      getCodexConfigFallback({
+        platform: "linux",
+        homeDir: "/home/tester",
+        env: { CODEX_CLI_PATH: "/custom/bin/missing" },
+        access: async () => {
+          throw new Error("not found");
+        },
+      }),
+    ).rejects.toThrow(
+      'invalid CODEX_CLI_PATH: "/custom/bin/missing" does not exist or is not executable',
+    );
+  });
+
+  test("does not treat CODEX_CLI_PATH as a toml config key", async () => {
+    let readFileCalled = false;
+    const fallback = await getCodexConfigFallback({
+      platform: "linux",
+      homeDir: "/home/tester",
+      env: {},
+      readFile: async () => {
+        readFileCalled = true;
+        return 'CODEX_CLI_PATH = "/custom/bin/codex"\n';
+      },
+      access: async () => {},
+    });
+
+    expect(fallback).toBeNull();
+    expect(readFileCalled).toBe(false);
+  });
+
+  test("falls back to macOS ChatGPT app bundle when CODEX_CLI_PATH is not set", async () => {
     const accessible = new Set([
       "/Applications/ChatGPT.app/Contents/Resources/codex",
     ]);
@@ -180,9 +206,6 @@ describe("CLI scanner", () => {
       platform: "darwin",
       homeDir: "/Users/tester",
       env: {},
-      readFile: async () => {
-        throw new Error("no config.toml");
-      },
       access: async (candidate) => {
         if (!accessible.has(candidate)) {
           throw new Error("not found");
@@ -218,7 +241,7 @@ describe("CLI scanner", () => {
     expect(fallback).toBe("/home/tester/.local/share/claude/versions/2.1.278");
   });
 
-  test("scans codex and claude from custom config/version dirs when missing from PATH", async () => {
+  test("scans codex via CODEX_CLI_PATH and claude from version dir when missing from PATH", async () => {
     const execFile: ExecFileRunner = async (file, args) => {
       if (file === "which") {
         throw Object.assign(new Error("not found"), { code: "ENOENT" });
@@ -245,19 +268,15 @@ describe("CLI scanner", () => {
           throw Object.assign(new Error("not found"), { code: "ENOENT" });
         }
       },
-      readFile: async (file) => {
-        if (file === "/home/tester/.codex/config.toml") {
-          return 'CODEX_CLI_PATH = "/opt/custom/codex"\n';
-        }
-        throw new Error("not found");
-      },
       readdir: async (dir) => {
         if (dir === "/home/tester/.local/share/claude/versions") {
           return ["2.1.278"];
         }
         throw new Error("not found");
       },
-      env: {},
+      env: {
+        CODEX_CLI_PATH: "/opt/custom/codex",
+      },
       homeDir: "/home/tester",
     });
 

@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ThemeProvider as InkThemeProvider } from "@inkjs/ui";
 import { Box, Text, useInput, useWindowSize } from "ink";
@@ -113,6 +113,9 @@ export interface AppProps {
   /** 当前工作区路径（默认 process.cwd()）。 */
   readonly workspace?: string;
   readonly onWorkspaceChange?: (newCwd: string) => void | Promise<void>;
+  /** 历史工作区列表（来自 SQLite）。 */
+  readonly recentWorkspaces?: readonly string[];
+  readonly onGetRecentWorkspaces?: () => readonly string[];
 }
 
 type Screen = "scanning" | "activating" | "mode" | "picker" | "chat" | "detail";
@@ -249,11 +252,17 @@ export function App({
   onClearFavoriteAgent,
   workspace,
   onWorkspaceChange,
+  recentWorkspaces,
+  onGetRecentWorkspaces,
 }: AppProps) {
   const [activeMode, setActiveMode] = useState<RoutingMode>(routingMode);
   const [activeWorkspace, setActiveWorkspace] = useState<string>(() =>
     workspace ? resolve(workspace) : process.cwd(),
   );
+
+  const getRecentList = (): readonly string[] => {
+    return onGetRecentWorkspaces?.() ?? recentWorkspaces ?? [];
+  };
 
   useEffect(() => {
     setActiveMode(routingMode);
@@ -753,10 +762,46 @@ export function App({
         } else if (command?.name === "/workspace" || command?.name === "/cd") {
           const parts = normalized.split(/\s+/);
           let rawTarget = parts.slice(1).join(" ").trim();
+          const recents = getRecentList();
+
           if (!rawTarget) {
-            setNotice(`当前工作区：${activeWorkspace}`);
+            if (recents.length > 0) {
+              const listText = recents
+                .map((ws, i) => `  [${i + 1}] ${ws}`)
+                .join("\n");
+              setNotice(
+                `当前工作区：${activeWorkspace}\n最近工作区：\n${listText}\n输入 /workspace <序号或路径> 切换`,
+              );
+            } else {
+              setNotice(`当前工作区：${activeWorkspace}`);
+            }
             return;
           }
+
+          // 支持按最近工作区序号切换（如 /workspace 1）
+          const indexNum = Number(rawTarget);
+          if (
+            Number.isInteger(indexNum) &&
+            indexNum >= 1 &&
+            indexNum <= recents.length
+          ) {
+            const targetFromIndex = recents[indexNum - 1];
+            if (targetFromIndex) {
+              try {
+                const stat = statSync(targetFromIndex);
+                if (stat.isDirectory()) {
+                  setActiveWorkspace(targetFromIndex);
+                  void onWorkspaceChange?.(targetFromIndex);
+                  setNotice(`✓ 工作区已切换为: ${targetFromIndex}`);
+                  return;
+                }
+              } catch {
+                setNotice(`目录不存在: ${targetFromIndex}`);
+                return;
+              }
+            }
+          }
+
           if (
             (rawTarget.startsWith('"') && rawTarget.endsWith('"')) ||
             (rawTarget.startsWith("'") && rawTarget.endsWith("'"))
@@ -807,6 +852,35 @@ export function App({
       onLaunch({ id: activeId, mode: "prompt", prompt: normalized });
     }
   };
+
+  const slashCommands = useMemo(() => {
+    const trimmed = prompt.trim();
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0]?.toLowerCase() ?? "";
+    const arg = parts.slice(1).join(" ").trim();
+    if (
+      (cmd === "/workspace" || cmd === "/cd") &&
+      (prompt.includes(" ") || arg)
+    ) {
+      const recents = getRecentList();
+      if (recents.length > 0) {
+        return recents
+          .map((ws, i) => ({ index: i + 1, path: ws }))
+          .filter(
+            ({ index, path }) =>
+              !arg ||
+              String(index).startsWith(arg) ||
+              path.toLowerCase().includes(arg.toLowerCase()),
+          )
+          .slice(0, 5)
+          .map(({ index, path }) => ({
+            name: `${cmd} ${index}`,
+            description: path,
+          }));
+      }
+    }
+    return matchSlashCommands(prompt);
+  }, [prompt, recentWorkspaces, onGetRecentWorkspaces]);
 
   const stage: Stage =
     screen === "scanning"
@@ -1014,7 +1088,7 @@ export function App({
         }
         prompt={prompt}
         notice={notice}
-        commands={matchSlashCommands(prompt)}
+        commands={slashCommands}
         onChange={handlePromptChange}
         onSubmit={handleSubmit}
         />

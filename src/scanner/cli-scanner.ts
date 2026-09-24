@@ -230,43 +230,25 @@ export async function getWindowsClaudeFallback(
 }
 
 /**
- * Read the CLI executable path from ~/.codex/config.toml (or CODEX_HOME)
- * if specified via `CODEX_CLI_PATH`, or standard app bundles on macOS.
+ * Read the CLI executable path from CODEX_CLI_PATH environment variable,
+ * or standard app bundles on macOS.
  */
 export async function getCodexConfigFallback(
   options: ScannerOptions = {},
 ): Promise<string | null> {
   const resolved = resolveScannerOptions(options);
-  const codexDir =
-    resolved.env.CODEX_HOME?.trim() ||
-    (resolved.platform === "win32"
-      ? path.win32.join(resolved.homeDir, ".codex")
-      : path.posix.join(resolved.homeDir, ".codex"));
-  const configFile =
-    resolved.platform === "win32"
-      ? path.win32.join(codexDir, "config.toml")
-      : path.posix.join(codexDir, "config.toml");
 
-  try {
-    const content = await resolved.readFile(configFile, "utf8");
-    const match = content.match(/^\s*CODEX_CLI_PATH\s*=\s*["']([^"']+)["']/m);
-    if (match?.[1]) {
-      const cliPath = match[1].trim();
-      try {
-        await resolved.access(cliPath, constants.X_OK);
-        return cliPath;
-      } catch (error) {
-        throw new Error(
-          `invalid CODEX_CLI_PATH in ${configFile}: "${cliPath}" does not exist or is not executable`,
-          { cause: error },
-        );
-      }
+  const envCliPath = resolved.env.CODEX_CLI_PATH?.trim();
+  if (envCliPath) {
+    try {
+      await resolved.access(envCliPath, constants.X_OK);
+      return envCliPath;
+    } catch (error) {
+      throw new Error(
+        `invalid CODEX_CLI_PATH: "${envCliPath}" does not exist or is not executable`,
+        { cause: error },
+      );
     }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("invalid CODEX_CLI_PATH")) {
-      throw error;
-    }
-    // Config file missing or unreadable
   }
 
   if (resolved.platform === "darwin") {
@@ -453,18 +435,11 @@ async function collectLocalCandidates(
   }
 
   if (definition.id === "codex") {
-    const codexDir =
-      resolved.env.CODEX_HOME?.trim() ||
-      (resolved.platform === "win32"
-        ? path.win32.join(resolved.homeDir, ".codex")
-        : path.posix.join(resolved.homeDir, ".codex"));
-    searchedDirs.push(codexDir);
     const fallback = await getCodexConfigFallback({
       platform: resolved.platform,
       homeDir: resolved.homeDir,
       env: resolved.env,
       access: resolved.access,
-      readFile: resolved.readFile,
     });
     if (fallback) {
       ordered.push({ path: fallback, source: "installer" });
@@ -564,6 +539,7 @@ function toWslCandidates(
     runtime: "wsl" as const,
     source: "installer" as const,
     distro: location.distro,
+    ...(location.mountRoot ? { mountRoot: location.mountRoot } : {}),
     version: location.version,
   }));
 }
@@ -685,6 +661,7 @@ async function scanCli(
     runtime: selected.runtime,
     source: selected.source,
     ...(selected.distro ? { distro: selected.distro } : {}),
+    ...(selected.mountRoot ? { mountRoot: selected.mountRoot } : {}),
     candidates,
     diagnostics,
   };

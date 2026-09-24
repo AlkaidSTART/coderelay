@@ -15,7 +15,7 @@ import path, { dirname, join, resolve } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 
-import { toWslPath } from "../runtime/wsl";
+import { toWslPath, type WslPathOptions } from "../runtime/wsl";
 import { ConfigSchema, defaultConfig, type Config } from "./schema";
 
 export const CONFIG_DIR = ".coderelay";
@@ -132,14 +132,19 @@ export function resolveGlobalBaseDir(
 /** Inside WSL, find the mounted Windows user home directory (e.g. /mnt/c/Users/<user>). */
 export function findWslWindowsHome(
   env: NodeJS.ProcessEnv = process.env,
+  options?: WslPathOptions,
 ): string | null {
+  const resolvedOptions: WslPathOptions =
+    typeof options === "string"
+      ? { env, mountRoot: options }
+      : { env, ...options };
   const userProfile = env.USERPROFILE?.trim();
   if (userProfile) {
-    return toWslPath(userProfile);
+    return toWslPath(userProfile, resolvedOptions);
   }
   const username = env.USER || env.LOGNAME;
   if (username) {
-    return `/mnt/c/Users/${username}`;
+    return toWslPath(`C:\\Users\\${username}`, resolvedOptions);
   }
   return null;
 }

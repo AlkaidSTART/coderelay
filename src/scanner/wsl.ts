@@ -16,7 +16,9 @@ import {
 import {
   buildWslArgs,
   decodeWslOutput,
+  DEFAULT_WSL_MOUNT_ROOT,
   parseWslDistros,
+  resolveWslMountRoot,
   WSL_EXECUTABLE,
 } from "../runtime/wsl";
 import { probeVersion } from "./version-probe";
@@ -26,6 +28,7 @@ export interface WslCliLocation {
   readonly distro: string;
   readonly path: string;
   readonly version: string | null;
+  readonly mountRoot?: string;
 }
 
 export interface WslScanResult {
@@ -44,6 +47,8 @@ export interface WslScanOptions {
   readonly versionArgs?: readonly (readonly string[])[];
   /** Overridable for tests; WSL is normally reached as `wsl.exe`. */
   readonly wslBin?: string;
+  /** Explicit mount root override for testing or configuration. */
+  readonly mountRoot?: string;
 }
 
 function execOptions(timeout: number): ExecFileRequestOptions {
@@ -130,6 +135,10 @@ export async function scanWslClis(
 
   const perDistro = await Promise.all(
     distros.map(async (distro) => {
+      const mountRoot =
+        options.mountRoot ??
+        resolveWslMountRoot({ distro, platform: "win32" }) ??
+        undefined;
       const found: Array<readonly [CliId, WslCliLocation]> = [];
       for (const definition of CLI_DEFINITIONS) {
         const linuxPath = await locateInDistro(
@@ -152,7 +161,17 @@ export async function scanWslClis(
             versionArgs,
           },
         );
-        found.push([definition.id, { distro, path: linuxPath, version }]);
+        found.push([
+          definition.id,
+          {
+            distro,
+            path: linuxPath,
+            version,
+            ...(mountRoot && mountRoot !== DEFAULT_WSL_MOUNT_ROOT
+              ? { mountRoot }
+              : {}),
+          },
+        ]);
       }
       return found;
     }),

@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 
 import { Database } from "bun:sqlite";
 
@@ -171,6 +169,10 @@ function rowToTurn(row: TurnRow): SessionTurn {
   };
 }
 
+const SESSION_MIGRATIONS: readonly string[] = [
+  "ALTER TABLE sessions ADD COLUMN workspace TEXT",
+];
+
 const TURN_MIGRATIONS: readonly string[] = [
   "ALTER TABLE turns ADD COLUMN model_id TEXT",
   "ALTER TABLE turns ADD COLUMN protocol TEXT",
@@ -180,21 +182,53 @@ const TURN_MIGRATIONS: readonly string[] = [
   "ALTER TABLE turns ADD COLUMN context_source TEXT",
 ];
 
-function migrateSessionColumns(db: { exec: (sql: string) => void }): void {
+function extractColumnName(sql: string): string | undefined {
+  return sql.match(/ADD\s+COLUMN\s+["`\[]?([a-zA-Z0-9_]+)["`\]]?/i)?.[1];
+}
+
+export function isDuplicateColumnError(err: unknown, column?: string): boolean {
+  if (!(err instanceof Error) && typeof err !== "string") {
+    return false;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  if (!/duplicate column name/i.test(message)) {
+    return false;
+  }
+  if (!column) {
+    return true;
+  }
+  return new RegExp(`duplicate column name:\\s*["'\`\\[]?${column}\\b`, "i").test(message);
+}
+
+export function applyColumnMigration(
+  db: { exec: (sql: string) => void },
+  sql: string,
+): void {
+  const column = extractColumnName(sql);
   try {
-    db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
-  } catch {
-    // Ignore if column already exists.
+    db.exec(sql);
+  } catch (err) {
+    if (isDuplicateColumnError(err, column)) {
+      return;
+    }
+    const details = column ? `column "${column}"` : "column";
+    const message = err instanceof Error ? err.message : String(err);
+    // ponytail: regex column check covers SQLite standard duplicate column error; upgrade if engine-specific error codes needed.
+    throw new Error(`Migration failed for ${details} (${sql}): ${message}`, {
+      cause: err,
+    });
+  }
+}
+
+function migrateSessionColumns(db: { exec: (sql: string) => void }): void {
+  for (const sql of SESSION_MIGRATIONS) {
+    applyColumnMigration(db, sql);
   }
 }
 
 function migrateTurnColumns(db: { exec: (sql: string) => void }): void {
   for (const sql of TURN_MIGRATIONS) {
-    try {
-      db.exec(sql);
-    } catch {
-      // 列已存在时忽略，保持旧库可直接升级。
-    }
+    applyColumnMigration(db, sql);
   }
 }
 
@@ -377,7 +411,7 @@ export function createSessionStore(dbPath: string): SessionStore {
     },
 
     getRecentWorkspaces(limit = 10) {
-      return selectRecentWorkspaces.all(limit).map((r) => r.workspace);
+      return selectRecentWorkspaces.all(limit).map((r: { workspace: string }) => r.workspace);
     },
 
     close() {
