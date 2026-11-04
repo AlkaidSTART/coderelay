@@ -201,6 +201,13 @@ export function isWorkspaceView(value: unknown): value is WorkspaceView {
   return (WORKSPACE_VIEWS as readonly unknown[]).includes(value);
 }
 
+export const CONVERSATION_VIEWS = ["workspace"] as const;
+export type ConversationView = (typeof CONVERSATION_VIEWS)[number];
+
+export function isConversationView(value: unknown): value is ConversationView {
+  return (CONVERSATION_VIEWS as readonly unknown[]).includes(value);
+}
+
 export const TIME_PERIODS = ["morning", "afternoon", "evening", "late_night"] as const;
 export type TimePeriod = (typeof TIME_PERIODS)[number];
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { WORKSPACE_VIEWS, type WorkspaceView } from "../types";
+import { isConversationView, WORKSPACE_VIEWS, type WorkspaceView } from "../types";
 
 export type SidebarRouteId =
   | "new-chat"
@@ -75,6 +75,10 @@ export function isConfigRouteActive(view: WorkspaceView): boolean {
 
 export function isApiKeysRouteActive(view: WorkspaceView): boolean {
   return view === "apikeys";
+}
+
+export function isConversationRouteActive(view: WorkspaceView): boolean {
+  return isConversationView(view);
 }
 
 function getInitialSidebarCollapsed(): boolean {

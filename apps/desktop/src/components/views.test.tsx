@@ -101,6 +101,15 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
     expect(html).toContain("Config YAML");
     expect(html).toContain("fallbackAgent: claude");
 
+    // Verify Theme Preset options including newly added themes
+    expect(html).toContain("主题外观");
+    expect(html).toContain("青色");
+    expect(html).toContain("天蓝色");
+    expect(html).toContain("粉色");
+    expect(html).toContain("红色");
+    expect(html).toContain("自定义背景图");
+    expect(html).toContain("上传背景图片文件");
+
     // Strictly ensure Decoupling: API Key elements must NOT be coupled into ConfigView
     expect(html).not.toContain("API Key");
     expect(html).not.toContain("jev-api-key");
