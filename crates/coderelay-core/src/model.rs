@@ -16,6 +16,32 @@ pub enum ModelStrength {
     Multimodal,
 }
 
+impl std::str::FromStr for ModelStrength {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        MODEL_STRENGTHS
+            .into_iter()
+            .find(|strength| strength.as_str() == value.trim())
+            .ok_or_else(|| {
+                format!(
+                    "expected one of: {}; got {value}",
+                    MODEL_STRENGTHS
+                        .iter()
+                        .map(|strength| strength.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+    }
+}
+
+impl std::fmt::Display for ModelStrength {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 impl ModelStrength {
     pub const fn as_str(self) -> &'static str {
         match self {

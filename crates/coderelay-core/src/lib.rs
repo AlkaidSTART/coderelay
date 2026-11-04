@@ -17,8 +17,8 @@ pub mod session;
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
 pub use agents::{
     CliCapabilities, ModelCatalog, ModelOption, ModelProbeRoots, ProbeDisplay, ProbeDisplayStatus,
-    ProbeResult, ProbedModel, TargetSelection, create_model_probes, probe_model_catalog,
-    to_route_candidates, validate_explicit_target,
+    ProbeResult, ProbedModel, PromptBuildOptions, TargetSelection, build_prompt_args,
+    create_model_probes, probe_model_catalog, to_route_candidates, validate_explicit_target,
 };
 pub use config::{
     Config, ConfigError, LoadConfigOptions, LoadedConfig, default_config, load_config,
