@@ -18,6 +18,9 @@ export interface ConfigViewProps {
   onClearJevApiKey: () => void;
 }
 
+const ICON_BTN_CLASS =
+  "grid h-7 w-7 shrink-0 place-items-center rounded-[7px] bg-transparent text-muted transition-colors duration-140 enabled:hover:bg-surface-subtle enabled:hover:text-ink disabled:opacity-35";
+
 export function ConfigView({
   configPath,
   configBusy,
@@ -39,16 +42,16 @@ export function ConfigView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-      className="secondary-view config-page"
+      className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-10 py-7 max-[900px]:px-6 max-[900px]:py-5"
       aria-live="polite"
     >
-      <div className="secondary-page config-page">
-        <div className="secondary-header">
-          <span className="secondary-path">{configPath ?? ""}</span>
-          <div className="config-actions">
+      <div className="mx-auto flex h-full w-[min(920px,100%)] flex-col gap-3.5">
+        <div className="flex items-center justify-between gap-4 border-b border-line pb-3.5">
+          <span className="truncate font-code text-xs text-muted-strong">{configPath ?? ""}</span>
+          <div className="flex items-center gap-2">
             <button
               aria-label="Reload"
-              className="icon-button"
+              className={ICON_BTN_CLASS}
               disabled={configBusy}
               onClick={onLoadConfigSource}
               title="Reload"
@@ -58,7 +61,7 @@ export function ConfigView({
             </button>
             <button
               aria-label="Save"
-              className="circle-send-btn circle-send-btn--active"
+              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-ink text-white transition-all duration-140 enabled:hover:bg-black disabled:bg-surface-subtle disabled:text-zinc-300"
               disabled={configBusy || !configDraft.trim()}
               onClick={onSaveConfig}
               title="Save"
@@ -69,18 +72,20 @@ export function ConfigView({
           </div>
         </div>
 
-        <section className="credential-bar" aria-label="API Key">
+        <section
+          className="flex items-center gap-2.5 rounded-xl border border-line bg-sidebar px-3 py-2 text-muted-strong"
+          aria-label="API Key"
+        >
           <KeyIcon size={15} />
           <span
-            className="status-dot"
+            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300 data-[tone=ready]:bg-success"
             data-tone={
-              jevSettings?.stored || jevSettings?.environmentConfigured
-                ? "ready"
-                : "idle"
+              jevSettings?.stored || jevSettings?.environmentConfigured ? "ready" : "idle"
             }
           />
           <input
             autoComplete="off"
+            className="min-w-0 flex-1 border-0 bg-transparent font-code text-xs text-ink placeholder:text-zinc-400"
             disabled={jevBusy}
             id="jev-api-key"
             onChange={(event) => onJevApiKeyInputChange(event.target.value)}
@@ -91,7 +96,7 @@ export function ConfigView({
           />
           <button
             aria-label="Save API Key"
-            className="icon-button"
+            className={ICON_BTN_CLASS}
             disabled={jevBusy || !jevApiKeyInput.trim()}
             onClick={onSaveJevApiKey}
             title="Save"
@@ -102,7 +107,7 @@ export function ConfigView({
           {jevSettings?.stored ? (
             <button
               aria-label="Clear API Key"
-              className="icon-button"
+              className={ICON_BTN_CLASS}
               disabled={jevBusy}
               onClick={onClearJevApiKey}
               title="Clear"
@@ -115,7 +120,7 @@ export function ConfigView({
 
         <textarea
           aria-label="Config YAML"
-          className="config-editor"
+          className="min-h-[420px] w-full flex-1 resize-none rounded-[14px] border border-line bg-sidebar p-[18px] font-code text-xs leading-[1.7] text-ink transition-colors duration-140 outline-none [tab-size:2] focus:border-line-strong"
           onChange={(event) => onConfigDraftChange(event.target.value)}
           spellCheck={false}
           value={configDraft}

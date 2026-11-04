@@ -17,6 +17,17 @@ export interface IconRailProps {
   onStartNewTask: () => void;
 }
 
+const RAIL_BTN_BASE =
+  "relative grid h-[34px] w-[34px] place-items-center rounded-[9px] bg-transparent transition-colors duration-140 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900/20 [&>svg]:relative [&>svg]:z-1 [&>span]:relative [&>span]:z-1";
+
+function railBtnClass(active: boolean): string {
+  return `${RAIL_BTN_BASE} ${
+    active
+      ? "text-white hover:bg-transparent hover:text-white"
+      : "text-muted hover:bg-black/[0.045] hover:text-ink"
+  }`;
+}
+
 export function IconRail({
   currentView,
   onToggleSidebar,
@@ -25,11 +36,14 @@ export function IconRail({
 }: IconRailProps) {
   return (
     <LayoutGroup id="rail-route-group">
-      <nav className="icon-rail" aria-label="Navigation">
-        <div className="rail-nav">
+      <nav
+        className="z-10 flex min-h-0 w-[52px] shrink-0 basis-[52px] flex-col items-center border-r border-line bg-rail py-3"
+        aria-label="Navigation"
+      >
+        <div className="flex flex-col items-center gap-2">
           <button
             aria-label="Toggle sidebar"
-            className="rail-action rail-action--toggle"
+            className={`${railBtnClass(false)} mb-1`}
             onClick={onToggleSidebar}
             title="⌘B"
             type="button"
@@ -38,7 +52,7 @@ export function IconRail({
           </button>
           <button
             aria-label="Workspace"
-            className={`rail-action ${currentView === "workspace" ? "rail-action--active" : ""}`}
+            className={railBtnClass(currentView === "workspace")}
             onClick={() => onSelectView("workspace")}
             title="Workspace"
             type="button"
@@ -50,7 +64,7 @@ export function IconRail({
           </button>
           <button
             aria-label="Sessions"
-            className={`rail-action ${currentView === "sessions" ? "rail-action--active" : ""}`}
+            className={railBtnClass(currentView === "sessions")}
             onClick={() => onSelectView("sessions")}
             title="Sessions"
             type="button"
@@ -62,7 +76,7 @@ export function IconRail({
           </button>
           <button
             aria-label="New"
-            className="rail-action"
+            className={railBtnClass(false)}
             onClick={onStartNewTask}
             title="New"
             type="button"
@@ -70,10 +84,10 @@ export function IconRail({
             <PlusIcon size={16} />
           </button>
         </div>
-        <div className="rail-footer">
+        <div className="mt-auto flex flex-col items-center gap-2">
           <button
             aria-label="Settings"
-            className={`rail-action ${currentView === "config" ? "rail-action--active" : ""}`}
+            className={railBtnClass(currentView === "config")}
             onClick={() => onSelectView("config")}
             title="Settings"
             type="button"

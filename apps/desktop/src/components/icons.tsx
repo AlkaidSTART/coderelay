@@ -9,7 +9,7 @@ export function Icon({ children, size = 18 }: IconProps) {
   return (
     <svg
       aria-hidden="true"
-      className="icon"
+      className="block shrink-0"
       fill="none"
       height={size}
       viewBox="0 0 24 24"

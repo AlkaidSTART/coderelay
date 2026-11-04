@@ -543,7 +543,7 @@ export function App() {
   }
 
   return (
-    <div className="app-frame">
+    <div className="flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
       <Titlebar
         statusTone={statusTone}
         runtimeCoreVersion={state.runtime?.coreVersion}
@@ -552,7 +552,7 @@ export function App() {
       />
 
       <div
-        className="app-layout"
+        className="flex min-h-0 flex-1 overflow-hidden bg-canvas"
         data-sidebar-collapsed={sidebarCollapsed}
         data-right-sidebar-open={rightSidebarOpen}
       >
@@ -579,7 +579,7 @@ export function App() {
           onViewAllSessions={handleViewAllSessions}
         />
 
-        <main className="main-panel" data-view={view}>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas" data-view={view}>
           <AnimatePresence mode="wait">
             {view === "workspace" ? (
               <WorkspaceView
@@ -635,7 +635,7 @@ export function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
                 transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-                className="composer-dock"
+                className="relative z-5 shrink-0 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,var(--color-canvas)_28%)] px-8 pt-2.5 pb-[18px]"
               >
                 {renderComposer(true)}
               </motion.div>

@@ -46,10 +46,10 @@ export function WorkspaceView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-      className="conversation"
+      className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(17,18,21,0.12)_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin]"
       aria-live="polite"
     >
-      <div className="conversation-inner">
+      <div className="mx-auto min-h-full w-[min(760px,calc(100%-64px))] pt-9 pb-7">
         <AnimatePresence>
           {error ? (
             <motion.div
@@ -57,7 +57,7 @@ export function WorkspaceView({
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -6, height: 0 }}
               transition={{ duration: 0.18 }}
-              className="alert"
+              className="mb-5 flex items-center rounded-[10px] border border-red-600/16 bg-danger-soft px-3.5 py-2.5 font-code text-[11px] leading-[1.5] text-red-800"
               role="alert"
             >
               <span>{error}</span>
@@ -73,18 +73,24 @@ export function WorkspaceView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.985, y: -10 }}
               transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
-              className="welcome-hero-container"
+              className="flex min-h-[calc(100dvh-130px)] flex-col items-center justify-center pt-6 pb-16"
             >
-              <div className="welcome-hero-greeting">
-                <div className="welcome-time-badge">
-                  <time className="welcome-clock">{timeSnapshot.formattedTime}</time>
-                  <span className="welcome-date-divider" aria-hidden="true">
+              <div className="mb-7 flex flex-col items-center text-center select-none">
+                <div className="mb-3.5 inline-flex items-center gap-2 rounded-full border border-line bg-surface-subtle px-3 py-[5px] font-code text-[11.5px] tracking-[0.01em] text-muted-strong">
+                  <time className="font-[550] text-ink tabular-nums">
+                    {timeSnapshot.formattedTime}
+                  </time>
+                  <span className="text-zinc-300" aria-hidden="true">
                     ·
                   </span>
-                  <span className="welcome-date">{timeSnapshot.formattedDate}</span>
+                  <span className="text-muted">{timeSnapshot.formattedDate}</span>
                 </div>
-                <h1 className="welcome-title">{timeSnapshot.greeting}</h1>
-                <p className="welcome-encouragement">{timeSnapshot.encouragement}</p>
+                <h1 className="m-0 mb-2 font-display text-[26px] leading-[1.25] font-semibold tracking-[-0.025em] text-ink">
+                  {timeSnapshot.greeting}
+                </h1>
+                <p className="m-0 max-w-[480px] text-sm leading-[1.6] text-muted">
+                  {timeSnapshot.encouragement}
+                </p>
               </div>
               {renderComposer(false)}
             </motion.div>
@@ -95,22 +101,24 @@ export function WorkspaceView({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
-              className="assistant-message"
+              className="animate-rise-in"
             >
-              <div className="message-header">
+              <div className="mb-3.5 flex items-center gap-2">
                 <span
-                  className="status-dot"
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300 data-[tone=ready]:bg-success data-[tone=running]:animate-breathe data-[tone=running]:bg-ink data-[tone=running]:shadow-[0_0_0_3px_rgba(17,18,21,0.08)]"
                   data-tone={running ? "running" : "ready"}
                 />
                 {result ? (
-                  <span className="run-duration">
+                  <span className="font-code text-[11px] text-muted">
                     {formatDuration(result.durationMs)}
                   </span>
                 ) : null}
                 {result?.code !== undefined &&
                 result.code !== null &&
                 result.code !== 0 ? (
-                  <span className="run-state">{result.code}</span>
+                  <span className="ml-auto rounded-full border border-line bg-danger-soft px-[7px] py-0.5 font-code text-[10px] text-danger">
+                    {result.code}
+                  </span>
                 ) : null}
               </div>
 
@@ -121,10 +129,10 @@ export function WorkspaceView({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
                     transition={{ duration: 0.16 }}
-                    className="route-preview"
+                    className="mb-[18px] inline-flex items-center gap-[7px] rounded-full border border-line bg-surface-subtle px-2.5 py-[5px] font-code text-[11px] text-muted-strong"
                   >
                     <RouteIcon size={13} />
-                    <strong>
+                    <strong className="font-medium text-ink-soft">
                       {preview.agent}
                       {preview.model ? ` · ${preview.model}` : ""}
                     </strong>
@@ -132,15 +140,13 @@ export function WorkspaceView({
                 ) : null}
               </AnimatePresence>
 
-              <div
-                className={`message-copy ${running ? "message-copy--running" : ""}`}
-              >
+              <div className="min-h-[44px] text-sm leading-[1.85] break-words whitespace-pre-wrap text-ink">
                 {output}
                 {running && !output ? (
-                  <span className="typing-dots" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
+                  <span className="inline-flex items-center gap-1 align-middle" aria-hidden="true">
+                    <i className="h-[5px] w-[5px] animate-typing rounded-full bg-ink" />
+                    <i className="h-[5px] w-[5px] animate-typing rounded-full bg-ink [animation-delay:150ms]" />
+                    <i className="h-[5px] w-[5px] animate-typing rounded-full bg-ink [animation-delay:300ms]" />
                   </span>
                 ) : null}
               </div>
@@ -152,21 +158,21 @@ export function WorkspaceView({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 6 }}
                     transition={{ duration: 0.18 }}
-                    className="activity-log"
+                    className="mt-[22px] overflow-hidden rounded-xl border border-line bg-surface-subtle text-muted-strong"
                   >
-                    <div className="activity-head">
-                      <span className="activity-label">
+                    <div className="flex items-center justify-between border-b border-line px-3 py-[7px] font-code text-[10px] text-muted">
+                      <span className="inline-flex items-center text-muted-strong">
                         <TerminalIcon size={13} />
                       </span>
                       <span>{activity.length}</span>
                     </div>
-                    <div className="activity-body">
+                    <div className="max-h-[120px] overflow-y-auto py-1.5">
                       {activity.map((entry, index) => (
                         <div
-                          className="activity-row"
+                          className="flex items-start gap-1.5 px-3 py-[3px] font-code text-[11px] leading-[1.55] text-muted-strong"
                           key={`${index}-${entry}`}
                         >
-                          <span className="activity-prefix">›</span>
+                          <span className="text-muted">›</span>
                           <span>{entry}</span>
                         </div>
                       ))}
