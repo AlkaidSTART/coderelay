@@ -5,15 +5,24 @@
 //! process, and persistence adapters.
 
 pub mod agent;
+pub mod agents;
 pub mod config;
+pub mod host;
 pub mod model;
 pub mod router;
+pub mod scanner;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
+pub use agents::{
+    CliCapabilities, ModelCatalog, ModelOption, ModelProbeRoots, ProbeDisplay, ProbeDisplayStatus,
+    ProbeResult, ProbedModel, TargetSelection, create_model_probes, probe_model_catalog,
+    to_route_candidates, validate_explicit_target,
+};
 pub use config::{
     Config, ConfigError, LoadConfigOptions, LoadedConfig, default_config, load_config,
     parse_config_yaml,
 };
+pub use host::{CommandRunner, ExecOutput, ExecRequest, FileSystem, Host, Platform, SystemHost};
 pub use model::{
     AgentModelRef, MODEL_STRENGTHS, ModelConfig, ModelCost, ModelStrength, format_model_ref,
     parse_model_ref,
@@ -22,6 +31,10 @@ pub use router::{
     RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
     RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate, build_route_candidates,
     has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+};
+pub use scanner::{
+    CliCandidate, CliDiagnostic, CliRuntime, CliSource, DetectedCli, DiagnosticLevel, LaunchTarget,
+    ScannerOptions, cli_definitions, detect_host_agent, scan_coding_clis, scan_wsl_clis,
 };
 
 /// Semantic version of the Rust core crate.
