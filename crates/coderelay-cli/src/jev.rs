@@ -23,8 +23,22 @@ impl JevHttpClient {
         cwd: &Path,
         environment: &BTreeMap<String, String>,
     ) -> Result<Self, JevError> {
-        let api_key =
-            resolve_api_key(config.routing.typesafe_api_key.as_deref(), cwd, environment).await?;
+        Self::from_config_with_stored_key(config, cwd, environment, None).await
+    }
+
+    pub async fn from_config_with_stored_key(
+        config: &Config,
+        cwd: &Path,
+        environment: &BTreeMap<String, String>,
+        stored_api_key: Option<&str>,
+    ) -> Result<Self, JevError> {
+        let api_key = resolve_api_key(
+            config.routing.typesafe_api_key.as_deref(),
+            stored_api_key,
+            cwd,
+            environment,
+        )
+        .await?;
         let endpoint = config
             .routing
             .typesafe_endpoint
@@ -116,9 +130,13 @@ impl JevClient for JevHttpClient {
 
 pub async fn resolve_api_key(
     explicit: Option<&str>,
+    stored: Option<&str>,
     cwd: &Path,
     environment: &BTreeMap<String, String>,
 ) -> Result<String, JevError> {
+    if let Some(value) = stored.map(str::trim).filter(|value| !value.is_empty()) {
+        return Ok(value.to_owned());
+    }
     if let Some(value) = explicit.map(str::trim).filter(|value| !value.is_empty()) {
         return Ok(value.to_owned());
     }

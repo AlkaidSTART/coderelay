@@ -276,3 +276,52 @@ routing:
 
     assert_eq!(output.status.code(), Some(124));
 }
+
+#[test]
+fn sdk_host_serves_versioned_ndjson() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut child = Command::new(binary())
+        .arg("sdk")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sdk host");
+    {
+        let stdin = child.stdin.as_mut().expect("stdin");
+        writeln!(
+            stdin,
+            "{}",
+            serde_json::json!({
+                "protocolVersion": 1,
+                "requestId": "status-1",
+                "method": "status"
+            })
+        )
+        .expect("write status request");
+        writeln!(
+            stdin,
+            "{}",
+            serde_json::json!({
+                "protocolVersion": 999,
+                "requestId": "status-2",
+                "method": "status"
+            })
+        )
+        .expect("write invalid version");
+    }
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("host output");
+    assert!(output.status.success());
+    let lines: Vec<serde_json::Value> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("json line"))
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["status"], "ok");
+    assert_eq!(lines[0]["result"]["transport"], "stdio");
+    assert_eq!(lines[1]["status"], "error");
+    assert_eq!(lines[1]["error"]["code"], "unsupportedVersion");
+}
