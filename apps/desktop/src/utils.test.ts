@@ -8,6 +8,7 @@ import {
   getAvailableModelsForCli,
   getTimePeriod,
   getWelcomeTimeSnapshot,
+  groupSessionsByWorkspace,
   mergeRecentWorkspaces,
   PERIOD_GREETINGS,
   resolveRouteSelection,
@@ -270,5 +271,32 @@ describe("dayjs time formatting & welcome encouragement utilities", () => {
         model: "",
       });
     });
+  });
+});
+
+describe("groupSessionsByWorkspace", () => {
+  const make = (id: string, workspace?: string) => ({
+    id,
+    cliId: "codex",
+    title: `title ${id}`,
+    createdAt: 1,
+    updatedAt: 2,
+    workspace,
+  });
+
+  it("archives sessions by folder and gathers folder-less ones last", () => {
+    const groups = groupSessionsByWorkspace(
+      [make("a", "/p/alpha"), make("x"), make("b", "/p/beta"), make("c", "/p/alpha"), make("y", "")],
+      ["/p/beta", "/p/alpha", "/p/empty"],
+    );
+    expect(groups.map((g) => g.workspace)).toEqual(["/p/beta", "/p/alpha", "/p/empty", null]);
+    expect(groups[1]?.sessions.map((s) => s.id)).toEqual(["a", "c"]);
+    expect(groups[2]?.sessions).toEqual([]);
+    expect(groups[3]?.sessions.map((s) => s.id)).toEqual(["x", "y"]);
+  });
+
+  it("adds folders only known from sessions and omits the loose group when unused", () => {
+    const groups = groupSessionsByWorkspace([make("a", "/p/new")], []);
+    expect(groups).toEqual([{ workspace: "/p/new", sessions: [make("a", "/p/new")] }]);
   });
 });

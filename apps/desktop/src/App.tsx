@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { ApiKeyView } from "./components/ApiKeyView";
 import { Composer } from "./components/Composer";
 import { ConfigView } from "./components/ConfigView";
 import { IconRail } from "./components/IconRail";
@@ -89,8 +90,8 @@ export function App() {
   const toggleWorkspaceDropdown = useNavigationStore((s) => s.toggleWorkspaceDropdown);
   const navigateToNewChat = useNavigationStore((s) => s.navigateToNewChat);
   const navigateToSession = useNavigationStore((s) => s.navigateToSession);
-  const navigateToSessions = useNavigationStore((s) => s.navigateToSessions);
   const navigateToConfig = useNavigationStore((s) => s.navigateToConfig);
+  const navigateToApiKeys = useNavigationStore((s) => s.navigateToApiKeys);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -120,8 +121,8 @@ export function App() {
   async function refreshSessions(cwd: string): Promise<SessionRecord[]> {
     const sessions = await invoke<SessionRecord[]>("list_sessions", {
       request: {
-        workspace: cwd.trim() || null,
-        limit: 30,
+        workspace: null,
+        limit: 200,
       },
     });
     setState((current) => ({ ...current, sessions }));
@@ -162,8 +163,8 @@ export function App() {
       });
       const sessions = await invoke<SessionRecord[]>("list_sessions", {
         request: {
-          workspace: discovery.cwd,
-          limit: 30,
+          workspace: null,
+          limit: 200,
         },
       });
       setState((current) => ({
@@ -187,6 +188,32 @@ export function App() {
         loading: false,
         error: messageOf(error),
       }));
+    }
+  }
+
+  async function handleDeleteSession(sessionId: string): Promise<void> {
+    try {
+      await invoke<boolean>("delete_session", { sessionId });
+      if (activeSessionId === sessionId) {
+        startNewTask();
+      }
+      await refreshSessions(currentWorkspace.current);
+      await refreshRecentWorkspaces();
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
+  async function handleDeleteWorkspaceSessions(workspace: string | null): Promise<void> {
+    try {
+      await invoke<number>("delete_workspace_sessions", { request: { workspace } });
+      const remaining = await refreshSessions(currentWorkspace.current);
+      if (activeSessionId && !remaining.some((session) => session.id === activeSessionId)) {
+        startNewTask();
+      }
+      await refreshRecentWorkspaces();
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
     }
   }
 
@@ -502,7 +529,9 @@ export function App() {
     if (nextView === "sessions") {
       void refreshSessions(currentWorkspace.current);
     } else if (nextView === "config") {
-      void Promise.all([loadConfigSource(), loadJevSettings()]);
+      void loadConfigSource();
+    } else if (nextView === "apikeys") {
+      void loadJevSettings();
     }
   }
 
@@ -529,12 +558,6 @@ export function App() {
     navigateToSession(sessionId);
     setState((current) => ({ ...current, view: "workspace" }));
     void openSession(sessionId);
-  }
-
-  function handleViewAllSessions(): void {
-    navigateToSessions();
-    setState((current) => ({ ...current, view: "sessions" }));
-    void refreshSessions(currentWorkspace.current);
   }
 
   function handleContinueSession(): void {
@@ -577,6 +600,8 @@ export function App() {
   return (
     <div className="flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
       <Titlebar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={toggleRightSidebar}
       />
@@ -588,7 +613,6 @@ export function App() {
       >
         <IconRail
           currentView={view}
-          onToggleSidebar={toggleSidebar}
           onSelectView={handleSelectView}
           onStartNewTask={startNewTask}
         />
@@ -607,7 +631,8 @@ export function App() {
           sessions={state.sessions}
           activeSessionId={activeSessionId}
           onOpenSession={handleOpenSession}
-          onViewAllSessions={handleViewAllSessions}
+          onDeleteSession={(id) => void handleDeleteSession(id)}
+          onDeleteWorkspaceSessions={(ws) => void handleDeleteWorkspaceSessions(ws)}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas" data-view={view}>
@@ -635,6 +660,19 @@ export function App() {
                 onOpenSession={handleOpenSession}
                 onContinueSession={handleContinueSession}
               />
+            ) : view === "apikeys" ? (
+              <ApiKeyView
+                key="apikeys"
+                jevBusy={state.jevBusy}
+                jevSettings={state.jevSettings}
+                jevApiKeyInput={state.jevApiKeyInput}
+                notice={state.configNotice}
+                onJevApiKeyInputChange={(val) =>
+                  setState((current) => ({ ...current, jevApiKeyInput: val }))
+                }
+                onSaveJevApiKey={() => void saveJevApiKey()}
+                onClearJevApiKey={() => void clearJevApiKey()}
+              />
             ) : (
               <ConfigView
                 key="config"
@@ -646,14 +684,6 @@ export function App() {
                 }
                 onLoadConfigSource={() => void loadConfigSource()}
                 onSaveConfig={() => void saveConfig()}
-                jevBusy={state.jevBusy}
-                jevSettings={state.jevSettings}
-                jevApiKeyInput={state.jevApiKeyInput}
-                onJevApiKeyInputChange={(val) =>
-                  setState((current) => ({ ...current, jevApiKeyInput: val }))
-                }
-                onSaveJevApiKey={() => void saveJevApiKey()}
-                onClearJevApiKey={() => void clearJevApiKey()}
               />
             )}
           </AnimatePresence>
@@ -666,7 +696,7 @@ export function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 16 }}
                 transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-                className="relative z-5 shrink-0 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,var(--color-canvas)_28%)] px-8 pt-2.5 pb-[18px]"
+                className="relative z-5 shrink-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-canvas)_28%)] px-8 pt-2.5 pb-[18px]"
               >
                 {renderComposer(true)}
               </motion.div>

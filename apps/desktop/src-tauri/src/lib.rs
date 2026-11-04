@@ -588,6 +588,49 @@ fn list_sessions(
     })
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct DeleteWorkspaceSessionsRequest {
+    workspace: Option<String>,
+}
+
+#[tauri::command]
+fn delete_session(app: AppHandle, session_id: String) -> Result<bool, String> {
+    let removed = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .delete_session(&session_id)
+            .map_err(|error| error.to_string())
+    })?;
+    let _ = app.emit(
+        SESSION_UPDATED,
+        SessionUpdatedPayload {
+            session_id,
+            turn_id: None,
+        },
+    );
+    Ok(removed)
+}
+
+#[tauri::command]
+fn delete_workspace_sessions(
+    app: AppHandle,
+    request: DeleteWorkspaceSessionsRequest,
+) -> Result<usize, String> {
+    let removed = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .delete_workspace_sessions(request.workspace.as_deref())
+            .map_err(|error| error.to_string())
+    })?;
+    let _ = app.emit(
+        SESSION_UPDATED,
+        SessionUpdatedPayload {
+            session_id: String::new(),
+            turn_id: None,
+        },
+    );
+    Ok(removed)
+}
+
 #[tauri::command]
 fn get_session(app: AppHandle, session_id: String) -> Result<SessionDetail, String> {
     with_session_store(&app.state::<DesktopState>(), |store| {
@@ -674,6 +717,8 @@ pub fn run() {
             pick_workspace,
             list_sessions,
             get_session,
+            delete_session,
+            delete_workspace_sessions,
             get_jev_settings,
             save_jev_api_key,
             clear_jev_api_key,

@@ -5,7 +5,8 @@ export type SidebarRouteId =
   | "new-chat"
   | `session:${string}`
   | "sessions"
-  | "config";
+  | "config"
+  | "apikeys";
 
 export interface NavigationState {
   view: WorkspaceView;
@@ -22,6 +23,7 @@ export interface NavigationState {
   navigateToSession: (sessionId: string) => void;
   navigateToSessions: () => void;
   navigateToConfig: () => void;
+  navigateToApiKeys: () => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleRightSidebar: () => void;
@@ -41,6 +43,9 @@ export function getActiveSidebarRoute(
   }
   if (view === "sessions") {
     return "sessions";
+  }
+  if (view === "apikeys") {
+    return "apikeys";
   }
   return "config";
 }
@@ -66,6 +71,10 @@ export function isSessionsRouteActive(view: WorkspaceView): boolean {
 
 export function isConfigRouteActive(view: WorkspaceView): boolean {
   return view === "config";
+}
+
+export function isApiKeysRouteActive(view: WorkspaceView): boolean {
+  return view === "apikeys";
 }
 
 function getInitialSidebarCollapsed(): boolean {
@@ -121,6 +130,11 @@ export const useNavigationStore = create<NavigationState>((set) => ({
   navigateToConfig: () =>
     set({
       view: "config",
+    }),
+
+  navigateToApiKeys: () =>
+    set({
+      view: "apikeys",
     }),
 
   toggleSidebar: () =>

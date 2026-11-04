@@ -104,7 +104,7 @@ function CustomSelectPill({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 4 }}
             transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-            className={`absolute bottom-[calc(100%+6px)] right-0 z-50 flex max-h-[260px] flex-col overflow-hidden rounded-[14px] border border-black/[0.08] bg-white/95 p-1 shadow-[0_14px_40px_-6px_rgba(0,0,0,0.16),0_3px_10px_-2px_rgba(0,0,0,0.05)] backdrop-blur-md ${minDropdownWidth}`}
+            className={`absolute bottom-[calc(100%+6px)] right-0 z-50 flex max-h-[260px] flex-col overflow-hidden rounded-[14px] border border-line-strong bg-surface/95 p-1 shadow-[0_14px_40px_-6px_rgba(0,0,0,0.16),0_3px_10px_-2px_rgba(0,0,0,0.05)] backdrop-blur-md ${minDropdownWidth}`}
           >
             <div className="flex-1 overflow-y-auto p-0.5 [scrollbar-color:rgba(0,0,0,0.12)_transparent] [scrollbar-width:thin]">
               {options.map((opt) => {
@@ -118,8 +118,8 @@ function CustomSelectPill({
                     onClick={() => onSelect(opt.value)}
                     className={`flex w-full items-center gap-1.5 rounded-[9px] px-2 py-1.5 text-left font-code text-xs transition-colors duration-100 ${
                       isSelected
-                        ? "bg-black/[0.06] font-semibold text-ink"
-                        : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
+                        ? "bg-surface-hover font-semibold text-ink"
+                        : "text-ink-soft hover:bg-surface-subtle hover:text-ink"
                     }`}
                   >
                     <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-ink">
@@ -266,7 +266,7 @@ export function Composer({
 
   return (
     <div
-      className={`mx-auto w-[min(700px,100%)] border border-black/[0.075] bg-white transition-[border-color,box-shadow] duration-180 focus-within:border-black/15 focus-within:shadow-[0_16px_44px_-8px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.035)] ${
+      className={`mx-auto w-[min(700px,100%)] border border-line-strong bg-surface transition-[border-color,box-shadow] duration-180 focus-within:border-line-strong focus-within:shadow-[0_16px_44px_-8px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.035)] ${
         compact
           ? "rounded-[18px] shadow-[0_6px_24px_-4px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.02)]"
           : "rounded-[22px] shadow-[0_10px_36px_-8px_rgba(0,0,0,0.055),0_2px_6px_rgba(0,0,0,0.025)]"
@@ -361,7 +361,7 @@ export function Composer({
           {running ? (
             <motion.button
               aria-label="Stop"
-              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-ink text-white transition-all duration-140"
+              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-ink text-canvas transition-all duration-140 hover:opacity-85"
               onClick={onCancelRun}
               title="Stop"
               type="button"
@@ -375,8 +375,8 @@ export function Composer({
               aria-label="Run"
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-140 ${
                 hasPrompt
-                  ? "cursor-pointer bg-ink text-white enabled:hover:bg-black disabled:bg-surface-subtle disabled:text-zinc-300"
-                  : "bg-surface-subtle text-zinc-400"
+                  ? "cursor-pointer bg-ink text-canvas enabled:hover:opacity-85 disabled:bg-surface-subtle disabled:text-muted"
+                  : "bg-surface-subtle text-muted"
               }`}
               disabled={!hasPrompt}
               onClick={onStartRun}

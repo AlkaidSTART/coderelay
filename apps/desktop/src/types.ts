@@ -194,7 +194,7 @@ export interface RouteForm {
   model: string;
 }
 
-export const WORKSPACE_VIEWS = ["workspace", "sessions", "config"] as const;
+export const WORKSPACE_VIEWS = ["workspace", "sessions", "config", "apikeys"] as const;
 export type WorkspaceView = (typeof WORKSPACE_VIEWS)[number];
 
 export function isWorkspaceView(value: unknown): value is WorkspaceView {

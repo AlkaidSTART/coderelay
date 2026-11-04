@@ -1,14 +1,14 @@
 import { LayoutGroup } from "motion/react";
+import { useState } from "react";
 
 import {
   isNewChatRouteActive,
   isSessionRouteActive,
-  isSessionsRouteActive,
   useNavigationStore,
 } from "../stores/navigationStore";
 import type { SessionRecord } from "../types";
-import { workspaceName } from "../utils";
-import { FolderIcon, PlusIcon, RefreshIcon } from "./icons";
+import { groupSessionsByWorkspace, workspaceName } from "../utils";
+import { ChevronDownIcon, FolderIcon, PlusIcon, RefreshIcon, TrashIcon } from "./icons";
 import { LiquidRouteIndicator } from "./LiquidRouteIndicator";
 import { WorkspaceDropdown } from "./WorkspaceDropdown";
 
@@ -26,7 +26,9 @@ export interface SidebarProps {
   sessions: SessionRecord[];
   activeSessionId?: string | null;
   onOpenSession: (sessionId: string) => void;
-  onViewAllSessions: () => void;
+  onDeleteSession: (sessionId: string) => void;
+  /** `null` targets the sessions that belong to no folder. */
+  onDeleteWorkspaceSessions: (workspace: string | null) => void;
 }
 
 const ICON_BTN_CLASS =
@@ -46,8 +48,11 @@ export function Sidebar({
   sessions,
   activeSessionId: propActiveSessionId,
   onOpenSession,
-  onViewAllSessions,
+  onDeleteSession,
+  onDeleteWorkspaceSessions,
 }: SidebarProps) {
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const storeView = useNavigationStore((s) => s.view);
   const storeActiveSessionId = useNavigationStore((s) => s.activeSessionId);
   const storeCollapsed = useNavigationStore((s) => s.sidebarCollapsed);
@@ -60,7 +65,26 @@ export function Sidebar({
   const workspaceDropdownOpen = propDropdownOpen ?? storeDropdownOpen;
   const handleToggleDropdown = propToggleDropdown ?? toggleWorkspaceDropdown;
   const newChatActive = isNewChatRouteActive(storeView, activeSessionId);
-  const allSessionsActive = isSessionsRouteActive(storeView);
+  const groups = groupSessionsByWorkspace(sessions, recentWorkspaces);
+
+  function toggleGroup(key: string): void {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  function confirmThen(key: string, action: () => void): void {
+    if (pendingDelete === key) {
+      setPendingDelete(null);
+      action();
+    } else {
+      setPendingDelete(key);
+    }
+  }
 
   return (
     <aside
@@ -109,7 +133,7 @@ export function Sidebar({
             className={`relative flex h-[34px] w-full items-center gap-2 rounded-lg border px-2.5 text-left text-[12.5px] text-ink transition-all duration-140 [&>span]:relative [&>span]:z-1 [&>svg]:relative [&>svg]:z-1 ${
               newChatActive
                 ? "border-transparent bg-transparent font-[550] shadow-none"
-                : "border-line bg-white font-medium shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-line-strong hover:bg-surface-subtle"
+                : "border-line bg-surface font-medium shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-line-strong hover:bg-surface-subtle"
             }`}
             onClick={onStartNewTask}
             type="button"
@@ -123,62 +147,98 @@ export function Sidebar({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-[18px] [scrollbar-color:rgba(15,23,42,0.12)_transparent] [scrollbar-width:thin]">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-              {sessions.slice(0, 12).map((session) => {
-                const isActive = isSessionRouteActive(storeView, activeSessionId, session.id);
-                return (
-                  <button
-                    className={`relative block w-full truncate rounded-lg bg-transparent px-2.5 py-[7px] text-left text-[12.5px] transition-all duration-120 ${
-                      isActive
-                        ? "font-[550] text-ink"
-                        : "text-muted-strong hover:bg-black/4 hover:text-ink"
-                    }`}
-                    key={session.id}
-                    onClick={() => onOpenSession(session.id)}
-                    title={session.title}
-                    type="button"
+          <div className="flex flex-col gap-1.5">
+            {groups.map((group) => {
+              const key = group.workspace ?? "";
+              const label = group.workspace ? workspaceName(group.workspace) : "独立会话";
+              const expanded = !collapsedGroups.has(key);
+              const groupDeleteKey = `w:${key}`;
+              const groupConfirming = pendingDelete === groupDeleteKey;
+              return (
+                <div className="flex flex-col gap-0.5" key={key || "__loose__"}>
+                  <div
+                    className="group/folder flex items-center rounded-lg text-xs text-muted transition-colors duration-120 hover:bg-black/4 hover:text-ink"
+                    onMouseLeave={() => groupConfirming && setPendingDelete(null)}
                   >
-                    {isActive ? (
-                      <LiquidRouteIndicator layoutId="sidebar-active-indicator" variant="glass" />
+                    <button
+                      className="flex min-w-0 flex-1 items-center gap-[7px] bg-transparent px-2.5 py-1.5 text-left"
+                      onClick={() => toggleGroup(key)}
+                      title={group.workspace ?? "未关联文件夹的会话"}
+                      type="button"
+                    >
+                      <ChevronDownIcon
+                        className={`transition-transform duration-120 ${expanded ? "" : "-rotate-90"}`}
+                      />
+                      <FolderIcon size={14} />
+                      <span className="truncate">{label}</span>
+                    </button>
+                    {group.sessions.length > 0 ? (
+                      <button
+                        aria-label={`删除${label}下的所有会话`}
+                        className={`mr-1 flex h-6 shrink-0 items-center gap-1 rounded-[6px] bg-transparent px-1.5 text-[11px] transition-opacity duration-120 hover:text-red-500 ${
+                          groupConfirming
+                            ? "text-red-500 opacity-100"
+                            : "opacity-0 group-hover/folder:opacity-100"
+                        }`}
+                        onClick={() =>
+                          confirmThen(groupDeleteKey, () => onDeleteWorkspaceSessions(group.workspace))
+                        }
+                        title={groupConfirming ? `再次点击确认删除 ${group.sessions.length} 个会话` : "删除全部会话"}
+                        type="button"
+                      >
+                        <TrashIcon size={13} />
+                        {groupConfirming ? <span>确认</span> : null}
+                      </button>
                     ) : null}
-                    <span className="relative z-1 block truncate">{session.title}</span>
-                  </button>
-                );
-              })}
-              {sessions.length > 12 ? (
-                <button
-                  className={`relative block w-full rounded-[7px] bg-transparent px-2.5 py-1 text-left text-xs transition-colors duration-120 [&>span]:relative [&>span]:z-1 ${
-                    allSessionsActive ? "text-ink" : "text-zinc-400 hover:text-ink"
-                  }`}
-                  onClick={onViewAllSessions}
-                  title={`全部 ${sessions.length} 个会话`}
-                  type="button"
-                >
-                  {allSessionsActive ? (
-                    <LiquidRouteIndicator layoutId="sidebar-active-indicator" variant="glass" />
-                  ) : null}
-                  <span>···</span>
-                </button>
-              ) : null}
-            </div>
+                  </div>
 
-            {recentWorkspaces
-              .filter((ws) => ws !== workspaceInput)
-              .slice(0, 4)
-              .map((ws) => (
-                <div className="p-0" key={ws}>
-                  <button
-                    className="flex w-full items-center gap-[7px] rounded-lg bg-transparent px-2.5 py-1.5 text-left text-xs text-muted transition-all duration-120 hover:bg-black/4 hover:text-ink"
-                    onClick={() => onSelectWorkspace(ws)}
-                    title={ws}
-                    type="button"
-                  >
-                    <FolderIcon size={14} />
-                    <span className="truncate">{workspaceName(ws)}</span>
-                  </button>
+                  {expanded
+                    ? group.sessions.map((session) => {
+                        const isActive = isSessionRouteActive(storeView, activeSessionId, session.id);
+                        const deleteKey = `s:${session.id}`;
+                        const confirming = pendingDelete === deleteKey;
+                        return (
+                          <div
+                            className="group/session relative flex items-center"
+                            key={session.id}
+                            onMouseLeave={() => confirming && setPendingDelete(null)}
+                          >
+                            <button
+                              className={`relative block w-full truncate rounded-lg bg-transparent py-[7px] pr-8 pl-6 text-left text-[12.5px] transition-all duration-120 ${
+                                isActive
+                                  ? "font-[550] text-ink"
+                                  : "text-muted-strong hover:bg-black/4 hover:text-ink"
+                              }`}
+                              onClick={() => onOpenSession(session.id)}
+                              title={session.title}
+                              type="button"
+                            >
+                              {isActive ? (
+                                <LiquidRouteIndicator layoutId="sidebar-active-indicator" variant="glass" />
+                              ) : null}
+                              <span className="relative z-1 block truncate">{session.title}</span>
+                            </button>
+                            <button
+                              aria-label="删除会话"
+                              className={`absolute right-1.5 z-2 flex h-6 items-center gap-1 rounded-[6px] bg-transparent px-1.5 text-[11px] transition-opacity duration-120 hover:text-red-500 ${
+                                confirming
+                                  ? "text-red-500 opacity-100"
+                                  : "text-muted opacity-0 group-hover/session:opacity-100"
+                              }`}
+                              onClick={() => confirmThen(deleteKey, () => onDeleteSession(session.id))}
+                              title={confirming ? "再次点击确认删除" : "删除会话"}
+                              type="button"
+                            >
+                              <TrashIcon size={13} />
+                              {confirming ? <span>确认</span> : null}
+                            </button>
+                          </div>
+                        );
+                      })
+                    : null}
                 </div>
-              ))}
+              );
+            })}
           </div>
         </div>
       </LayoutGroup>

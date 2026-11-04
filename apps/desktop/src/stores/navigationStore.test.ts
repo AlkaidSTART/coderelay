@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   getActiveSidebarRoute,
+  isApiKeysRouteActive,
   isConfigRouteActive,
   isNewChatRouteActive,
   isSessionRouteActive,
@@ -23,12 +24,13 @@ describe("useNavigationStore & sidebar activation state", () => {
   });
 
   it("maintains SSOT with WORKSPACE_VIEWS and validates views correctly", () => {
-    expect(WORKSPACE_VIEWS).toEqual(["workspace", "sessions", "config"]);
+    expect(WORKSPACE_VIEWS).toEqual(["workspace", "sessions", "config", "apikeys"]);
 
     // Test valid views (non-empty real values)
     expect(isWorkspaceView("workspace")).toBe(true);
     expect(isWorkspaceView("sessions")).toBe(true);
     expect(isWorkspaceView("config")).toBe(true);
+    expect(isWorkspaceView("apikeys")).toBe(true);
 
     // Test boundary / invalid values
     expect(isWorkspaceView("")).toBe(false);
@@ -69,8 +71,8 @@ describe("useNavigationStore & sidebar activation state", () => {
     expect(getActiveSidebarRoute(state.view, state.activeSessionId)).toBe(`session:${testSessionId}`);
   });
 
-  it("fixes the bug: session does NOT remain active when navigating to config or sessions", () => {
-    const { navigateToSession, navigateToConfig, navigateToSessions } = useNavigationStore.getState();
+  it("fixes the bug: session does NOT remain active when navigating to config, sessions, or apikeys", () => {
+    const { navigateToSession, navigateToConfig, navigateToSessions, navigateToApiKeys } = useNavigationStore.getState();
     const testSessionId = "sess-debug-task-55";
 
     // 1. Open a session first
@@ -85,6 +87,7 @@ describe("useNavigationStore & sidebar activation state", () => {
     expect(isSessionRouteActive(configState.view, configState.activeSessionId, testSessionId)).toBe(false);
     expect(isNewChatRouteActive(configState.view, configState.activeSessionId)).toBe(false);
     expect(isConfigRouteActive(configState.view)).toBe(true);
+    expect(isApiKeysRouteActive(configState.view)).toBe(false);
     expect(getActiveSidebarRoute(configState.view, configState.activeSessionId)).toBe("config");
 
     // 3. Switch to sessions view
@@ -94,7 +97,19 @@ describe("useNavigationStore & sidebar activation state", () => {
     expect(isSessionRouteActive(sessionsState.view, sessionsState.activeSessionId, testSessionId)).toBe(false);
     expect(isNewChatRouteActive(sessionsState.view, sessionsState.activeSessionId)).toBe(false);
     expect(isSessionsRouteActive(sessionsState.view)).toBe(true);
+    expect(isApiKeysRouteActive(sessionsState.view)).toBe(false);
     expect(getActiveSidebarRoute(sessionsState.view, sessionsState.activeSessionId)).toBe("sessions");
+
+    // 4. Switch to apikeys view
+    navigateToApiKeys();
+    const apiKeysState = useNavigationStore.getState();
+    expect(apiKeysState.view).toBe("apikeys");
+    expect(isSessionRouteActive(apiKeysState.view, apiKeysState.activeSessionId, testSessionId)).toBe(false);
+    expect(isNewChatRouteActive(apiKeysState.view, apiKeysState.activeSessionId)).toBe(false);
+    expect(isConfigRouteActive(apiKeysState.view)).toBe(false);
+    expect(isSessionsRouteActive(apiKeysState.view)).toBe(false);
+    expect(isApiKeysRouteActive(apiKeysState.view)).toBe(true);
+    expect(getActiveSidebarRoute(apiKeysState.view, apiKeysState.activeSessionId)).toBe("apikeys");
   });
 
   it("returns to new chat mode via navigateToNewChat", () => {

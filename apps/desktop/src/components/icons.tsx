@@ -170,3 +170,25 @@ export function KeyIcon({ size = 15 }: { size?: number } = {}) {
     </Icon>
   );
 }
+
+export function PaletteIcon({ size = 15 }: { size?: number } = {}) {
+  return (
+    <Icon size={size}>
+      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.68 1.5-1.5 0-.38-.15-.74-.42-1.02-.27-.29-.42-.66-.42-1.05 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-5.5-4.5-10-10-10Z" />
+    </Icon>
+  );
+}
+
+export function TrashIcon({ size = 14 }: { size?: number } = {}) {
+  return (
+    <Icon size={size}>
+      <path d="M4 7h16" />
+      <path d="M9 7V4.5h6V7" />
+      <path d="M6.5 7 7.4 20h9.2L17.5 7" />
+    </Icon>
+  );
+}

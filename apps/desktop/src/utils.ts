@@ -6,6 +6,7 @@ import type {
   AgentEvent,
   ModelOption,
   RouteForm,
+  SessionRecord,
   TimePeriod,
   WelcomeTimeSnapshot,
 } from "./types";
@@ -183,4 +184,46 @@ export function formatModeLabel(mode: string): string {
     return "Jev";
   }
   return mode ? mode.charAt(0).toUpperCase() + mode.slice(1) : "Local";
+}
+
+export interface SessionGroup {
+  /** Folder path, or `null` for sessions that belong to no folder. */
+  workspace: string | null;
+  sessions: SessionRecord[];
+}
+
+/**
+ * Archives sessions under their folder; sessions without a folder are gathered
+ * into a single trailing group. Folders follow `workspaces` order, then any
+ * folder only known from sessions. Empty known folders are kept.
+ */
+export function groupSessionsByWorkspace(
+  sessions: readonly SessionRecord[],
+  workspaces: readonly string[],
+): SessionGroup[] {
+  const folders = new Map<string, SessionRecord[]>();
+  for (const workspace of workspaces) {
+    if (workspace.trim()) {
+      folders.set(workspace, []);
+    }
+  }
+  const loose: SessionRecord[] = [];
+  for (const session of sessions) {
+    const workspace = session.workspace?.trim();
+    if (!workspace) {
+      loose.push(session);
+      continue;
+    }
+    const bucket = folders.get(session.workspace as string) ?? [];
+    bucket.push(session);
+    folders.set(session.workspace as string, bucket);
+  }
+  const groups: SessionGroup[] = [...folders].map(([workspace, items]) => ({
+    workspace,
+    sessions: items,
+  }));
+  if (loose.length > 0) {
+    groups.push({ workspace: null, sessions: loose });
+  }
+  return groups;
 }

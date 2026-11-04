@@ -4,7 +4,7 @@ import type { WorkspaceView } from "../types";
 import {
   HistoryIcon,
   HomeIcon,
-  PanelLeftIcon,
+  KeyIcon,
   PlusIcon,
   SettingsIcon,
 } from "./icons";
@@ -12,7 +12,6 @@ import { LiquidRouteIndicator } from "./LiquidRouteIndicator";
 
 export interface IconRailProps {
   currentView: WorkspaceView;
-  onToggleSidebar: () => void;
   onSelectView: (view: WorkspaceView) => void;
   onStartNewTask: () => void;
 }
@@ -24,13 +23,12 @@ function railBtnClass(active: boolean): string {
   return `${RAIL_BTN_BASE} ${
     active
       ? "text-ink hover:bg-transparent hover:text-ink"
-      : "text-muted hover:bg-black/[0.045] hover:text-ink"
+      : "text-muted hover:bg-surface-subtle hover:text-ink"
   }`;
 }
 
 export function IconRail({
   currentView,
-  onToggleSidebar,
   onSelectView,
   onStartNewTask,
 }: IconRailProps) {
@@ -41,15 +39,6 @@ export function IconRail({
         aria-label="Navigation"
       >
         <div className="flex flex-col items-center gap-2">
-          <button
-            aria-label="Toggle sidebar"
-            className={`${railBtnClass(false)} mb-1`}
-            onClick={onToggleSidebar}
-            title="⌘B"
-            type="button"
-          >
-            <PanelLeftIcon size={17} />
-          </button>
           <button
             aria-label="Workspace"
             className={railBtnClass(currentView === "workspace")}
@@ -85,6 +74,18 @@ export function IconRail({
           </button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-2">
+          <button
+            aria-label="API Keys"
+            className={railBtnClass(currentView === "apikeys")}
+            onClick={() => onSelectView("apikeys")}
+            title="API Keys"
+            type="button"
+          >
+            {currentView === "apikeys" ? (
+              <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
+            ) : null}
+            <KeyIcon size={16} />
+          </button>
           <button
             aria-label="Settings"
             className={railBtnClass(currentView === "config")}
