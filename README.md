@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="package.json"><img src="https://img.shields.io/github/package-json/v/AlkaidSTART/coderelay?color=blue&style=flat-square" alt="version" /></a>
+  <a href="package.json"><img src="https://img.shields.io/github/package-json/v/GeWu-academy/coderelay?color=blue&style=flat-square" alt="version" /></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-bun-f472b6.svg?style=flat-square" alt="bun" /></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/language-TypeScript-3178c6.svg?style=flat-square" alt="typescript" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="license" /></a>
@@ -107,7 +107,7 @@ cr --version
 ### 源码运行
 
 ```bash
-git clone https://github.com/AlkaidSTART/coderelay.git
+git clone https://github.com/GeWu-academy/coderelay.git
 cd coderelay
 bun install
 
@@ -309,7 +309,7 @@ routing:
 
 ```bash
 # 1. 克隆并安装依赖
-git clone https://github.com/AlkaidSTART/coderelay.git
+git clone https://github.com/GeWu-academy/coderelay.git
 cd coderelay
 bun install
 

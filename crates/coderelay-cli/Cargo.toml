@@ -1,0 +1,19 @@
+[package]
+name = "coderelay-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CodeRelay command-line client"
+
+[[bin]]
+name = "coderelay"
+path = "src/main.rs"
+
+[dependencies]
+coderelay-core.workspace = true
+coderelay-protocol.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true

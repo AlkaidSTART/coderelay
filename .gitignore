@@ -41,3 +41,11 @@ AGENTS.md
 .coderelay/
 scripts/*
 docs/*
+# Rust / Tauri outputs
+target/
+apps/desktop/dist/
+apps/desktop/src-tauri/gen/
+
+# Keep implementation plans visible despite docs/* being ignored
+!docs/plans/
+!docs/plans/**

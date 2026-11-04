@@ -1,0 +1,21 @@
+[package]
+name = "coderelay-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CodeRelay desktop application"
+
+[lib]
+name = "coderelay_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+coderelay-core.workspace = true
+coderelay-protocol.workspace = true
+serde.workspace = true
+tauri = { version = "2", features = [] }

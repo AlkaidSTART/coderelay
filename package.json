@@ -29,10 +29,20 @@
     "start": "bun src/cli.tsx",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "issues:doc": "bun scripts/generate-issues-doc.ts"
+    "issues:doc": "bun scripts/generate-issues-doc.ts",
+    "desktop:dev": "bun --cwd apps/desktop run tauri dev",
+    "desktop:build": "bun --cwd apps/desktop run tauri build",
+    "desktop:typecheck": "bun --cwd apps/desktop run typecheck",
+    "rust:check": "cargo check --workspace",
+    "rust:test": "cargo test --workspace",
+    "rust:fmt": "cargo fmt --all -- --check",
+    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings"
   },
   "bin": {
     "coderelay": "src/cli.ts",
     "cr": "src/cli.ts"
-  }
+  },
+  "workspaces": [
+    "apps/desktop"
+  ]
 }
