@@ -18,6 +18,10 @@ export function WorkspaceDropdown({
   recentWorkspaces,
   onSelectWorkspace,
 }: WorkspaceDropdownProps) {
+  const workspaces = Array.from(
+    new Set([currentWorkspace, ...recentWorkspaces].filter(Boolean)),
+  );
+
   return (
     <div className="relative min-w-0">
       <button
@@ -39,16 +43,9 @@ export function WorkspaceDropdown({
             exit={{ opacity: 0, scale: 0.96, y: -4 }}
             transition={{ duration: 0.14, ease: "easeOut" }}
           >
-            <div
-              className="mb-1 flex items-center gap-1.5 truncate rounded-[7px] bg-surface-subtle px-2 py-1.5 font-code text-[11px] text-muted-strong"
-              title={currentWorkspace}
-            >
-              <FolderIcon size={14} />
-              <span className="truncate">{currentWorkspace}</span>
-            </div>
-            {recentWorkspaces.length > 0 ? (
+            {workspaces.length > 0 ? (
               <div className="flex flex-col gap-0.5">
-                {recentWorkspaces.map((ws) => (
+                {workspaces.map((ws) => (
                   <button
                     key={ws}
                     type="button"
