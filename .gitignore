@@ -40,6 +40,7 @@ AGENTS.md
 # 本地会话数据（SQLite）
 .coderelay/
 scripts/*
+!scripts/check-versions.ts
 docs/*
 # Rust / Tauri outputs
 target/
