@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "motion/react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { AgentRunResult, RoutePreview } from "../types";
-import { formatDuration } from "../utils";
+import { formatDuration, getWelcomeTimeSnapshot } from "../utils";
 import { RouteIcon, TerminalIcon } from "./icons";
 
 export interface WorkspaceViewProps {
@@ -26,6 +26,19 @@ export function WorkspaceView({
   activity,
   renderComposer,
 }: WorkspaceViewProps) {
+  const [timeSnapshot, setTimeSnapshot] = useState(() => getWelcomeTimeSnapshot());
+
+  useEffect(() => {
+    if (showThread) {
+      return;
+    }
+    setTimeSnapshot(getWelcomeTimeSnapshot());
+    const timer = window.setInterval(() => {
+      setTimeSnapshot(getWelcomeTimeSnapshot());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [showThread]);
+
   return (
     <motion.section
       key="workspace"
@@ -62,6 +75,17 @@ export function WorkspaceView({
               transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
               className="welcome-hero-container"
             >
+              <div className="welcome-hero-greeting">
+                <div className="welcome-time-badge">
+                  <time className="welcome-clock">{timeSnapshot.formattedTime}</time>
+                  <span className="welcome-date-divider" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="welcome-date">{timeSnapshot.formattedDate}</span>
+                </div>
+                <h1 className="welcome-title">{timeSnapshot.greeting}</h1>
+                <p className="welcome-encouragement">{timeSnapshot.encouragement}</p>
+              </div>
               {renderComposer(false)}
             </motion.div>
           ) : (

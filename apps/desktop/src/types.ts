@@ -201,6 +201,21 @@ export function isWorkspaceView(value: unknown): value is WorkspaceView {
   return (WORKSPACE_VIEWS as readonly unknown[]).includes(value);
 }
 
+export const TIME_PERIODS = ["morning", "afternoon", "evening", "late_night"] as const;
+export type TimePeriod = (typeof TIME_PERIODS)[number];
+
+export function isTimePeriod(value: unknown): value is TimePeriod {
+  return (TIME_PERIODS as readonly unknown[]).includes(value);
+}
+
+export interface WelcomeTimeSnapshot {
+  period: TimePeriod;
+  greeting: string;
+  formattedTime: string;
+  formattedDate: string;
+  encouragement: string;
+}
+
 export interface WorkbenchState {
   discovery: DiscoveryPayload | null;
   runtime: RuntimeStatus | null;
