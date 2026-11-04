@@ -1,4 +1,4 @@
-import { LayoutGroup } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useState } from "react";
 
 import {
@@ -167,7 +167,7 @@ export function Sidebar({
                       type="button"
                     >
                       <ChevronDownIcon
-                        className={`transition-transform duration-120 ${expanded ? "" : "-rotate-90"}`}
+                        className={`transition-transform duration-220 ease-[cubic-bezier(0.2,0,0,1)] ${expanded ? "" : "-rotate-90"}`}
                       />
                       <FolderIcon size={14} />
                       <span className="truncate">{label}</span>
@@ -192,8 +192,17 @@ export function Sidebar({
                     ) : null}
                   </div>
 
-                  {expanded
-                    ? group.sessions.map((session) => {
+                  <AnimatePresence initial={false}>
+                    {expanded ? (
+                      <motion.div
+                        animate={{ height: "auto", opacity: 1 }}
+                        className="flex flex-col gap-0.5 overflow-hidden"
+                        exit={{ height: 0, opacity: 0 }}
+                        initial={{ height: 0, opacity: 0 }}
+                        key="sessions"
+                        transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+                      >
+                        {group.sessions.map((session) => {
                         const isActive = isSessionRouteActive(storeView, activeSessionId, session.id);
                         const deleteKey = `s:${session.id}`;
                         const confirming = pendingDelete === deleteKey;
@@ -234,8 +243,10 @@ export function Sidebar({
                             </button>
                           </div>
                         );
-                      })
-                    : null}
+                        })}
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
               );
             })}
