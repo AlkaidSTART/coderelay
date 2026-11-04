@@ -12,7 +12,7 @@ import { SessionsView } from "./components/SessionsView";
 import { Sidebar } from "./components/Sidebar";
 import { Titlebar } from "./components/Titlebar";
 import { WorkspaceView } from "./components/WorkspaceView";
-import { useNavigationStore } from "./stores/navigationStore";
+import { isConversationRouteActive, useNavigationStore } from "./stores/navigationStore";
 import { useThemeStore } from "./stores/themeStore";
 import type {
   AgentEntry,
@@ -97,16 +97,20 @@ export function App() {
   const customBackground = useThemeStore((s) => s.customBackground);
   const customBackgroundOpacity = useThemeStore((s) => s.customBackgroundOpacity);
 
+  const isConversationRoute = isConversationRouteActive(view);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
-        toggleSidebar();
+        if (isConversationRouteActive(view)) {
+          toggleSidebar();
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, view]);
 
   async function refreshRecentWorkspaces(): Promise<void> {
     const recentWorkspaces = await invoke<string[]>("list_recent_workspaces", {
@@ -616,14 +620,14 @@ export function App() {
       ) : null}
       <Titlebar
         sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={toggleSidebar}
+        onToggleSidebar={isConversationRoute ? toggleSidebar : undefined}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={toggleRightSidebar}
       />
 
       <div
         className="flex min-h-0 flex-1 overflow-hidden bg-canvas"
-        data-sidebar-collapsed={sidebarCollapsed}
+        data-sidebar-collapsed={!isConversationRoute || sidebarCollapsed}
         data-right-sidebar-open={rightSidebarOpen}
       >
         <IconRail
@@ -632,23 +636,25 @@ export function App() {
           onStartNewTask={startNewTask}
         />
 
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          workspaceInput={workspaceInput}
-          recentWorkspaces={state.recentWorkspaces}
-          workspaceDropdownOpen={workspaceDropdownOpen}
-          onToggleWorkspaceDropdown={toggleWorkspaceDropdown}
-          onSelectWorkspace={handleSelectWorkspace}
-          onPickWorkspace={() => void handlePickWorkspace()}
-          loading={state.loading}
-          onRefreshDiscovery={() => void loadDiscovery(workspaceInput)}
-          onStartNewTask={startNewTask}
-          sessions={state.sessions}
-          activeSessionId={activeSessionId}
-          onOpenSession={handleOpenSession}
-          onDeleteSession={(id) => void handleDeleteSession(id)}
-          onDeleteWorkspaceSessions={(ws) => void handleDeleteWorkspaceSessions(ws)}
-        />
+        {isConversationRoute ? (
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            workspaceInput={workspaceInput}
+            recentWorkspaces={state.recentWorkspaces}
+            workspaceDropdownOpen={workspaceDropdownOpen}
+            onToggleWorkspaceDropdown={toggleWorkspaceDropdown}
+            onSelectWorkspace={handleSelectWorkspace}
+            onPickWorkspace={() => void handlePickWorkspace()}
+            loading={state.loading}
+            onRefreshDiscovery={() => void loadDiscovery(workspaceInput)}
+            onStartNewTask={startNewTask}
+            sessions={state.sessions}
+            activeSessionId={activeSessionId}
+            onOpenSession={handleOpenSession}
+            onDeleteSession={(id) => void handleDeleteSession(id)}
+            onDeleteWorkspaceSessions={(ws) => void handleDeleteWorkspaceSessions(ws)}
+          />
+        ) : null}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas" data-view={view}>
           <AnimatePresence mode="wait">
