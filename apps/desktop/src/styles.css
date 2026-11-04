@@ -118,10 +118,11 @@ h1 {
   max-width: 680px;
   margin: 12px 0 20px;
   font-family: "Iowan Old Style", "Songti SC", Georgia, serif;
-  font-size: clamp(44px, 7vw, 82px);
+  font-size: clamp(40px, 5.4vw, 64px);
   font-weight: 500;
-  letter-spacing: -0.06em;
-  line-height: 0.98;
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+  text-wrap: balance;
 }
 
 .lede {

@@ -1,17 +1,23 @@
-use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 /// Supported coding-agent CLIs.
 ///
 /// Keep this enum as the single source of truth for agent identity. Exhaustive
 /// matching ensures new agents cannot silently bypass host integration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AgentId {
     Codex,
     Claude,
     Pi,
     Omp,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unsupported agent id \"{0}\"")]
+pub struct InvalidAgentId(pub String);
 
 impl AgentId {
     pub const fn as_str(self) -> &'static str {
@@ -21,6 +27,45 @@ impl AgentId {
             Self::Pi => "pi",
             Self::Omp => "omp",
         }
+    }
+}
+
+impl fmt::Display for AgentId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AgentId {
+    type Err = InvalidAgentId;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim() {
+            "codex" => Ok(Self::Codex),
+            "claude" => Ok(Self::Claude),
+            "pi" => Ok(Self::Pi),
+            "omp" => Ok(Self::Omp),
+            other => Err(InvalidAgentId(other.to_owned())),
+        }
+    }
+}
+
+impl Serialize for AgentId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse().map_err(de::Error::custom)
     }
 }
 
@@ -87,6 +132,16 @@ mod tests {
     fn agent_ids_serialize_as_lowercase_strings() {
         let json = serde_json::to_vec(&AgentId::Claude).expect("serialize agent id");
         assert_eq!(String::from_utf8(json).expect("utf8"), "\"claude\"");
+    }
+
+    #[test]
+    fn agent_ids_trim_valid_input_and_reject_unknown_values() {
+        assert_eq!(
+            " claude ".parse::<AgentId>().expect("trimmed id"),
+            AgentId::Claude
+        );
+        let error = "gemini".parse::<AgentId>().expect_err("unknown id");
+        assert!(error.to_string().contains("gemini"));
     }
 
     #[test]

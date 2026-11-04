@@ -2,6 +2,8 @@
 
 > **执行要求：** 后续实现按任务顺序进行，每个任务先补测试，再写最小实现，完成验证后提交。
 
+> **当前进度：** Task 1–3 已完成（2026-11-04）。下一步为 Task 4：迁移路由引擎。
+
 **目标：** 将 coderelay 从 Bun 优先的 CLI/TUI 产品迁移为桌面优先的 Rust Core + Tauri 2 产品，同时保留共享同一核心的轻量 CLI 与可演进 SDK。
 
 **架构：** Rust workspace 提供唯一的扫描、配置、路由、执行与会话实现。Tauri 桌面端内嵌 `coderelay-core`，不再通过 Bun sidecar 运行核心；CLI 也直接链接同一核心。跨进程 SDK 通过版本化 `coderelay-protocol` 接入，后续需要跨客户端实时共享任务状态时再增加 `coderelayd`。
@@ -508,8 +510,8 @@ fn runtime_status() -> RuntimeStatus {
 
 ```bash
 bun install
-bun --cwd apps/desktop run build
-bun --cwd apps/desktop run typecheck
+bun run --cwd apps/desktop build
+bun run --cwd apps/desktop typecheck
 cargo check -p coderelay-desktop
 ```
 
@@ -628,8 +630,8 @@ runAborted
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-bun --cwd apps/desktop run typecheck
-bun --cwd apps/desktop run build
+bun run --cwd apps/desktop typecheck
+bun run --cwd apps/desktop build
 cargo check -p coderelay-desktop
 ```
 

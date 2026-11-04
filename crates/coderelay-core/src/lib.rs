@@ -5,11 +5,19 @@
 //! process, and persistence adapters.
 
 pub mod agent;
+pub mod config;
 pub mod model;
 pub mod routing;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
-pub use model::{MODEL_STRENGTHS, ModelCost, ModelStrength};
+pub use config::{
+    Config, ConfigError, LoadConfigOptions, LoadedConfig, default_config, load_config,
+    parse_config_yaml,
+};
+pub use model::{
+    AgentModelRef, MODEL_STRENGTHS, ModelConfig, ModelCost, ModelStrength, format_model_ref,
+    parse_model_ref,
+};
 pub use routing::{RouteCandidate, RouteDecision, RouteRequest, RoutingMode, RoutingStrategy};
 
 /// Semantic version of the Rust core crate.

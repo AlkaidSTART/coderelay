@@ -3,20 +3,22 @@ use serde::{Deserialize, Serialize};
 use crate::model::ModelStrength;
 
 /// User-visible routing mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RoutingMode {
+    #[default]
     Local,
     Manual,
     Jev,
 }
 
 /// Algorithm used after a routing mode has selected the decision source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RoutingStrategy {
     Rules,
     Score,
+    #[default]
     Hybrid,
 }
 
