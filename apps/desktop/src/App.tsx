@@ -225,6 +225,57 @@ function StopIcon() {
   );
 }
 
+function PanelLeftIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <path d="M9 3v18" />
+    </Icon>
+  );
+}
+
+function PlusIcon({ size = 15 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+function ShieldIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </Icon>
+  );
+}
+
+function ChevronDownIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
+function ChevronRightIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="m9 18 6-6-6-6" />
+    </Icon>
+  );
+}
+
+function EditIcon({ size = 15 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </Icon>
+  );
+}
+
 function eventActivity(event: AgentEvent): string | null {
   if (event.kind === "tool_started") {
     return `tool · ${event.tool ?? "unknown"}`;
@@ -253,8 +304,45 @@ export function App() {
     model: "",
   });
   const [workspaceInput, setWorkspaceInput] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("coderelay_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(false);
+  const [projectExpanded, setProjectExpanded] = useState<boolean>(true);
+  const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState<boolean>(false);
   const activeRunId = useRef<string | null>(null);
   const currentWorkspace = useRef("");
+
+  function toggleSidebar(): void {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem("coderelay_sidebar_collapsed", String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
+  function toggleRightSidebar(): void {
+    setRightSidebarOpen((current) => !current);
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function refreshRecentWorkspaces(): Promise<void> {
     const recentWorkspaces = await invoke<string[]>("list_recent_workspaces", {
@@ -659,13 +747,31 @@ export function App() {
         </div>
       </header>
 
-      <div className="app-layout">
+      <div
+        className="app-layout"
+        data-sidebar-collapsed={sidebarCollapsed}
+        data-right-sidebar-open={rightSidebarOpen}
+      >
         <nav className="icon-rail" aria-label="工作台导航">
           <div className="rail-nav">
             <button
+              aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+              className="rail-action rail-action--toggle"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? "展开侧边栏 (⌘B)" : "收起侧边栏 (⌘B)"}
+              type="button"
+            >
+              <PanelLeftIcon size={17} />
+            </button>
+            <button
               aria-label="工作台"
               className={`rail-action ${state.view === "workspace" ? "rail-action--active" : ""}`}
-              onClick={() => setState((current) => ({ ...current, view: "workspace" }))}
+              onClick={() => {
+                setState((current) => ({ ...current, view: "workspace" }));
+                if (sidebarCollapsed) {
+                  setSidebarCollapsed(false);
+                }
+              }}
               title="工作台"
               type="button"
             >
@@ -677,6 +783,9 @@ export function App() {
               onClick={() => {
                 setState((current) => ({ ...current, view: "sessions" }));
                 void refreshSessions(currentWorkspace.current);
+                if (sidebarCollapsed) {
+                  setSidebarCollapsed(false);
+                }
               }}
               title="会话历史"
               type="button"
@@ -690,7 +799,7 @@ export function App() {
               title="新任务"
               type="button"
             >
-              <FolderIcon />
+              <EditIcon size={16} />
             </button>
           </div>
           <div className="rail-footer">
@@ -700,6 +809,9 @@ export function App() {
               onClick={() => {
                 setState((current) => ({ ...current, view: "config" }));
                 void Promise.all([loadConfigSource(), loadJevSettings()]);
+                if (sidebarCollapsed) {
+                  setSidebarCollapsed(false);
+                }
               }}
               title="配置"
               type="button"
@@ -709,88 +821,186 @@ export function App() {
           </div>
         </nav>
 
-        <aside className="sidebar">
+        <aside className={`sidebar ${sidebarCollapsed ? "sidebar--collapsed" : ""}`}>
           <div className="sidebar-header">
-            <div className="brand-lockup">
-              <h1>CodeRelay</h1>
-              <p className="sidebar-kicker">Local coding agents</p>
+            <div className="brand-dropdown-wrap">
+              <button
+                className="brand-lockup-btn"
+                type="button"
+                onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                title="切换工作区"
+              >
+                <span className="brand-title">CodeRelay</span>
+                <ChevronDownIcon size={12} />
+              </button>
+              {workspaceDropdownOpen ? (
+                <div className="workspace-dropdown">
+                  <div className="workspace-dropdown-header">
+                    <span>当前工作区</span>
+                  </div>
+                  <div className="workspace-dropdown-current">
+                    <FolderIcon />
+                    <span>{workspaceInput}</span>
+                  </div>
+                  {state.recentWorkspaces.length > 0 ? (
+                    <div className="workspace-dropdown-list">
+                      <div className="workspace-dropdown-subtitle">最近切换</div>
+                      {state.recentWorkspaces.map((ws) => (
+                        <button
+                          key={ws}
+                          type="button"
+                          className={`workspace-dropdown-item ${ws === workspaceInput ? "workspace-dropdown-item--active" : ""}`}
+                          onClick={() => {
+                            setWorkspaceDropdownOpen(false);
+                            void loadDiscovery(ws);
+                          }}
+                        >
+                          <FolderIcon />
+                          <span>{workspaceName(ws)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <span className="local-chip">{state.loading ? "SYNC" : "LOCAL"}</span>
+
+            <div className="sidebar-header-actions">
+              <button
+                aria-label="重新扫描"
+                className="icon-button"
+                disabled={state.loading}
+                onClick={() => void loadDiscovery(workspaceInput)}
+                title="重新扫描工作区"
+                type="button"
+              >
+                <RefreshIcon />
+              </button>
+              <button
+                aria-label="收起侧边栏"
+                className="icon-button"
+                onClick={toggleSidebar}
+                title="收起侧边栏 (⌘B)"
+                type="button"
+              >
+                <PanelLeftIcon size={15} />
+              </button>
+            </div>
           </div>
 
-          <div className="sidebar-thread">
-            <span className="thread-icon"><TerminalIcon /></span>
-            <span className="thread-copy">
-              <strong>{activeTaskTitle}</strong>
-              <small>{state.running ? "正在执行" : state.result ? "已完成" : "当前任务"}</small>
-            </span>
-            <span className={`thread-state ${state.running ? "thread-state--running" : ""}`} />
+          <div className="sidebar-action-bar">
+            <button className="new-chat-btn" onClick={startNewTask} type="button">
+              <EditIcon size={14} />
+              <span>新聊天</span>
+            </button>
           </div>
 
           <div className="sidebar-scroll">
-            <section className="sidebar-section">
-              <div className="sidebar-section-title">
-                <span>WORKSPACE</span>
-                <span className="section-count">{state.loading ? "扫描中" : "已连接"}</span>
-              </div>
-              <div className="workspace-field">
-                <FolderIcon />
-                <input
-                  id="workspace"
-                  aria-label="工作区路径"
-                  value={workspaceInput}
-                  onChange={(event) => setWorkspaceInput(event.target.value)}
-                  placeholder="选择或输入工作区"
-                  spellCheck={false}
-                />
+            <div className="project-tree-section">
+              <div className="tree-group-header">
                 <button
-                  aria-label="重新扫描工作区"
-                  className="icon-button"
-                  disabled={state.loading}
-                  onClick={() => void loadDiscovery(workspaceInput)}
-                  title="重新扫描"
+                  className="tree-group-toggle"
                   type="button"
+                  onClick={() => setProjectExpanded((prev) => !prev)}
                 >
-                  <RefreshIcon />
+                  <span>项目</span>
+                  {projectExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
                 </button>
               </div>
-              {state.recentWorkspaces.length > 0 ? (
-                <div className="recent-workspaces">
-                  {state.recentWorkspaces.slice(0, 4).map((workspace) => (
-                    <button
-                      className={`workspace-chip ${workspace === workspaceInput ? "workspace-chip--active" : ""}`}
-                      key={workspace}
-                      onClick={() => void loadDiscovery(workspace)}
-                      title={workspace}
-                      type="button"
-                    >
-                      {workspaceName(workspace)}
-                    </button>
-                  ))}
+
+              {projectExpanded ? (
+                <div className="tree-project-item tree-project-item--current">
+                  <div className="tree-project-label">
+                    <FolderIcon />
+                    <span className="tree-project-name">{workspaceName(workspaceInput)}</span>
+                  </div>
+                  <div className="tree-sub-list">
+                    {state.sessions.slice(0, 8).map((session) => (
+                      <button
+                        className={`tree-session-link ${state.activeSessionId === session.id ? "tree-session-link--active" : ""}`}
+                        key={session.id}
+                        onClick={() => {
+                          setState((current) => ({ ...current, view: "workspace" }));
+                          void openSession(session.id);
+                        }}
+                        title={session.title}
+                        type="button"
+                      >
+                        <span className="tree-session-title">{session.title}</span>
+                      </button>
+                    ))}
+                    {state.sessions.length > 8 ? (
+                      <button
+                        className="tree-session-more-btn"
+                        onClick={() => {
+                          setState((current) => ({ ...current, view: "sessions" }));
+                          void refreshSessions(currentWorkspace.current);
+                        }}
+                        type="button"
+                      >
+                        展开显示全部 ({state.sessions.length})
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
-            </section>
+
+              {/* 其他最近工作区，向第二张图看齐 */}
+              {state.recentWorkspaces
+                .filter((ws) => ws !== workspaceInput)
+                .slice(0, 3)
+                .map((ws) => (
+                  <div className="tree-project-item" key={ws}>
+                    <button
+                      className="tree-other-project-btn"
+                      onClick={() => void loadDiscovery(ws)}
+                      title={ws}
+                      type="button"
+                    >
+                      <FolderIcon />
+                      <span className="tree-project-name">{workspaceName(ws)}</span>
+                    </button>
+                  </div>
+                ))}
+            </div>
           </div>
 
           <div className="sidebar-footer">
             <span className="status-dot" data-tone={statusTone} />
-            <div>
+            <div className="sidebar-footer-info">
               <strong>Local runtime</strong>
               <span>{state.runtime?.coreVersion ? `Rust Core v${state.runtime.coreVersion}` : "正在连接"}</span>
             </div>
-            <span className="protocol-pill">{state.runtime?.transport ?? "local"}</span>
+            <span className="protocol-pill">{state.runtime?.transport ?? "in-process"}</span>
           </div>
         </aside>
 
         <main className="main-panel" data-view={state.view}>
           <header className="main-toolbar">
             <div className="toolbar-breadcrumbs">
+              <button
+                className="sidebar-toggle-btn"
+                onClick={toggleSidebar}
+                title={sidebarCollapsed ? "展开侧边栏 (⌘B)" : "收起侧边栏 (⌘B)"}
+                type="button"
+              >
+                <PanelLeftIcon size={16} />
+              </button>
               <span className="breadcrumbs-root"><FolderIcon /> {workspaceName(workspaceInput)}</span>
               <span className="breadcrumbs-separator">/</span>
               <strong>{activeTaskTitle}</strong>
             </div>
             <div className="toolbar-right">
               <span className="route-chip"><RouteIcon /> {selectedAgent?.label ?? "Auto route"}</span>
+              <button
+                className={`agent-toggle-btn ${rightSidebarOpen ? "agent-toggle-btn--active" : ""}`}
+                onClick={toggleRightSidebar}
+                title="切换 Agents 面板"
+                type="button"
+              >
+                <TerminalIcon />
+                <span>Agents</span>
+              </button>
               <span className={`connection-pill connection-pill--${statusTone}`}>{statusLabel}</span>
             </div>
           </header>
@@ -995,18 +1205,139 @@ export function App() {
               ) : null}
 
               {!showThread ? (
-                <div className="empty-state">
-                  <div className="empty-topline">
-                    <span className="empty-kicker">LOCAL-FIRST CODING AGENT</span>
+                <div className="welcome-hero-container">
+                  <div className="welcome-hero">
+                    <h2 className="welcome-title">我们要作什么？</h2>
                   </div>
-                  <h2>今天准备<br />构建什么？</h2>
-                  <p className="empty-copy">
-                    CodeRelay 会在本机发现可用的 Agent，把任务交给最合适的那一个，并保留完整的执行上下文。
-                  </p>
-                  <div className="empty-signals">
-                    <span><FolderIcon /> {workspaceName(workspaceInput)}</span>
-                    <span><span className="status-dot" data-tone={statusTone} /> {agents.filter((agent) => agent.available).length} agents ready</span>
-                    <span><TerminalIcon /> {state.runtime?.transport ?? "in-process"}</span>
+
+                  <div className="hero-composer-card">
+                    <textarea
+                      aria-label="任务内容"
+                      value={form.prompt}
+                      onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+                          event.preventDefault();
+                          if (form.prompt.trim() && !state.running) {
+                            void startRun();
+                          }
+                        }
+                      }}
+                      placeholder="使用 CodeRelay"
+                      disabled={state.running}
+                    />
+
+                    <div className="composer-toolbar">
+                      <div className="composer-toolbar-left">
+                        <button
+                          className="composer-action-btn"
+                          type="button"
+                          onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                          title="选择工作区 / 添加"
+                        >
+                          <PlusIcon size={14} />
+                        </button>
+                        <button
+                          className="security-badge-btn"
+                          type="button"
+                          onClick={() => {
+                            const modes = discovery?.routingModes ?? ["local"];
+                            const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
+                            setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
+                          }}
+                          title={`当前访问模式: ${form.mode}（点击切换）`}
+                        >
+                          <ShieldIcon size={13} />
+                          <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
+                        </button>
+                      </div>
+
+                      <div className="composer-toolbar-right">
+                        <div className="model-select-capsule">
+                          <select
+                            value={form.agent ? `${form.agent}:::${form.model}` : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) {
+                                setForm((c) => ({ ...c, agent: "", model: "" }));
+                              } else {
+                                const [agentId, modelId] = val.split(":::");
+                                setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
+                              }
+                            }}
+                            disabled={state.running}
+                          >
+                            <option value="">
+                              {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
+                            </option>
+                            {agents.map((agent) => (
+                              <optgroup key={agent.id} label={agent.label}>
+                                <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
+                                {discovery?.catalog.options
+                                  .filter((m) => m.cliId === agent.id && m.available)
+                                  .map((m) => (
+                                    <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
+                                      {m.label || m.modelId}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                          <span className="model-capsule-label">
+                            {form.model
+                              ? form.model
+                              : selectedAgent
+                                ? selectedAgent.label
+                                : "自动选择"}
+                          </span>
+                          <ChevronDownIcon size={11} />
+                        </div>
+
+                        {state.running ? (
+                          <button
+                            aria-label="停止任务"
+                            className="circle-send-btn circle-send-btn--stop"
+                            onClick={() => void cancelRun()}
+                            title="停止任务"
+                            type="button"
+                          >
+                            <StopIcon size={12} />
+                          </button>
+                        ) : (
+                          <button
+                            aria-label="开始执行"
+                            className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
+                            disabled={!form.prompt.trim()}
+                            onClick={() => void startRun()}
+                            title="开始执行"
+                            type="button"
+                          >
+                            <ArrowUpIcon size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="hero-pills-row">
+                    <button
+                      className="hero-pill-btn"
+                      type="button"
+                      onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                      title={workspaceInput}
+                    >
+                      <FolderIcon />
+                      <span>{workspaceName(workspaceInput)}</span>
+                    </button>
+                    <button
+                      className="hero-pill-btn"
+                      type="button"
+                      onClick={() => void previewRoute()}
+                      title="路由决策预览"
+                    >
+                      <RouteIcon />
+                      <span>{selectedAgent?.label ?? "智能路由"}</span>
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -1071,119 +1402,123 @@ export function App() {
             </div>
           </section>
 
-          <div className="composer-dock">
-            <div className="composer">
-              <div className="composer-head">
-                <span>PROMPT</span>
-                <span>{workspaceName(workspaceInput)}</span>
-              </div>
-              <textarea
-                aria-label="任务内容"
-                value={form.prompt}
-                onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-                placeholder="描述需求，或粘贴一段代码…"
-                disabled={state.running}
-              />
-              <div className="composer-bar">
-                <div className="composer-controls">
-                  <label className="composer-control">
-                    <span>模式</span>
-                    <select
-                      value={form.mode}
-                      onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value }))}
-                      disabled={state.running}
-                    >
-                      {(discovery?.routingModes ?? []).map((mode) => (
-                        <option value={mode} key={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="composer-control">
-                    <span>Agent</span>
-                    <select
-                      value={form.agent}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          agent: event.target.value,
-                          model: "",
-                        }))
+          {showThread ? (
+            <div className="composer-dock">
+              <div className="hero-composer-card">
+                <textarea
+                  aria-label="任务内容"
+                  value={form.prompt}
+                  onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+                      event.preventDefault();
+                      if (form.prompt.trim() && !state.running) {
+                        void startRun();
                       }
-                      disabled={state.running}
-                    >
-                      <option value="">自动选择</option>
-                      {agents.map((agent) => (
-                        <option value={agent.id} key={agent.id}>
-                          {agent.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="composer-control composer-control--model">
-                    <span>模型</span>
-                    <select
-                      value={form.model}
-                      onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
-                      disabled={state.running || models.length === 0}
-                    >
-                      <option value="">Agent 默认</option>
-                      {models.map((model) => (
-                        <option value={modelValue(model)} key={`${model.cliId}:${model.modelId}`}>
-                          {modelLabel(model)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="composer-actions">
-                  <button
-                    className="preview-button"
-                    disabled={state.running}
-                    onClick={() => void previewRoute()}
-                    type="button"
-                  >
-                    <RouteIcon />
-                    <span>预览路由</span>
-                  </button>
-                  {state.running ? (
+                    }
+                  }}
+                  placeholder="继续追加指令或提问…"
+                  disabled={state.running}
+                />
+                <div className="composer-toolbar">
+                  <div className="composer-toolbar-left">
                     <button
-                      aria-label="停止任务"
-                      className="send-button send-button--stop"
-                      onClick={() => void cancelRun()}
-                      title="停止任务"
+                      className="composer-action-btn"
                       type="button"
+                      onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                      title="选择工作区 / 添加"
                     >
-                      <StopIcon />
+                      <PlusIcon size={14} />
                     </button>
-                  ) : (
                     <button
-                      aria-label="开始执行"
-                      className="send-button"
-                      disabled={!form.prompt.trim()}
-                      onClick={() => void startRun()}
-                      title="开始执行"
+                      className="security-badge-btn"
                       type="button"
+                      onClick={() => {
+                        const modes = discovery?.routingModes ?? ["local"];
+                        const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
+                        setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
+                      }}
+                      title={`访问模式: ${form.mode}`}
                     >
-                      <ArrowUpIcon />
+                      <ShieldIcon size={13} />
+                      <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
                     </button>
-                  )}
+                  </div>
+
+                  <div className="composer-toolbar-right">
+                    <div className="model-select-capsule">
+                      <select
+                        value={form.agent ? `${form.agent}:::${form.model}` : ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) {
+                            setForm((c) => ({ ...c, agent: "", model: "" }));
+                          } else {
+                            const [agentId, modelId] = val.split(":::");
+                            setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
+                          }
+                        }}
+                        disabled={state.running}
+                      >
+                        <option value="">
+                          {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
+                        </option>
+                        {agents.map((agent) => (
+                          <optgroup key={agent.id} label={agent.label}>
+                            <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
+                            {discovery?.catalog.options
+                              .filter((m) => m.cliId === agent.id && m.available)
+                              .map((m) => (
+                                <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
+                                  {m.label || m.modelId}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <span className="model-capsule-label">
+                        {form.model
+                          ? form.model
+                          : selectedAgent
+                            ? selectedAgent.label
+                            : "自动选择"}
+                      </span>
+                      <ChevronDownIcon size={11} />
+                    </div>
+
+                    {state.running ? (
+                      <button
+                        aria-label="停止任务"
+                        className="circle-send-btn circle-send-btn--stop"
+                        onClick={() => void cancelRun()}
+                        title="停止任务"
+                        type="button"
+                      >
+                        <StopIcon size={12} />
+                      </button>
+                    ) : (
+                      <button
+                        aria-label="开始执行"
+                        className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
+                        disabled={!form.prompt.trim()}
+                        onClick={() => void startRun()}
+                        title="开始执行"
+                        type="button"
+                      >
+                        <ArrowUpIcon size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-            <p className="composer-note">
-              <span>LOCAL EXECUTION</span>
-              <span>NO SHELL BRIDGE</span>
-              <span>PROTOCOL {state.runtime?.protocolVersion ?? "—"}</span>
-            </p>
-          </div>
+          ) : null}
         </main>
 
-        <aside className="sidebar sidebar--right" aria-label="Agent 选择">
+        <aside
+          className={`sidebar sidebar--right ${rightSidebarOpen ? "sidebar--right-open" : "sidebar--right-collapsed"}`}
+          aria-label="Agent 选择"
+        >
           <div className="sidebar-scroll">
             <section className="sidebar-section sidebar-section--agents">
               <div className="sidebar-section-title">
