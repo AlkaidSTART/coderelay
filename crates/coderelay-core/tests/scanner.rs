@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use coderelay_core::host::{
@@ -199,22 +199,24 @@ fn codex_environment_override_is_used_and_version_probed() {
 
 #[test]
 fn latest_claude_version_directory_is_used_with_numeric_ordering() {
-    let versions_dir = "/coderelay-fixture-home/.local/share/claude/versions";
-    let v278 = format!("{versions_dir}/2.1.278");
-    let v275 = format!("{versions_dir}/2.1.275");
+    let home_dir = PathBuf::from("/coderelay-fixture-home");
+    let versions_dir = home_dir.join(".local/share/claude/versions");
+    let v278 = versions_dir.join("2.1.278").to_string_lossy().into_owned();
+    let v275 = versions_dir.join("2.1.275").to_string_lossy().into_owned();
     let mut host = FakeHost::default()
         .with_executable(&v278)
         .with_executable(&v275)
         .with_output(&format!("{v278} --version"), "2.1.278\n");
     host.directories.insert(
-        versions_dir.to_owned(),
+        versions_dir.to_string_lossy().into_owned(),
         vec![
             "2.1.275".to_owned(),
             "2.1.278".to_owned(),
             "2.1.270".to_owned(),
         ],
     );
-    let options = linux_options("/coderelay-fixture-home", &[]);
+    let home = home_dir.to_string_lossy().into_owned();
+    let options = linux_options(&home, &[]);
 
     let detected = scan_coding_clis(&host, &options);
     let claude = detected

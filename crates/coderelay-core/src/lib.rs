@@ -69,6 +69,6 @@ mod tests {
 
     #[test]
     fn core_version_matches_workspace_version() {
-        assert_eq!(CORE_VERSION, "0.3.3");
+        assert_eq!(CORE_VERSION, env!("CARGO_PKG_VERSION"));
     }
 }

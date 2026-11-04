@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline";
 
+import packageManifest from "../../package.json";
+
 const lines = createInterface({ input: process.stdin });
 
 function write(value: unknown): void {
@@ -25,7 +27,7 @@ lines.on("line", (line) => {
       protocolVersion: 1,
       requestId: request.requestId,
       result: {
-        coreVersion: "0.3.3",
+        coreVersion: packageManifest.version,
         protocolVersion: 1,
         transport: "stdio",
       },
