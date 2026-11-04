@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::agent::AgentId;
 use crate::config::global_config_dir;
+use crate::router::jev::TYPESAFE_API_KEY_PREFERENCE;
 use crate::session::types::{
     AppendTurnInput, ListSessionsOptions, SessionRecord, SessionTurn, TurnContextSource,
     TurnProtocol, TurnRunStatus,
@@ -87,6 +88,8 @@ pub enum SessionStoreError {
     SessionInsert(String),
     #[error("turn insert failed in session {0}")]
     TurnInsert(String),
+    #[error("preference \"{key}\" must not be empty")]
+    EmptyPreference { key: String },
 }
 
 pub fn default_session_db_path(
@@ -453,6 +456,29 @@ impl SessionStore {
 
     pub fn clear_favorite_agent(&mut self) -> Result<(), SessionStoreError> {
         self.delete_preference("favorite_agent")
+    }
+
+    /// Reads the TypeSafe API key stored by a host UI.
+    pub fn get_jev_api_key(&self) -> Result<Option<String>, SessionStoreError> {
+        Ok(self
+            .get_preference(TYPESAFE_API_KEY_PREFERENCE)?
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty()))
+    }
+
+    /// Stores the TypeSafe API key in the shared local SQLite database.
+    pub fn set_jev_api_key(&mut self, api_key: &str) -> Result<(), SessionStoreError> {
+        let api_key = api_key.trim();
+        if api_key.is_empty() {
+            return Err(SessionStoreError::EmptyPreference {
+                key: TYPESAFE_API_KEY_PREFERENCE.to_owned(),
+            });
+        }
+        self.set_preference(TYPESAFE_API_KEY_PREFERENCE, api_key)
+    }
+
+    pub fn clear_jev_api_key(&mut self) -> Result<(), SessionStoreError> {
+        self.delete_preference(TYPESAFE_API_KEY_PREFERENCE)
     }
 
     pub fn get_recent_workspaces(&self, limit: u32) -> Result<Vec<String>, SessionStoreError> {

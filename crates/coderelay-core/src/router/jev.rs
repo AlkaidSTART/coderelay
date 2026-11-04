@@ -9,6 +9,8 @@ use crate::router::types::{RouteCandidate, RouteDecision, RouteRequest, RouteStr
 pub const TYPESAFE_DEFAULT_ENDPOINT: &str = "https://api.typesafe.ai/v1/systemone";
 pub const TYPESAFE_DEFAULT_MODEL: &str = "jev-latest";
 pub const TYPESAFE_ENV_KEY: &str = "TYPESAFE_API_KEY";
+/// SQLite preference key used by host UIs for the TypeSafe API key.
+pub const TYPESAFE_API_KEY_PREFERENCE: &str = "typesafe_api_key";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

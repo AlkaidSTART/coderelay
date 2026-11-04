@@ -67,6 +67,35 @@ fn creates_sessions_and_preserves_non_empty_turn_metadata() {
 }
 
 #[test]
+fn stores_jev_api_key_in_sqlite_without_accepting_blank_values() {
+    let (_dir, path) = temp_db();
+    let mut store = SessionStore::open(&path).expect("open store");
+
+    assert_eq!(store.get_jev_api_key().expect("initial key"), None);
+    let error = store
+        .set_jev_api_key("   ")
+        .expect_err("blank key must be rejected");
+    assert!(error.to_string().contains("must not be empty"));
+
+    store
+        .set_jev_api_key("  sk-live-example-123  ")
+        .expect("save key");
+    assert_eq!(
+        store.get_jev_api_key().expect("stored key").as_deref(),
+        Some("sk-live-example-123")
+    );
+    drop(store);
+
+    let mut store = SessionStore::open(&path).expect("reopen store");
+    assert_eq!(
+        store.get_jev_api_key().expect("persisted key").as_deref(),
+        Some("sk-live-example-123")
+    );
+    store.clear_jev_api_key().expect("clear key");
+    assert_eq!(store.get_jev_api_key().expect("cleared key"), None);
+}
+
+#[test]
 fn foreign_keys_reject_orphan_turns() {
     let mut store = SessionStore::open_in_memory().expect("open store");
     let error = store

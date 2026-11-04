@@ -10,6 +10,7 @@ description = "CodeRelay desktop application"
 [lib]
 name = "coderelay_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+doctest = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -18,5 +19,6 @@ tauri-build = { version = "2", features = [] }
 coderelay-cli.workspace = true
 coderelay-core.workspace = true
 coderelay-protocol.workspace = true
+dirs.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }

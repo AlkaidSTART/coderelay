@@ -21,8 +21,9 @@ pub use agents::{
     create_model_probes, probe_model_catalog, to_route_candidates, validate_explicit_target,
 };
 pub use config::{
-    Config, ConfigError, LoadConfigOptions, LoadedConfig, default_config, load_config,
-    parse_config_yaml,
+    Config, ConfigError, ConfigSaveError, LoadConfigOptions, LoadedConfig, default_config,
+    load_config, parse_config_yaml, project_config_path, render_default_config_yaml,
+    save_config_source,
 };
 pub use host::{CommandRunner, ExecOutput, ExecRequest, FileSystem, Host, Platform, SystemHost};
 pub use model::{

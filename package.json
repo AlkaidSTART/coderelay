@@ -1,6 +1,6 @@
 {
   "name": "@alkaidstart/coderelay",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publishConfig": {
     "access": "public"
   },
@@ -30,19 +30,23 @@
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "issues:doc": "bun scripts/generate-issues-doc.ts",
-    "desktop:dev": "bun run --cwd apps/desktop tauri dev",
-    "desktop:build": "bun run --cwd apps/desktop tauri build",
+    "desktop:dev": "cd apps/desktop && bunx tauri dev",
+    "desktop:build": "cd apps/desktop && bunx tauri build",
     "desktop:typecheck": "bun run --cwd apps/desktop typecheck",
     "rust:check": "cargo check --workspace",
     "rust:test": "cargo test --workspace",
     "rust:fmt": "cargo fmt --all -- --check",
-    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings"
+    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
+    "sdk:build": "bun run --cwd packages/sdk-ts build",
+    "sdk:typecheck": "bun run --cwd packages/sdk-ts typecheck",
+    "sdk:test": "bun run --cwd packages/sdk-ts test"
   },
   "bin": {
     "coderelay": "src/cli.ts",
     "cr": "src/cli.ts"
   },
   "workspaces": [
-    "apps/desktop"
+    "apps/desktop",
+    "packages/sdk-ts"
   ]
 }

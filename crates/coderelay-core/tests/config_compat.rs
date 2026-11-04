@@ -279,3 +279,50 @@ fn malformed_yaml_and_invalid_config_include_the_source_path() {
     assert!(error.to_string().contains("invalid config"));
     assert!(error.to_string().contains("model id must not be empty"));
 }
+
+#[test]
+fn config_source_save_is_validate_then_atomic_and_preserves_non_empty_values() {
+    use coderelay_core::config::{render_default_config_yaml, save_config_source};
+
+    let temp = TempDir::new().expect("temp dir");
+    let path = temp.path().join(".coderelay/config.yaml");
+    let raw_default = render_default_config_yaml().expect("render default");
+    assert!(raw_default.contains("defaultAgent"));
+    assert!(raw_default.contains("routing"));
+
+    let raw = r#"
+version: 1
+defaultAgent: claude
+agents:
+  claude:
+    models:
+      - id: sonnet
+        strengths: [coding, long-context]
+        cost: 3
+        contextWindow: 200000
+routing:
+  strategy: hybrid
+  rules:
+    - name: preserve
+      when:
+        keywords: [refactor]
+      use:
+        agent: claude
+        model: sonnet
+"#;
+    save_config_source(&path, raw).expect("save config");
+    assert_eq!(fs::read_to_string(&path).expect("read"), raw);
+    let loaded =
+        load_config(&LoadConfigOptions::new(temp.path()).with_path(&path)).expect("load saved");
+    assert_eq!(loaded.config.default_agent, AgentId::Claude);
+    assert_eq!(
+        loaded.config.agents[&AgentId::Claude].models[0].cost,
+        Some(ModelCost::Three)
+    );
+
+    let invalid = "defaultAgent: claude\nagents:\n  claude:\n    models:\n      - id: ''\n";
+    let error =
+        save_config_source(&path, invalid).expect_err("invalid config must not replace file");
+    assert!(error.to_string().contains("model id must not be empty"));
+    assert_eq!(fs::read_to_string(&path).expect("read unchanged"), raw);
+}

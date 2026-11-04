@@ -77,6 +77,7 @@ export interface DiscoveryPayload {
   routingModes: string[];
   agents: AgentEntry[];
   catalog: ModelCatalog;
+  recentWorkspaces: string[];
 }
 
 export interface RouteRequest {
@@ -120,6 +121,7 @@ export interface AgentRunResult {
 
 export interface StartRunResponse {
   runId: string;
+  sessionId: string;
   agent: string;
   model?: string;
   reasons: string[];
@@ -127,10 +129,60 @@ export interface StartRunResponse {
 
 export interface RunEventPayload {
   runId: string;
+  sessionId: string;
   event: AgentEvent;
 }
 
 export interface RunCompletedPayload {
   runId: string;
+  sessionId: string;
   result: AgentRunResult;
+}
+
+export interface SessionRecord {
+  id: string;
+  cliId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  workspace?: string;
+}
+
+export interface SessionTurn {
+  id: number;
+  sessionId: string;
+  cliId: string;
+  prompt: string;
+  output: string;
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+  createdAt: number;
+  modelId?: string;
+  protocol?: string;
+  reusedNative?: boolean;
+  status?: string;
+  eventSummary?: string;
+  contextSource?: string;
+}
+
+export interface SessionDetail {
+  session: SessionRecord;
+  turns: SessionTurn[];
+}
+
+export interface ConfigSource {
+  path: string;
+  exists: boolean;
+  raw: string;
+}
+
+export interface JevSettings {
+  stored: boolean;
+  environmentConfigured: boolean;
+}
+
+export interface SessionUpdatedPayload {
+  sessionId: string;
+  turnId: number | null;
 }

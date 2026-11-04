@@ -694,6 +694,72 @@ pub fn find_config_path(
     None
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigSaveError {
+    #[error(transparent)]
+    Parse(#[from] ConfigParseError),
+    #[error("failed to write config {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to persist config {path}: {source}")]
+    Persist {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Default project-level config path for a workspace.
+pub fn project_config_path(cwd: &Path) -> PathBuf {
+    cwd.join(CONFIG_DIR).join("config.yaml")
+}
+
+/// Render the fully populated default config as readable YAML.
+pub fn render_default_config_yaml() -> Result<String, ConfigSaveError> {
+    serde_norway::to_string(&default_config())
+        .map_err(|error| ConfigSaveError::Parse(ConfigParseError::Yaml(error.to_string())))
+}
+
+/// Validate the complete YAML source before atomically replacing the config.
+///
+/// This is intentionally raw-source based so the desktop editor can preserve
+/// comments and unknown top-level keys that the current schema does not model.
+pub fn save_config_source(path: &Path, raw: &str) -> Result<(), ConfigSaveError> {
+    parse_config_yaml(raw)?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|source| ConfigSaveError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|source| ConfigSaveError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    use std::io::Write;
+    temporary
+        .write_all(raw.as_bytes())
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|source| ConfigSaveError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    temporary
+        .persist(path)
+        .map_err(|error| ConfigSaveError::Persist {
+            path: path.to_path_buf(),
+            source: error.error,
+        })?;
+    Ok(())
+}
+
 /// Load and validate a config, optionally returning defaults when missing.
 pub fn load_config(options: &LoadConfigOptions) -> Result<LoadedConfig, ConfigError> {
     let cwd = if options.cwd.is_absolute() {
