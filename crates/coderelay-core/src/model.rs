@@ -16,6 +16,21 @@ pub enum ModelStrength {
     Multimodal,
 }
 
+impl ModelStrength {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Coding => "coding",
+            Self::Reasoning => "reasoning",
+            Self::LongContext => "long-context",
+            Self::ToolUse => "tool-use",
+            Self::Fast => "fast",
+            Self::Cheap => "cheap",
+            Self::Creative => "creative",
+            Self::Multimodal => "multimodal",
+        }
+    }
+}
+
 /// All legal routing strengths. Consumers must use this collection rather than
 /// maintaining their own string lists.
 pub const MODEL_STRENGTHS: [ModelStrength; 8] = [

@@ -7,7 +7,7 @@
 pub mod agent;
 pub mod config;
 pub mod model;
-pub mod routing;
+pub mod router;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
 pub use config::{
@@ -18,7 +18,11 @@ pub use model::{
     AgentModelRef, MODEL_STRENGTHS, ModelConfig, ModelCost, ModelStrength, format_model_ref,
     parse_model_ref,
 };
-pub use routing::{RouteCandidate, RouteDecision, RouteRequest, RoutingMode, RoutingStrategy};
+pub use router::{
+    RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
+    RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate, build_route_candidates,
+    has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+};
 
 /// Semantic version of the Rust core crate.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

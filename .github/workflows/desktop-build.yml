@@ -64,13 +64,26 @@ jobs:
           hdiutil verify "$DMG"
 
           if [[ -n "$APPLE_CERTIFICATE" ]]; then
-            APP=$(find target apps/desktop/src-tauri/target -type d -name '*.app' -path '*/bundle/macos/*' -print -quit 2>/dev/null)
+            MOUNT_POINT=$(mktemp -d)
+            trap 'hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true' EXIT
+            hdiutil attach "$DMG" -mountpoint "$MOUNT_POINT" -nobrowse -readonly -quiet
+            APP=$(find "$MOUNT_POINT" -maxdepth 2 -type d -name '*.app' -print -quit)
             if [[ -z "$APP" ]]; then
-              echo "::error::Signed app bundle was not found."
+              echo "::error::No app bundle was found in the DMG."
               exit 1
             fi
             codesign --verify --deep --strict --verbose=2 "$APP"
             codesign -dv --verbose=4 "$APP"
+            if [[ -n "$APPLE_ID" ]]; then
+              if [[ -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
+                echo "::error::APPLE_ID requires APPLE_PASSWORD and APPLE_TEAM_ID for notarization."
+                exit 1
+              fi
+              spctl --assess --type execute --verbose=4 "$APP"
+            fi
+            hdiutil detach "$MOUNT_POINT" -quiet
+            trap - EXIT
+            rmdir "$MOUNT_POINT"
           fi
 
       - name: Upload DMG

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::AgentId;
 use crate::model::{ModelConfig, parse_model_ref};
-use crate::routing::{RoutingMode, RoutingStrategy};
+use crate::router::{RoutingMode, RoutingStrategy};
 
 pub const CONFIG_VERSION: u8 = 1;
 pub const CONFIG_DIR: &str = ".coderelay";
