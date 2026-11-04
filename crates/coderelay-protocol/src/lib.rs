@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn model_and_config_types_remain_typed() {
-        let catalog = ModelCatalog {
+        let catalog = coderelay_core::ModelCatalog {
             probes: Vec::new(),
             options: Vec::new(),
         };
