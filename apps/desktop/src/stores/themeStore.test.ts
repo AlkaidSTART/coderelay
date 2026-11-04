@@ -259,4 +259,43 @@ describe("Theme DOM application & localStorage persistence", () => {
     expect(mockStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
     expect(mockAttrs.get("data-theme")).toBe("light");
   });
+
+  it("handles custom background setting, opacity adjustment, and persistence", () => {
+    const sampleImage =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    // Initially no background and default opacity
+    expect(getInitialCustomBackground()).toBeNull();
+    expect(getInitialCustomBackgroundOpacity()).toBe(DEFAULT_BG_OPACITY);
+
+    // Persist and read back background
+    persistCustomBackground(sampleImage);
+    expect(mockStorage.getItem(THEME_BG_STORAGE_KEY)).toBe(sampleImage);
+    expect(getInitialCustomBackground()).toBe(sampleImage);
+
+    // Persist and read back opacity with valid and boundary values
+    persistCustomBackgroundOpacity(0.35);
+    expect(mockStorage.getItem(THEME_BG_OPACITY_STORAGE_KEY)).toBe("0.35");
+    expect(getInitialCustomBackgroundOpacity()).toBe(0.35);
+
+    // Boundary & invalid opacity falls back to default
+    mockStorage.setItem(THEME_BG_OPACITY_STORAGE_KEY, "invalid_num");
+    expect(getInitialCustomBackgroundOpacity()).toBe(DEFAULT_BG_OPACITY);
+
+    mockStorage.setItem(THEME_BG_OPACITY_STORAGE_KEY, "0.01"); // Below 0.05
+    expect(getInitialCustomBackgroundOpacity()).toBe(DEFAULT_BG_OPACITY);
+
+    // Setting custom background via store updates document attribute and store state
+    useThemeStore.getState().setCustomBackground(sampleImage);
+    expect(useThemeStore.getState().customBackground).toBe(sampleImage);
+    expect(mockAttrs.get("data-has-custom-bg")).toBe("true");
+
+    useThemeStore.getState().setCustomBackgroundOpacity(0.42);
+    expect(useThemeStore.getState().customBackgroundOpacity).toBe(0.42);
+
+    // Clearing custom background removes document attribute
+    useThemeStore.getState().setCustomBackground(null);
+    expect(useThemeStore.getState().customBackground).toBeNull();
+    expect(mockAttrs.has("data-has-custom-bg")).toBe(false);
+  });
 });
