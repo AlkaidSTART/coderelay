@@ -14,6 +14,9 @@ pub enum RoutingMode {
     Jev,
 }
 
+pub const ROUTING_MODES: [RoutingMode; 3] =
+    [RoutingMode::Local, RoutingMode::Manual, RoutingMode::Jev];
+
 impl std::str::FromStr for RoutingMode {
     type Err = String;
 

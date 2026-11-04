@@ -20,6 +20,7 @@ license = "MIT"
 repository = "https://github.com/GeWu-academy/coderelay"
 
 [workspace.dependencies]
+coderelay-cli = { path = "crates/coderelay-cli" }
 coderelay-core = { path = "crates/coderelay-core" }
 coderelay-protocol = { path = "crates/coderelay-protocol" }
 clap = { version = "4", features = ["derive"] }

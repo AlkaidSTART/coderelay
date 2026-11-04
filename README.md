@@ -26,6 +26,7 @@
 - [支持的 Agent 矩阵](#支持的-agent-矩阵)
 - [快速开始](#快速开始)
   - [全局安装](#全局安装)
+  - [macOS 桌面版（未签名）](#macos-桌面版未签名)
   - [源码运行](#源码运行)
   - [版本升级](#版本升级)
 - [使用指南](#使用指南)
@@ -103,6 +104,21 @@ bun add -g @alkaidstart/coderelay
 ```bash
 cr --version
 ```
+
+### macOS 桌面版（未签名）
+
+桌面版 DMG 未使用 Apple Developer ID 签名或公证，适合内部测试。下载并安装到“应用程序”后，在终端执行本地临时签名：
+
+> 仅对本仓库 Actions 构建产物执行以下操作，不要移除来源不明应用的隔离属性。
+
+```bash
+xattr -dr com.apple.quarantine /Applications/CodeRelay.app
+codesign --force --deep --sign - /Applications/CodeRelay.app
+codesign --verify --deep --strict --verbose=2 /Applications/CodeRelay.app
+open /Applications/CodeRelay.app
+```
+
+本地签名只代表该副本在本机可被验证，不代表 Apple 已信任该应用。若系统仍提示无法验证开发者，可在访达中右键应用并选择“打开”。
 
 ### 源码运行
 

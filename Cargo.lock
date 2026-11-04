@@ -465,6 +465,7 @@ dependencies = [
 name = "coderelay-desktop"
 version = "0.3.2"
 dependencies = [
+ "coderelay-cli",
  "coderelay-core",
  "coderelay-protocol",
  "serde",

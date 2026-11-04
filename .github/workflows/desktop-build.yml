@@ -14,18 +14,9 @@ permissions:
 
 jobs:
   build-macos:
-    name: macOS DMG (Universal)
+    name: macOS DMG (Universal, unsigned)
     runs-on: macos-latest
     timeout-minutes: 60
-    env:
-      # A base64-encoded Developer ID Application .p12 and its export password.
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      # Optional notarization credentials. Signing alone is not enough for Gatekeeper.
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,18 +32,10 @@ jobs:
 
       - name: Build DMG
         run: |
-          if [[ -n "$APPLE_CERTIFICATE" ]]; then
-            if [[ -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
-              echo "::error::APPLE_CERTIFICATE requires APPLE_CERTIFICATE_PASSWORD and APPLE_SIGNING_IDENTITY."
-              exit 1
-            fi
-            echo "Building a signed Universal DMG."
-          else
-            echo "::warning title=Unsigned macOS build::APPLE_CERTIFICATE is not configured; this DMG will not be signed."
-          fi
-          bun run --cwd apps/desktop tauri build --ci --target universal-apple-darwin --bundles dmg
+          echo "::warning title=Unsigned macOS build::This DMG is unsigned. See README for local ad-hoc signing instructions."
+          bun run --cwd apps/desktop tauri build --ci --no-sign --target universal-apple-darwin --bundles dmg
 
-      - name: Collect and verify DMG
+      - name: Collect and verify unsigned DMG
         run: |
           mkdir -p artifacts
           find target apps/desktop/src-tauri/target -type f -name '*.dmg' -path '*/bundle/dmg/*' -exec cp {} artifacts/ \; 2>/dev/null || true
@@ -63,33 +46,10 @@ jobs:
           fi
           hdiutil verify "$DMG"
 
-          if [[ -n "$APPLE_CERTIFICATE" ]]; then
-            MOUNT_POINT=$(mktemp -d)
-            trap 'hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true' EXIT
-            hdiutil attach "$DMG" -mountpoint "$MOUNT_POINT" -nobrowse -readonly -quiet
-            APP=$(find "$MOUNT_POINT" -maxdepth 2 -type d -name '*.app' -print -quit)
-            if [[ -z "$APP" ]]; then
-              echo "::error::No app bundle was found in the DMG."
-              exit 1
-            fi
-            codesign --verify --deep --strict --verbose=2 "$APP"
-            codesign -dv --verbose=4 "$APP"
-            if [[ -n "$APPLE_ID" ]]; then
-              if [[ -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
-                echo "::error::APPLE_ID requires APPLE_PASSWORD and APPLE_TEAM_ID for notarization."
-                exit 1
-              fi
-              spctl --assess --type execute --verbose=4 "$APP"
-            fi
-            hdiutil detach "$MOUNT_POINT" -quiet
-            trap - EXIT
-            rmdir "$MOUNT_POINT"
-          fi
-
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: coderelay-macos-universal-${{ github.sha }}
+          name: coderelay-macos-universal-unsigned-${{ github.sha }}
           path: artifacts/*.dmg
           if-no-files-found: error
           retention-days: 30

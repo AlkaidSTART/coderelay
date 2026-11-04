@@ -30,13 +30,13 @@ pub use model::{
     parse_model_ref,
 };
 pub use router::{
-    RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
-    RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate, build_route_candidates,
-    has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+    ROUTING_MODES, RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest,
+    RouteStrategy, RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate,
+    build_route_candidates, has_ambiguous_route, resolve_routing_mode, route, select_candidate,
 };
 pub use runtime::{
-    AgentEvent, AgentProtocol, AgentRunHandle, AgentRunOptions, AgentRunResult, AgentRunStatus,
-    ChunkParser, OutputSource, start_agent_run,
+    AgentAbortHandle, AgentEvent, AgentProtocol, AgentRunHandle, AgentRunOptions, AgentRunResult,
+    AgentRunStatus, ChunkParser, OutputSource, start_agent_run,
 };
 pub use scanner::{
     CliCandidate, CliDiagnostic, CliRuntime, CliSource, DetectedCli, DiagnosticLevel, LaunchTarget,

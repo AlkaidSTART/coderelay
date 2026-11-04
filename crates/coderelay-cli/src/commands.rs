@@ -123,7 +123,7 @@ fn diagnostic_level(level: DiagnosticLevel) -> &'static str {
     }
 }
 
-fn build_agent_entries(context: &crate::context::CliContext) -> Vec<AgentListEntry> {
+pub fn build_agent_entries(context: &crate::context::CliContext) -> Vec<AgentListEntry> {
     context
         .detected
         .iter()

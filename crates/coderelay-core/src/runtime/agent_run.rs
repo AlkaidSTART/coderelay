@@ -62,6 +62,17 @@ enum AbortReason {
     Timeout,
 }
 
+#[derive(Clone)]
+pub struct AgentAbortHandle {
+    abort_tx: watch::Sender<Option<AbortReason>>,
+}
+
+impl AgentAbortHandle {
+    pub fn abort(&self) {
+        self.abort_tx.send_replace(Some(AbortReason::User));
+    }
+}
+
 pub struct AgentRunHandle {
     pub run_id: String,
     pub events: mpsc::UnboundedReceiver<AgentEvent>,
@@ -72,6 +83,12 @@ pub struct AgentRunHandle {
 impl AgentRunHandle {
     pub fn abort(&self) {
         self.abort_tx.send_replace(Some(AbortReason::User));
+    }
+
+    pub fn abort_handle(&self) -> AgentAbortHandle {
+        AgentAbortHandle {
+            abort_tx: self.abort_tx.clone(),
+        }
     }
 }
 
