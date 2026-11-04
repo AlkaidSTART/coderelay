@@ -7,10 +7,17 @@ import {
 } from "../types";
 import {
   applyThemeToDocument,
+  DEFAULT_BG_OPACITY,
+  getInitialCustomBackground,
+  getInitialCustomBackgroundOpacity,
   getInitialThemePreset,
   getThemeColorSchemeMode,
+  persistCustomBackground,
+  persistCustomBackgroundOpacity,
   persistThemePreset,
   resolveEffectiveTheme,
+  THEME_BG_OPACITY_STORAGE_KEY,
+  THEME_BG_STORAGE_KEY,
   THEME_STORAGE_KEY,
   useThemeStore,
 } from "./themeStore";
@@ -51,6 +58,10 @@ describe("Theme system SSOT & type guard", () => {
       "midnight",
       "warm",
       "slate",
+      "cyan",
+      "sky",
+      "pink",
+      "red",
       "system",
     ]);
     expect(DEFAULT_THEME_PRESET_ID).toBe("light");
@@ -96,7 +107,14 @@ describe("Theme system SSOT & type guard", () => {
       // Mode validation
       if (preset.id === "system") {
         expect(preset.mode).toBe("system");
-      } else if (preset.id === "light" || preset.id === "warm") {
+      } else if (
+        preset.id === "light" ||
+        preset.id === "warm" ||
+        preset.id === "cyan" ||
+        preset.id === "sky" ||
+        preset.id === "pink" ||
+        preset.id === "red"
+      ) {
         expect(preset.mode).toBe("light");
       } else {
         expect(preset.mode).toBe("dark");
@@ -112,6 +130,10 @@ describe("Theme resolution logic", () => {
     expect(resolveEffectiveTheme("midnight", "light")).toBe("midnight");
     expect(resolveEffectiveTheme("warm", "dark")).toBe("warm");
     expect(resolveEffectiveTheme("slate", "light")).toBe("slate");
+    expect(resolveEffectiveTheme("cyan", "dark")).toBe("cyan");
+    expect(resolveEffectiveTheme("sky", "dark")).toBe("sky");
+    expect(resolveEffectiveTheme("pink", "dark")).toBe("pink");
+    expect(resolveEffectiveTheme("red", "dark")).toBe("red");
   });
 
   it("resolves system preset dynamically based on system color scheme", () => {
@@ -125,6 +147,10 @@ describe("Theme resolution logic", () => {
     expect(getThemeColorSchemeMode("dark")).toBe("dark");
     expect(getThemeColorSchemeMode("midnight")).toBe("dark");
     expect(getThemeColorSchemeMode("slate")).toBe("dark");
+    expect(getThemeColorSchemeMode("cyan")).toBe("light");
+    expect(getThemeColorSchemeMode("sky")).toBe("light");
+    expect(getThemeColorSchemeMode("pink")).toBe("light");
+    expect(getThemeColorSchemeMode("red")).toBe("light");
   });
 });
 

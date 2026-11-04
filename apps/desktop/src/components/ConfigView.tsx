@@ -1,8 +1,9 @@
 import { motion } from "motion/react";
+import { useRef } from "react";
 
 import { useThemeStore } from "../stores/themeStore";
 import { THEME_PRESETS } from "../types";
-import { CheckIcon, PaletteIcon, RefreshIcon } from "./icons";
+import { CheckIcon, ImageIcon, PaletteIcon, RefreshIcon, TrashIcon } from "./icons";
 
 export interface ConfigViewProps {
   configPath?: string;
@@ -27,6 +28,63 @@ export function ConfigView({
   const currentPreset = useThemeStore((s) => s.preset);
   const effectiveTheme = useThemeStore((s) => s.effectiveTheme);
   const setPreset = useThemeStore((s) => s.setPreset);
+  const customBackground = useThemeStore((s) => s.customBackground);
+  const customBackgroundOpacity = useThemeStore((s) => s.customBackgroundOpacity);
+  const setCustomBackground = useThemeStore((s) => s.setCustomBackground);
+  const setCustomBackgroundOpacity = useThemeStore((s) => s.setCustomBackgroundOpacity);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackgroundUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        if (file.size <= 500 * 1024 || typeof document === "undefined") {
+          setCustomBackground(result);
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDimension = 1920;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              setCustomBackground(canvas.toDataURL("image/jpeg", 0.82));
+            } else {
+              setCustomBackground(result);
+            }
+          } catch {
+            setCustomBackground(result);
+          }
+        };
+        img.onerror = () => {
+          setCustomBackground(result);
+        };
+        img.src = result;
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
 
   const activePreset =
     THEME_PRESETS.find((p) => p.id === currentPreset) ?? THEME_PRESETS[0];
@@ -182,6 +240,74 @@ export function ConfigView({
                 </button>
               );
             })}
+          </div>
+
+          {/* 自定义背景图配置 */}
+          <div className="mt-1 flex flex-col gap-2.5 border-t border-line/60 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <ImageIcon size={15} />
+                <span className="text-xs font-semibold text-ink">自定义背景图</span>
+                <span className="text-[11px] text-muted">支持上传本地图片作为沉浸背景</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  aria-label="上传背景图片文件"
+                  className="hidden"
+                  onChange={handleBackgroundUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-hover"
+                >
+                  <ImageIcon size={13} />
+                  <span>{customBackground ? "更换背景" : "上传图片"}</span>
+                </button>
+                {customBackground ? (
+                  <button
+                    type="button"
+                    onClick={() => setCustomBackground(null)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-xs text-muted transition-colors hover:border-danger/30 hover:text-danger"
+                    title="移除背景"
+                  >
+                    <TrashIcon size={12} />
+                    <span>清除</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {customBackground ? (
+              <div className="flex items-center gap-4 rounded-lg border border-line bg-surface/40 p-2">
+                <div
+                  data-testid="bg-preview-thumbnail"
+                  className="h-10 w-16 shrink-0 overflow-hidden rounded border border-line bg-cover bg-center"
+                  style={{ backgroundImage: `url(${customBackground})` }}
+                />
+                <div className="flex flex-1 items-center gap-3">
+                  <label htmlFor="bg-opacity-slider" className="shrink-0 text-xs text-muted">
+                    不透明度
+                  </label>
+                  <input
+                    id="bg-opacity-slider"
+                    type="range"
+                    min="5"
+                    max="60"
+                    step="1"
+                    value={Math.round(customBackgroundOpacity * 100)}
+                    onChange={(e) => setCustomBackgroundOpacity(Number(e.target.value) / 100)}
+                    className="h-1.5 flex-1 cursor-pointer accent-accent"
+                  />
+                  <span className="w-9 font-code text-right text-xs text-muted-strong">
+                    {Math.round(customBackgroundOpacity * 100)}%
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
 

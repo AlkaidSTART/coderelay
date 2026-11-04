@@ -13,6 +13,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Titlebar } from "./components/Titlebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { useNavigationStore } from "./stores/navigationStore";
+import { useThemeStore } from "./stores/themeStore";
 import type {
   AgentEntry,
   ConfigSource,
@@ -92,6 +93,9 @@ export function App() {
   const navigateToSession = useNavigationStore((s) => s.navigateToSession);
   const navigateToConfig = useNavigationStore((s) => s.navigateToConfig);
   const navigateToApiKeys = useNavigationStore((s) => s.navigateToApiKeys);
+
+  const customBackground = useThemeStore((s) => s.customBackground);
+  const customBackgroundOpacity = useThemeStore((s) => s.customBackgroundOpacity);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -598,7 +602,18 @@ export function App() {
   }
 
   return (
-    <div className="flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
+    <div className="relative flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
+      {customBackground ? (
+        <div
+          data-testid="custom-background-layer"
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
+          style={{
+            backgroundImage: `url(${customBackground})`,
+            opacity: customBackgroundOpacity,
+          }}
+        />
+      ) : null}
       <Titlebar
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
