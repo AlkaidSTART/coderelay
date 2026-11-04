@@ -6,6 +6,7 @@ use coderelay_core::{ModelStrength, RoutingMode};
 pub mod commands;
 pub mod context;
 pub mod jev;
+pub mod sdk_host;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -30,6 +31,9 @@ enum Command {
     Doctor(JsonCommand),
     /// Read or update the favorite initialization agent.
     Favorite(FavoriteCommand),
+    /// Start the versioned NDJSON SDK host on stdio.
+    #[command(hide = true)]
+    Sdk,
 }
 
 #[derive(Debug, Args)]
@@ -130,5 +134,6 @@ pub async fn run_cli() -> i32 {
         Command::Models(args) => commands::models(common(args.common), args.json).await,
         Command::Doctor(args) => commands::doctor(common(args.common), args.json).await,
         Command::Favorite(args) => commands::favorite(args.agent, args.json).await,
+        Command::Sdk => sdk_host::run_stdio().await,
     }
 }

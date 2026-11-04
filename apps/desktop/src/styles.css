@@ -1,25 +1,25 @@
 :root {
   color-scheme: light;
-  --canvas: #fafaf8;
+  --canvas: #fcfdff;
   --canvas-raised: #ffffff;
-  --rail: #ececea;
-  --sidebar: #f2f2f0;
+  --rail: #eef2f7;
+  --sidebar: #f5f8fc;
   --surface: #ffffff;
-  --surface-subtle: #f5f5f2;
-  --surface-hover: #f8f8f5;
-  --ink: #151514;
-  --ink-soft: #3f3f3b;
-  --muted: #85857f;
-  --muted-strong: #666660;
-  --line: rgba(21, 21, 20, 0.085);
-  --line-strong: rgba(21, 21, 20, 0.14);
-  --accent: #f15a37;
-  --accent-soft: #fff0eb;
-  --success: #4e8058;
-  --danger: #b64334;
-  --danger-soft: #fff4f1;
-  --console: #171716;
-  --console-line: rgba(255, 255, 255, 0.09);
+  --surface-subtle: #eff3f8;
+  --surface-hover: #f7f9fc;
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #748297;
+  --muted-strong: #516076;
+  --line: rgba(15, 23, 42, 0.075);
+  --line-strong: rgba(15, 23, 42, 0.13);
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --success: #158062;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --console: #0f141d;
+  --console-line: rgba(226, 232, 240, 0.09);
   --font-ui: "SF Pro Text", "SF Pro Display", "Avenir Next", "PingFang SC", "Helvetica Neue", sans-serif;
   --font-display: "SF Pro Display", "PingFang SC", "Avenir Next", sans-serif;
   --font-code: "SFMono-Regular", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
@@ -232,7 +232,7 @@ select {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: 56px 296px minmax(0, 1fr);
+  grid-template-columns: 56px 280px minmax(0, 1fr) 260px;
 }
 
 .icon-rail {
@@ -318,6 +318,19 @@ select {
   flex-direction: column;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
+}
+
+.sidebar--right {
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.sidebar--right .sidebar-scroll {
+  padding-top: 20px;
+}
+
+.sidebar--right .sidebar-section--agents {
+  margin-top: 0;
 }
 
 .sidebar-header {
@@ -541,12 +554,10 @@ select {
 
 .agent-row {
   position: relative;
-  display: grid;
+  display: flex;
   width: 100%;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
-  gap: 8px;
   align-items: center;
-  padding: 8px 9px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--ink-soft);
@@ -1446,7 +1457,7 @@ select {
   }
 
   .app-layout {
-    grid-template-columns: 56px 270px minmax(0, 1fr);
+    grid-template-columns: 56px 240px minmax(0, 1fr) 230px;
   }
 
   .conversation-inner {

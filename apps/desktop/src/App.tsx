@@ -715,47 +715,6 @@ export function App() {
                 </div>
               ) : null}
             </section>
-
-            <section className="sidebar-section sidebar-section--agents">
-              <div className="sidebar-section-title">
-                <span>AGENTS</span>
-                <span className="section-count">{agents.filter((agent) => agent.available).length}/{agents.length}</span>
-              </div>
-              <div className="agent-list">
-                {agents.length === 0 ? (
-                  <p className="sidebar-empty">{state.loading ? "正在发现可用 Agent…" : "当前工作区没有可用的 Agent。"}</p>
-                ) : (
-                  agents.map((agent) => (
-                    <button
-                      className={`agent-row ${form.agent === agent.id ? "agent-row--selected" : ""}`}
-                      key={agent.id}
-                      onClick={() => selectAgent(agent)}
-                      type="button"
-                    >
-                      <span className={`agent-status ${agent.available ? "agent-status--ready" : ""}`} />
-                      <span className="agent-copy">
-                        <strong>{agent.label}</strong>
-                        <small>{agent.version ?? agent.command}</small>
-                      </span>
-                      <span className="agent-endpoint">{agent.available ? "online" : "offline"}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="sidebar-section sidebar-section--context">
-              <div className="sidebar-section-title">
-                <span>ROUTING</span>
-              </div>
-              <div className="context-row">
-                <span className="context-icon"><RouteIcon /></span>
-                <div>
-                  <strong>{selectedAgent?.label ?? "自动选择"}</strong>
-                  <span>{form.mode} · {form.model || "default"}</span>
-                </div>
-              </div>
-            </section>
           </div>
 
           <div className="sidebar-footer">
@@ -1117,6 +1076,49 @@ export function App() {
             </p>
           </div>
         </main>
+
+        <aside className="sidebar sidebar--right" aria-label="Agent 选择">
+          <div className="sidebar-scroll">
+            <section className="sidebar-section sidebar-section--agents">
+              <div className="sidebar-section-title">
+                <span>AGENTS</span>
+                <span className="section-count">{agents.filter((agent) => agent.available).length}/{agents.length}</span>
+              </div>
+              <div className="agent-list">
+                {agents.length === 0 ? (
+                  <p className="sidebar-empty">{state.loading ? "正在发现可用 Agent…" : "当前工作区没有可用的 Agent。"}</p>
+                ) : (
+                  agents.map((agent) => (
+                    <button
+                      className={`agent-row ${form.agent === agent.id ? "agent-row--selected" : ""}`}
+                      key={agent.id}
+                      onClick={() => selectAgent(agent)}
+                      type="button"
+                    >
+                      <span className="agent-copy">
+                        <strong>{agent.label}</strong>
+                        <small>{agent.version ?? agent.command}</small>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="sidebar-section sidebar-section--context">
+              <div className="sidebar-section-title">
+                <span>ROUTING</span>
+              </div>
+              <div className="context-row">
+                <span className="context-icon"><RouteIcon /></span>
+                <div>
+                  <strong>{selectedAgent?.label ?? "自动选择"}</strong>
+                  <span>{form.mode} · {form.model || "default"}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </aside>
       </div>
     </div>
   );
