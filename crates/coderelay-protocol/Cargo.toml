@@ -1,0 +1,14 @@
+[package]
+name = "coderelay-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Versioned local protocol for CodeRelay clients and hosts"
+
+[dependencies]
+coderelay-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,188 @@
+name: Desktop Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: macOS DMG (Universal)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      # A base64-encoded Developer ID Application .p12 and its export password.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      # Optional notarization credentials. Signing alone is not enough for Gatekeeper.
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build DMG
+        run: |
+          if [[ -n "$APPLE_CERTIFICATE" ]]; then
+            if [[ -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
+              echo "::error::APPLE_CERTIFICATE requires APPLE_CERTIFICATE_PASSWORD and APPLE_SIGNING_IDENTITY."
+              exit 1
+            fi
+            echo "Building a signed Universal DMG."
+          else
+            echo "::warning title=Unsigned macOS build::APPLE_CERTIFICATE is not configured; this DMG will not be signed."
+          fi
+          bun run --cwd apps/desktop tauri build --ci --target universal-apple-darwin --bundles dmg
+
+      - name: Collect and verify DMG
+        run: |
+          mkdir -p artifacts
+          find target apps/desktop/src-tauri/target -type f -name '*.dmg' -path '*/bundle/dmg/*' -exec cp {} artifacts/ \; 2>/dev/null || true
+          DMG=$(find artifacts -type f -name '*.dmg' -print -quit)
+          if [[ -z "$DMG" ]]; then
+            echo "::error::No DMG was produced."
+            exit 1
+          fi
+          hdiutil verify "$DMG"
+
+          if [[ -n "$APPLE_CERTIFICATE" ]]; then
+            MOUNT_POINT=$(mktemp -d)
+            trap 'hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true' EXIT
+            hdiutil attach "$DMG" -mountpoint "$MOUNT_POINT" -nobrowse -readonly -quiet
+            APP=$(find "$MOUNT_POINT" -maxdepth 2 -type d -name '*.app' -print -quit)
+            if [[ -z "$APP" ]]; then
+              echo "::error::No app bundle was found in the DMG."
+              exit 1
+            fi
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            codesign -dv --verbose=4 "$APP"
+            if [[ -n "$APPLE_ID" ]]; then
+              if [[ -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
+                echo "::error::APPLE_ID requires APPLE_PASSWORD and APPLE_TEAM_ID for notarization."
+                exit 1
+              fi
+              spctl --assess --type execute --verbose=4 "$APP"
+            fi
+            hdiutil detach "$MOUNT_POINT" -quiet
+            trap - EXIT
+            rmdir "$MOUNT_POINT"
+          fi
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderelay-macos-universal-${{ github.sha }}
+          path: artifacts/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  build-windows:
+    name: Windows NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # Optional base64-encoded Authenticode PFX. A locally generated self-signed
+      # certificate is not trusted by users' machines; use a CA-issued certificate.
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure optional Authenticode signing
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            Write-Warning "WINDOWS_CERTIFICATE is not configured; the installer will be unsigned."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "WINDOWS_CERTIFICATE_PASSWORD is required when WINDOWS_CERTIFICATE is configured."
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "coderelay-authenticode.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $imported = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            $certificate = $imported | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
+            if ($null -eq $certificate) {
+              throw "The PFX does not contain a certificate with a private key."
+            }
+
+            $config = [ordered]@{
+              bundle = [ordered]@{
+                windows = [ordered]@{
+                  certificateThumbprint = $certificate.Thumbprint
+                  digestAlgorithm = "sha256"
+                  timestampUrl = "https://timestamp.digicert.com"
+                  tsp = $true
+                }
+              }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -Path "apps/desktop/src-tauri/tauri.windows.conf.json" -Value $config -Encoding utf8 -NoNewline
+            Write-Host "Configured Authenticode signing with certificate $($certificate.Thumbprint)."
+          } finally {
+            Remove-Item -Path $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: bun run --cwd apps/desktop tauri build --ci --bundles nsis
+
+      - name: Collect and verify installer
+        shell: pwsh
+        run: |
+          $artifactDir = Join-Path $PWD "artifacts"
+          New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+
+          $searchRoots = @("target", "apps/desktop/src-tauri/target") | Where-Object { Test-Path $_ }
+          $installers = Get-ChildItem -Path $searchRoots -Recurse -File -Filter *.exe |
+            Where-Object { $_.DirectoryName -like '*\bundle\nsis' }
+          if (-not $installers) {
+            throw "No NSIS installer was produced."
+          }
+          $installers | Copy-Item -Destination $artifactDir -Force
+
+          foreach ($installer in Get-ChildItem -Path $artifactDir -File -Filter *.exe) {
+            $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+            Write-Host "$($installer.Name): $($signature.Status)"
+            if ($env:WINDOWS_CERTIFICATE -and $signature.Status -eq "NotSigned") {
+              throw "Authenticode signing was requested, but $($installer.Name) is not signed."
+            }
+            if ($env:WINDOWS_CERTIFICATE -and $signature.Status -ne "Valid") {
+              Write-Warning "Authenticode status is $($signature.Status); users may still see an unknown publisher warning."
+            }
+          }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderelay-windows-nsis-${{ github.sha }}
+          path: artifacts/*.exe
+          if-no-files-found: error
+          retention-days: 30

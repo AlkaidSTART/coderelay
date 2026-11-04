@@ -1,0 +1,22 @@
+{
+  "name": "@coderelay/desktop",
+  "version": "0.3.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "build": "bun build ./src/index.html --outdir ./dist --minify",
+    "typecheck": "bunx tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^5"
+  }
+}
