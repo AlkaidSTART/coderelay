@@ -3,12 +3,18 @@ import {
   getActiveSidebarRoute,
   isApiKeysRouteActive,
   isConfigRouteActive,
+  isConversationRouteActive,
   isNewChatRouteActive,
   isSessionRouteActive,
   isSessionsRouteActive,
   useNavigationStore,
 } from "./navigationStore";
-import { isWorkspaceView, WORKSPACE_VIEWS } from "../types";
+import {
+  CONVERSATION_VIEWS,
+  isConversationView,
+  isWorkspaceView,
+  WORKSPACE_VIEWS,
+} from "../types";
 
 describe("useNavigationStore & sidebar activation state", () => {
   beforeEach(() => {
@@ -38,6 +44,29 @@ describe("useNavigationStore & sidebar activation state", () => {
     expect(isWorkspaceView(null)).toBe(false);
     expect(isWorkspaceView(undefined)).toBe(false);
     expect(isWorkspaceView(123)).toBe(false);
+  });
+
+  it("maintains SSOT with CONVERSATION_VIEWS and correctly identifies conversation routes", () => {
+    expect(CONVERSATION_VIEWS).toEqual(["workspace"]);
+
+    // Test valid conversation view
+    expect(isConversationView("workspace")).toBe(true);
+    expect(isConversationRouteActive("workspace")).toBe(true);
+
+    // Test non-conversation views (valid workspace views but not conversation routes)
+    expect(isConversationView("sessions")).toBe(false);
+    expect(isConversationRouteActive("sessions")).toBe(false);
+    expect(isConversationView("config")).toBe(false);
+    expect(isConversationRouteActive("config")).toBe(false);
+    expect(isConversationView("apikeys")).toBe(false);
+    expect(isConversationRouteActive("apikeys")).toBe(false);
+
+    // Test boundary / invalid values
+    expect(isConversationView("")).toBe(false);
+    expect(isConversationView("chat")).toBe(false);
+    expect(isConversationView(null)).toBe(false);
+    expect(isConversationView(undefined)).toBe(false);
+    expect(isConversationView({})).toBe(false);
   });
 
   it("starts in new chat mode on workspace with no active session", () => {

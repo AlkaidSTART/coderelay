@@ -4,6 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ApiKeyView } from "./ApiKeyView";
 import { ConfigView } from "./ConfigView";
 import { IconRail } from "./IconRail";
+import { Sidebar } from "./Sidebar";
+import { Titlebar } from "./Titlebar";
+import { isConversationRouteActive } from "../stores/navigationStore";
 import type { JevSettings, WorkspaceView } from "../types";
 
 describe("Decoupled ApiKeyView & ConfigView", () => {
@@ -146,5 +149,80 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
 
     expect(configRailHtml).toContain('aria-label="API Keys"');
     expect(configRailHtml).toContain('aria-label="Settings"');
+  });
+
+  it("renders Sidebar and Titlebar toggle button only on conversation-related routes", () => {
+    const mockSessions = [
+      {
+        id: "sess-abc-123",
+        title: "重构对话路由",
+        cliId: "claude",
+        updatedAt: 1730000000000,
+        workspace: "/Users/allure/Desktop/coderelay",
+      },
+    ];
+
+    function renderLayout(view: WorkspaceView) {
+      const isConversation = isConversationRouteActive(view);
+      const titlebarHtml = renderToStaticMarkup(
+        <Titlebar
+          sidebarCollapsed={false}
+          onToggleSidebar={isConversation ? () => {} : undefined}
+          rightSidebarOpen={false}
+          onToggleRightSidebar={() => {} }
+        />,
+      );
+
+      const sidebarHtml = isConversation
+        ? renderToStaticMarkup(
+            <Sidebar
+              collapsed={false}
+              workspaceInput="/Users/allure/Desktop/coderelay"
+              recentWorkspaces={["/Users/allure/Desktop/coderelay"]}
+              workspaceDropdownOpen={false}
+              onToggleWorkspaceDropdown={() => {}}
+              onSelectWorkspace={() => {}}
+              onPickWorkspace={() => {}}
+              loading={false}
+              onRefreshDiscovery={() => {}}
+              onStartNewTask={() => {}}
+              sessions={mockSessions}
+              activeSessionId="sess-abc-123"
+              onOpenSession={() => {}}
+              onDeleteSession={() => {}}
+              onDeleteWorkspaceSessions={() => {}}
+            />,
+          )
+        : null;
+
+      return { isConversation, titlebarHtml, sidebarHtml };
+    }
+
+    // 1. Conversation view ("workspace"): Sidebar is rendered, Titlebar includes toggle button
+    const workspaceRoute = renderLayout("workspace");
+    expect(workspaceRoute.isConversation).toBe(true);
+    expect(workspaceRoute.titlebarHtml).toContain('aria-label="Toggle sidebar"');
+    expect(workspaceRoute.titlebarHtml).toContain('title="Sidebar (⌘B)"');
+    expect(workspaceRoute.sidebarHtml).not.toBeNull();
+    expect(workspaceRoute.sidebarHtml).toContain("新会话");
+    expect(workspaceRoute.sidebarHtml).toContain("coderelay");
+
+    // 2. Sessions history view ("sessions"): Sidebar NOT rendered, Titlebar toggle NOT present
+    const sessionsRoute = renderLayout("sessions");
+    expect(sessionsRoute.isConversation).toBe(false);
+    expect(sessionsRoute.titlebarHtml).not.toContain('aria-label="Toggle sidebar"');
+    expect(sessionsRoute.sidebarHtml).toBeNull();
+
+    // 3. Settings view ("config"): Sidebar NOT rendered, Titlebar toggle NOT present
+    const configRoute = renderLayout("config");
+    expect(configRoute.isConversation).toBe(false);
+    expect(configRoute.titlebarHtml).not.toContain('aria-label="Toggle sidebar"');
+    expect(configRoute.sidebarHtml).toBeNull();
+
+    // 4. API Keys view ("apikeys"): Sidebar NOT rendered, Titlebar toggle NOT present
+    const apiKeysRoute = renderLayout("apikeys");
+    expect(apiKeysRoute.isConversation).toBe(false);
+    expect(apiKeysRoute.titlebarHtml).not.toContain('aria-label="Toggle sidebar"');
+    expect(apiKeysRoute.sidebarHtml).toBeNull();
   });
 });
