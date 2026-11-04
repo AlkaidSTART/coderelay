@@ -1,6 +1,6 @@
 {
   "name": "@alkaidstart/coderelay",
-  "version": "0.3.3",
+  "version": "0.4.4",
   "publishConfig": {
     "access": "public"
   },
@@ -25,8 +25,8 @@
     "zod": "^4.6.2"
   },
   "scripts": {
-    "dev": "bun src/cli.tsx",
-    "start": "bun src/cli.tsx",
+    "dev": "bun run desktop:dev",
+    "start": "bun run desktop:dev",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "issues:doc": "bun scripts/generate-issues-doc.ts",
@@ -39,7 +39,13 @@
     "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "sdk:build": "bun run --cwd packages/sdk-ts build",
     "sdk:typecheck": "bun run --cwd packages/sdk-ts typecheck",
-    "sdk:test": "bun run --cwd packages/sdk-ts test"
+    "sdk:test": "bun run --cwd packages/sdk-ts test",
+    "legacy:dev": "bun src/cli.tsx",
+    "cli": "cargo run -p coderelay-cli --",
+    "cli:build": "cargo build --release -p coderelay-cli",
+    "cli:install": "cargo install --path crates/coderelay-cli --locked",
+    "version:check": "bun scripts/check-versions.ts",
+    "check": "bun run version:check && bun run typecheck && bun test && bun run sdk:typecheck && bun run sdk:test && bun run rust:fmt && bun run rust:clippy && bun run rust:test"
   },
   "bin": {
     "coderelay": "src/cli.ts",

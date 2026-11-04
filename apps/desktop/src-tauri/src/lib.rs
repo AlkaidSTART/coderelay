@@ -545,6 +545,34 @@ fn list_recent_workspaces(app: AppHandle, limit: Option<u32>) -> Result<Vec<Stri
     })
 }
 
+fn resolve_dialog_initial_dir(initial_dir: Option<&str>) -> Option<PathBuf> {
+    let raw = initial_dir?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let candidate = PathBuf::from(raw);
+    if candidate.is_dir() {
+        Some(candidate)
+    } else {
+        candidate
+            .parent()
+            .filter(|parent| parent.is_dir())
+            .map(Path::to_path_buf)
+    }
+}
+
+#[tauri::command]
+async fn pick_workspace(initial_dir: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if let Some(dir) = resolve_dialog_initial_dir(initial_dir.as_deref()) {
+        dialog = dialog.set_directory(&dir);
+    }
+    Ok(dialog
+        .pick_folder()
+        .await
+        .map(|handle| handle.path().to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 fn list_sessions(
     app: AppHandle,
@@ -558,6 +586,49 @@ fn list_sessions(
             })
             .map_err(|error| error.to_string())
     })
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct DeleteWorkspaceSessionsRequest {
+    workspace: Option<String>,
+}
+
+#[tauri::command]
+fn delete_session(app: AppHandle, session_id: String) -> Result<bool, String> {
+    let removed = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .delete_session(&session_id)
+            .map_err(|error| error.to_string())
+    })?;
+    let _ = app.emit(
+        SESSION_UPDATED,
+        SessionUpdatedPayload {
+            session_id,
+            turn_id: None,
+        },
+    );
+    Ok(removed)
+}
+
+#[tauri::command]
+fn delete_workspace_sessions(
+    app: AppHandle,
+    request: DeleteWorkspaceSessionsRequest,
+) -> Result<usize, String> {
+    let removed = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .delete_workspace_sessions(request.workspace.as_deref())
+            .map_err(|error| error.to_string())
+    })?;
+    let _ = app.emit(
+        SESSION_UPDATED,
+        SessionUpdatedPayload {
+            session_id: String::new(),
+            turn_id: None,
+        },
+    );
+    Ok(removed)
 }
 
 #[tauri::command]
@@ -643,8 +714,11 @@ pub fn run() {
             start_run,
             cancel_run,
             list_recent_workspaces,
+            pick_workspace,
             list_sessions,
             get_session,
+            delete_session,
+            delete_workspace_sessions,
             get_jev_settings,
             save_jev_api_key,
             clear_jev_api_key,
@@ -722,5 +796,28 @@ mod tests {
         assert_eq!(turn.exit_code, None);
         assert_eq!(turn.signal.as_deref(), Some("SIGKILL"));
         assert_eq!(turn.protocol, Some(TurnProtocol::Structured));
+    }
+
+    #[test]
+    fn resolves_dialog_initial_dir_from_directory_file_or_invalid_inputs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let dir_path = temp.path();
+        let file_path = dir_path.join("Cargo.toml");
+        std::fs::write(&file_path, "[package]\nname = \"demo\"\n").expect("write file");
+
+        assert_eq!(
+            resolve_dialog_initial_dir(dir_path.to_str()),
+            Some(dir_path.to_path_buf())
+        );
+        assert_eq!(
+            resolve_dialog_initial_dir(file_path.to_str()),
+            Some(dir_path.to_path_buf())
+        );
+        assert_eq!(resolve_dialog_initial_dir(None), None);
+        assert_eq!(resolve_dialog_initial_dir(Some("   ")), None);
+        assert_eq!(
+            resolve_dialog_initial_dir(Some("/nonexistent_root_dir_99999/missing_sub")),
+            None
+        );
     }
 }

@@ -407,6 +407,47 @@ impl SessionStore {
         Ok(removed)
     }
 
+    /// Deletes one session together with its turns. Returns whether it existed.
+    pub fn delete_session(&mut self, id: &str) -> Result<bool, SessionStoreError> {
+        let transaction = self.connection.transaction()?;
+        transaction.execute("DELETE FROM turns WHERE session_id = ?1", [id])?;
+        let removed = transaction.execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        transaction.commit()?;
+        Ok(removed > 0)
+    }
+
+    /// Deletes every session (and turns) of a workspace; `None` targets sessions
+    /// that belong to no workspace. Returns the number of removed sessions.
+    pub fn delete_workspace_sessions(
+        &mut self,
+        workspace: Option<&str>,
+    ) -> Result<usize, SessionStoreError> {
+        let transaction = self.connection.transaction()?;
+        let removed = match workspace {
+            Some(workspace) => {
+                transaction.execute(
+                    "DELETE FROM turns WHERE session_id IN (SELECT id FROM sessions WHERE workspace = ?1)",
+                    [workspace],
+                )?;
+                transaction.execute("DELETE FROM sessions WHERE workspace = ?1", [workspace])?
+            }
+            None => {
+                transaction.execute(
+                    "DELETE FROM turns WHERE session_id IN (
+                        SELECT id FROM sessions WHERE workspace IS NULL OR workspace = ''
+                     )",
+                    [],
+                )?;
+                transaction.execute(
+                    "DELETE FROM sessions WHERE workspace IS NULL OR workspace = ''",
+                    [],
+                )?
+            }
+        };
+        transaction.commit()?;
+        Ok(removed)
+    }
+
     pub fn schema_version(&self) -> Result<Option<String>, SessionStoreError> {
         Ok(self
             .connection

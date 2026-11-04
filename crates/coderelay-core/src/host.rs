@@ -289,6 +289,7 @@ impl<T: CommandRunner + FileSystem> Host for T {}
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]

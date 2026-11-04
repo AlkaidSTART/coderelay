@@ -343,3 +343,72 @@ fn default_session_path_follows_global_config_dir() {
         Some(PathBuf::from("/tmp/coderelay-home/.coderelay/sessions.db"))
     );
 }
+
+#[test]
+fn deletes_single_sessions_and_whole_workspace_groups() {
+    let (_dir, path) = temp_db();
+    let mut store = SessionStore::open(&path).expect("open store");
+    let alpha = PathBuf::from("/project/alpha");
+    let beta = PathBuf::from("/project/beta");
+    let a1 = store
+        .create_session(AgentId::Codex, "alpha one", Some(&alpha))
+        .expect("a1");
+    let a2 = store
+        .create_session(AgentId::Claude, "alpha two", Some(&alpha))
+        .expect("a2");
+    let b1 = store
+        .create_session(AgentId::Codex, "beta one", Some(&beta))
+        .expect("b1");
+    let loose1 = store
+        .create_session(AgentId::Codex, "loose one", None)
+        .expect("loose1");
+    let loose2 = store
+        .create_session(AgentId::Claude, "loose two", None)
+        .expect("loose2");
+    // create_session defaults to the cwd, so legacy folder-less rows are made directly.
+    Connection::open(&path)
+        .expect("raw connection")
+        .execute(
+            "UPDATE sessions SET workspace = NULL WHERE id IN (?1, ?2)",
+            [&loose1.id, &loose2.id],
+        )
+        .expect("clear workspace");
+    for session in [&a1, &a2, &b1, &loose1, &loose2] {
+        store
+            .append_turn(AppendTurnInput::new(
+                &session.id,
+                AgentId::Codex,
+                format!("prompt {}", session.title),
+                "answer",
+                Some(0),
+                30,
+            ))
+            .expect("turn");
+    }
+
+    assert!(store.delete_session(&a1.id).expect("delete one"));
+    assert!(!store.delete_session(&a1.id).expect("delete again"));
+    assert!(store.get_session(&a1.id).expect("get").is_none());
+    assert!(store.list_turns(&a1.id).expect("turns").is_empty());
+    assert!(store.get_session(&a2.id).expect("get").is_some());
+
+    let removed = store
+        .delete_workspace_sessions(Some(&alpha.to_string_lossy()))
+        .expect("delete alpha");
+    assert_eq!(removed, 1);
+    assert!(store.list_turns(&a2.id).expect("turns").is_empty());
+    assert!(store.get_session(&b1.id).expect("get").is_some());
+    assert_eq!(store.list_turns(&b1.id).expect("turns").len(), 1);
+
+    let removed = store.delete_workspace_sessions(None).expect("delete loose");
+    assert_eq!(removed, 2);
+    assert!(store.get_session(&loose1.id).expect("get").is_none());
+    assert!(store.get_session(&loose2.id).expect("get").is_none());
+    assert_eq!(
+        store
+            .list_sessions(&ListSessionsOptions::default())
+            .expect("all")
+            .len(),
+        1
+    );
+}

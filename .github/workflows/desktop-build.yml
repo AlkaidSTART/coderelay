@@ -154,3 +154,45 @@ jobs:
           path: artifacts/*.exe
           if-no-files-found: error
           retention-days: 30
+
+  build-linux:
+    name: Linux packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Linux packages
+        working-directory: apps/desktop
+        run: bunx tauri build --ci --bundles deb,appimage
+
+      - name: Collect packages
+        run: |
+          mkdir -p artifacts
+          find target apps/desktop/src-tauri/target -type f \( -name '*.deb' -o -name '*.AppImage' \) -exec cp {} artifacts/ \; 2>/dev/null || true
+          test -n "$(find artifacts -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$(find artifacts -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderelay-linux-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30

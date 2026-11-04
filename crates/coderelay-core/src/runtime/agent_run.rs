@@ -197,6 +197,7 @@ fn build_command(options: &AgentRunOptions) -> Result<Command, String> {
     Ok(command)
 }
 
+#[cfg(unix)]
 fn signal_name(signal: i32) -> String {
     match signal {
         2 => "SIGINT".to_owned(),
@@ -234,6 +235,7 @@ fn kill_process_tree(child: &mut Child, force: bool) {
 
     #[cfg(windows)]
     {
+        let _ = force;
         let status = std::process::Command::new("taskkill")
             .args(["/pid", &pid.to_string(), "/t", "/f"])
             .stdout(Stdio::null())

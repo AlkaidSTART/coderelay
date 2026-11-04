@@ -20,5 +20,9 @@ coderelay-cli.workspace = true
 coderelay-core.workspace = true
 coderelay-protocol.workspace = true
 dirs.workspace = true
+rfd.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
+
+[dev-dependencies]
+tempfile.workspace = true

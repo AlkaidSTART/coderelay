@@ -5,16 +5,20 @@
 <h1 align="center">coderelay</h1>
 
 <p align="center">
-  <strong>The Intelligent Traffic Router for Coding Agent CLIs.</strong><br>
-  扫描本机编码 Agent，按规则、模型评分或 AI 意图，把任务精准分发给最合适的 CLI。
+  <strong>A desktop-first local control plane for coding agents.</strong><br>          
+  发现本机 Agent，比较模型与能力，选择最合适的执行者，并保留可续跑的共享上下文。
 </p>
 
 <p align="center">
   <a href="package.json"><img src="https://img.shields.io/github/package-json/v/GeWu-academy/coderelay?color=blue&style=flat-square" alt="version" /></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-bun-f472b6.svg?style=flat-square" alt="bun" /></a>
-  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/language-TypeScript-3178c6.svg?style=flat-square" alt="typescript" /></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/core-Rust-dea584.svg?style=flat-square" alt="Rust" /></a>
+  <a href="https://tauri.app"><img src="https://img.shields.io/badge/desktop-Tauri%202-24c8db.svg?style=flat-square" alt="Tauri" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="license" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg?style=flat-square" alt="platform" />
+</p>
+
+<p align="center">
+  <img src="assets/product-hero.png" alt="coderelay 产品图：cr 命令经 coderelay 路由到 claude、codex、pi、omp 等本机编码 Agent" width="760" />
 </p>
 
 ---
@@ -24,19 +28,20 @@
 - [为什么需要 coderelay](#为什么需要-coderelay)
 - [核心特性](#核心特性)
 - [支持的 Agent 矩阵](#支持的-agent-矩阵)
+- [桌面端功能](#桌面端功能)
 - [快速开始](#快速开始)
-  - [全局安装](#全局安装)
-  - [macOS 桌面版（未签名）](#macos-桌面版未签名)
+  - [桌面端](#桌面端)
+  - [Rust CLI](#rust-cli)
+  - [TypeScript SDK](#typescript-sdk)
   - [源码运行](#源码运行)
-  - [版本升级](#版本升级)
 - [使用指南](#使用指南)
-  - [1. 交互式 TUI 模式（默认）](#1-交互式-tui-模式默认)
-  - [2. CLI 任务路由模式（run）](#2-cli-任务路由模式run)
-  - [3. 初始化偏好管理（favorite）](#3-初始化偏好管理favorite)
-  - [4. 环境与规则诊断（doctor / agents / models）](#4-环境与规则诊断doctor--agents--models)
+  - [CLI 任务路由模式（run）](#cli-任务路由模式run)
+  - [环境与规则诊断（doctor / agents / models）](#环境与规则诊断doctor--agents--models)
+  - [旧 Bun TUI（迁移兼容）](#旧-bun-tui迁移兼容)
 - [决策模式（Routing Modes）](#决策模式routing-modes)
 - [配置说明](#配置说明)
 - [架构设计](#架构设计)
+- [项目结构](#项目结构)
 - [本地开发](#本地开发)
 - [开源协议](#开源协议)
 
@@ -52,21 +57,21 @@
 
 **痛点**：每次切换任务都要手动寻找命令、适配命令行参数、人肉权衡模型成本与上下文窗口。
 
-**解决方案**：`coderelay` 作为统一接入网关，自动扫描本机可用 Agent。根据提示词特征、代码语言、上下文规模或远程 AI 路由器，将任务分配给最佳 Agent 并直接接管 TTY 会话；没有参数时提供基于 Ink 的终端全屏交互界面。
+**解决方案**：`coderelay` 是一个桌面优先的本地 Agent 控制平面。Tauri 桌面端、Rust CLI 和 TypeScript SDK 共享同一套 Rust Core，完成 Agent 扫描、模型探测、路由、执行、取消和 SQLite 会话记录。CLI 保留给自动化、诊断和高级用户，不再作为产品主入口。
 
 ---
 
 ## 核心特性
 
-- 🔍 **环境自动发现**：自动跨平台（macOS / Linux / Windows / WSL）检测 PATH 与已知安装路径，探测 CLI 版本与可用性。
-- 🎯 **三模智能路由**：
-  - `local`（默认）：规则匹配（关键词、正则、文件 Glob、语言、长度）+ 综合评分（能力模型、Token 成本、默认偏好）。
-  - `jev`：接入 Typesafe SystemOne 智能决策大模型，理解复杂提示词并产出最优分发路径。
-  - `manual`：显式指定 `-a/--agent` 或 `-m/--model`，精准直通。
-- 🖥️ **交互式全屏 TUI**：基于 React + Ink 构建，涵盖环境扫描、Agent 激活确认、模型探针、任务录入与流式执行。
-- 💾 **SQLite 状态持久化**：内置轻量级 SQLite 存储，支持多轮会话追踪与最爱初始 Agent（`favorite`）记忆。
-- 🛡️ **干净进程生命周期**：原生 TTY 透传交互，错误与路由诊断输出至 stderr，支持 `--timeout` 守护。
-- ⚙️ **零配置起步 & Zod 校验**：无配置文件直接使用内置策略；亦可在 `.coderelay/config.yaml` 深度定制规则与权重。
+- 🖥️ **Tauri 2 桌面端**：工作区扫描、Agent 状态、模型选择、路由预览、流式输出、取消和会话历史。
+- 🦀 **单一 Rust Core**：桌面端与 CLI 直接链接同一套扫描、路由、执行和 SQLite 实现。
+- 🔍 **环境自动发现**：跨平台检测 PATH、npm/Bun/Homebrew 等安装来源，并探测版本与模型目录。
+- 🎯 **三模智能路由**：`local` 规则与评分、`manual` 显式指定、`jev` 远程决策。
+- 💾 **跨 CLI 会话**：桌面端自动写入 SQLite；续跑会话时把历史上下文安全注入下一位 Agent。
+- 🎨 **个性化外观**：主题预设、浅色/深色切换，支持上传本地图片作为自定义背景并调节不透明度。
+- 🧰 **自动化 CLI**：`run / agents / models / doctor / favorite`，适合脚本、CI 和排障。
+- 🔌 **TypeScript SDK**：通过版本化 NDJSON stdio 协议调用本地 host，支持类型化请求和流式事件。
+- 🛡️ **受控执行**：前端只能提交领域请求，不能传任意 shell 或 argv；取消会回收整个进程组。
 
 ---
 
@@ -85,31 +90,31 @@
 
 ---
 
+## 桌面端功能
+
+桌面端（`apps/desktop`，Tauri 2 + React）是 coderelay 的主入口：
+
+| 模块 | 说明 |
+|---|---|
+| **工作区** | 通过系统对话框选择目录，下拉列表合并展示最近使用的工作区，切换后自动重新扫描 Agent 与模型。 |
+| **对话视图** | 输入任务后实时预览路由结果（Agent / 模型），流式展示输出，支持随时取消。 |
+| **会话历史** | 侧边栏按工作区列出历史会话，可展开/收起；续跑时把历史上下文注入下一位 Agent，实现跨 CLI 接力。 |
+| **Agent 与模型** | 展示各 Agent 的安装状态、版本、来源与探测到的模型目录，可手动指定模型或设置偏好 Agent。 |
+| **API Key 管理** | 在设置页保存 `TYPESAFE_API_KEY`（用于 Jev 模式），密钥存于本机 SQLite。 |
+| **配置视图** | 查看并校验当前生效的配置与路由规则。 |
+| **主题与背景** | 主题预设、浅色/深色模式，自定义背景图及不透明度，设置会持久化保存。 |
+
+---
+
 ## 快速开始
 
-### 全局安装
+当前主入口是 Tauri 桌面应用。Rust CLI 和 TypeScript SDK 与桌面端共享同一核心实现。
 
-推荐通过 npm 或 bun 全局安装：
+### 桌面端
 
-```bash
-# 使用 npm
-npm i -g @alkaidstart/coderelay
+从 GitHub Release 下载 macOS DMG 或 Windows NSIS 安装包。
 
-# 或使用 bun
-bun add -g @alkaidstart/coderelay
-```
-
-安装后提供两个命令入口：`coderelay` 以及更短的双字母别名 `cr`。
-
-```bash
-cr --version
-```
-
-### macOS 桌面版（未签名）
-
-桌面版 DMG 未使用 Apple Developer ID 签名或公证，适合内部测试。下载并安装到“应用程序”后，在终端执行本地临时签名：
-
-> 仅对本仓库 Actions 构建产物执行以下操作，不要移除来源不明应用的隔离属性。
+macOS 构建目前为未签名版本；仅对可信来源执行本地临时签名：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/CodeRelay.app
@@ -118,7 +123,53 @@ codesign --verify --deep --strict --verbose=2 /Applications/CodeRelay.app
 open /Applications/CodeRelay.app
 ```
 
-本地签名只代表该副本在本机可被验证，不代表 Apple 已信任该应用。若系统仍提示无法验证开发者，可在访达中右键应用并选择“打开”。
+### Rust CLI
+
+桌面与 CLI 共享 Rust Core。推荐通过 Cargo 安装：
+
+```bash
+cargo install --path crates/coderelay-cli --locked
+coderelay agents
+coderelay doctor
+coderelay run "修复登录鉴权竞态问题"
+```
+
+从仓库运行：
+
+```bash
+cargo run -p coderelay-cli -- agents --json
+cargo run -p coderelay-cli -- doctor --json
+```
+
+> npm 包中的 `coderelay`/`cr` 命令仍指向旧 Bun 实现，作为迁移期的回退入口；新的原生 CLI 通过 Cargo 安装。
+
+### TypeScript SDK
+
+```bash
+bun add @alkaidstart/coderelay-sdk
+```
+
+```ts
+import { CoderelayClient } from "@alkaidstart/coderelay-sdk";
+
+const client = new CoderelayClient();
+const discovery = await client.discoverAgents({ cwd: process.cwd() });
+const run = await client.run({
+  workspace: { cwd: process.cwd() },
+  request: { prompt: "Fix the failing tests" },
+});
+
+for await (const event of run) {
+  if (event.kind === "assistant_text") {
+    process.stdout.write(event.text);
+  }
+}
+
+const result = await run.completed;
+await client.close();
+```
+
+SDK 默认启动 `coderelay sdk`，通过版本化 NDJSON stdio 通信。
 
 ### 源码运行
 
@@ -127,42 +178,21 @@ git clone https://github.com/GeWu-academy/coderelay.git
 cd coderelay
 bun install
 
-# 启动开发版 TUI
+# 默认开发入口：Tauri 桌面端
 bun run dev
 
-# 运行特定命令
-bun run dev run "修复登录鉴权竞态问题"
-```
+# Rust CLI
+bun run cli agents --json
 
-### 版本升级
-
-由于 npm registry 对 dist-tag 元数据有默认缓存，建议加 `--prefer-online` 确保安装最新版：
-
-```bash
-npm i -g @alkaidstart/coderelay@latest --prefer-online
+# 旧 Bun CLI/TUI（迁移兼容，默认不再作为主入口）
+bun run legacy:dev
 ```
 
 ---
 
 ## 使用指南
 
-### 1. 交互式 TUI 模式（默认）
-
-在项目根目录下直接运行 `cr` 或 `coderelay`：
-
-```bash
-cr
-```
-
-终端将启动交互式面板：
-1. **环境探测**：自动扫描并列出可用 Agent。
-2. **选择目标**：可直接使用已持久化的最爱 Agent 或即时选择。
-3. **编写任务**：输入待处理的编码任务描述。
-4. **实时执行**：直接无缝桥接到目标 Agent CLI。
-
-### 2. CLI 任务路由模式（run）
-
-直接向 Agent 分发单条任务：
+### CLI 任务路由模式（run）
 
 ```bash
 # 智能走完整规则与评分路由
@@ -198,7 +228,25 @@ coderelay run \
 | `--context-size <tokens>` | - | number | 预估上下文 Token 规模，参与评分模型加权 |
 | `--timeout <ms>` | - | number | 超时守护：超时后自动中止目标 Agent 进程 |
 
-### 3. 初始化偏好管理（favorite）
+### 环境与规则诊断（doctor / agents / models）
+
+```bash
+# 全面诊断：配置文件、路由规则、Agent 安装和模型探测
+coderelay doctor
+
+# 查看 Agent 安装状态、版本、运行来源和候选路径
+coderelay agents
+
+# 查看本机实际探测到的模型目录
+coderelay models
+
+# 机器可读输出
+coderelay agents --json
+coderelay models --json
+coderelay doctor --json
+```
+
+### 初始化偏好管理（favorite）
 
 设置日常最习惯的默认初始 Agent，配置将保存在本地 SQLite 数据库中：
 
@@ -209,25 +257,19 @@ coderelay favorite
 # 设置 Claude Code 为偏好
 coderelay favorite claude
 
-# 使用短别名设置 Codex
-cr fav codex
-
 # 清除偏好
-cr fav clear
+coderelay favorite clear
 ```
 
-### 4. 环境与规则诊断（doctor / agents / models）
+### 旧 Bun TUI（迁移兼容）
+
+旧 Ink TUI 仍保留一个迁移版本，用于对照和回退，但不再新增功能：
 
 ```bash
-# 全面诊断：检查配置文件有效性、语法规则、已安装 CLI 及路径
-coderelay doctor
-
-# 查看支持的 Agent 列表、版本与本机就绪状态
-coderelay agents
-
-# 查看配置的模型列表、能力标签、费用与兜底默认值
-coderelay models
+bun run legacy:dev
 ```
+
+新功能应进入 Rust CLI、Tauri 桌面端或 SDK。
 
 ---
 
@@ -319,24 +361,59 @@ routing:
 
 ---
 
+## 项目结构
+
+```text
+coderelay/
+├── apps/desktop/            # Tauri 2 桌面端（React 前端 + src-tauri Rust 后端）
+├── crates/
+│   ├── coderelay-core/      # 扫描、路由、执行、SQLite 会话等核心实现
+│   ├── coderelay-protocol/  # 版本化 NDJSON 协议类型（CLI / SDK / 桌面共用）
+│   └── coderelay-cli/       # Rust CLI（run / agents / models / doctor / favorite / sdk）
+├── packages/sdk-ts/         # TypeScript SDK（@alkaidstart/coderelay-sdk）
+├── src/                     # 旧 Bun CLI/TUI（迁移兼容，不再新增功能）
+├── docs/                    # 架构与设计文档
+├── assets/                  # Logo、产品图与架构图
+└── .github/workflows/       # ci / desktop-build / release
+```
+
+---
+
 ## 本地开发
 
-本项目使用 [Bun](https://bun.sh) 作为运行时与工具链：
+桌面端与 SDK 的前端工具链使用 Bun，核心、CLI 和 Tauri 后端使用 Rust：
 
 ```bash
-# 1. 克隆并安装依赖
 git clone https://github.com/GeWu-academy/coderelay.git
 cd coderelay
 bun install
 
-# 2. 运行测试套件（内置 230+ 单元与集成测试）
-bun test
-
-# 3. 静态类型检查
-bun run typecheck
-
-# 4. 本地启动开发 CLI
+# 默认开发入口：Tauri 桌面端
 bun run dev
+
+# Rust CLI
+bun run cli agents --json
+
+# SDK
+bun run sdk:test
+bun run sdk:build
+
+# 全量检查
+bun run version:check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bun test
+bun run typecheck
+bun run desktop:typecheck
+bun run sdk:typecheck
+bun run --cwd apps/desktop build
+```
+
+旧 Bun TUI 仍可运行：
+
+```bash
+bun run legacy:dev
 ```
 
 ---

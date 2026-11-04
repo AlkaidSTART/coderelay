@@ -1,5 +1,8 @@
+#[cfg(unix)]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::process::Command;
 
 use tempfile::TempDir;
@@ -55,7 +58,7 @@ fn doctor_json_reports_core_protocol_and_checks() {
     assert!(matches!(output.status.code(), Some(0) | Some(1)));
     let report: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse doctor report");
-    assert_eq!(report["coreVersion"], "0.3.2");
+    assert_eq!(report["coreVersion"], "0.3.3");
     assert_eq!(report["protocolVersion"], 1);
     assert!(
         report["checks"]

@@ -1,14 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { ApiKeyView } from "./components/ApiKeyView";
+import { Composer } from "./components/Composer";
+import { ConfigView } from "./components/ConfigView";
+import { IconRail } from "./components/IconRail";
+import { RightSidebar } from "./components/RightSidebar";
+import { SessionsView } from "./components/SessionsView";
+import { Sidebar } from "./components/Sidebar";
+import { Titlebar } from "./components/Titlebar";
+import { WorkspaceView } from "./components/WorkspaceView";
+import { isConversationRouteActive, useNavigationStore } from "./stores/navigationStore";
+import { useThemeStore } from "./stores/themeStore";
 import type {
   AgentEntry,
-  AgentEvent,
   ConfigSource,
   DiscoveryPayload,
   JevSettings,
-  ModelOption,
+  RouteForm,
   RoutePreview,
   RunCompletedPayload,
   RunEventPayload,
@@ -17,41 +28,16 @@ import type {
   SessionRecord,
   SessionUpdatedPayload,
   StartRunResponse,
+  WorkbenchState,
+  WorkspaceView as WorkspaceViewType,
 } from "./types";
-
-interface RouteForm {
-  prompt: string;
-  mode: string;
-  agent: string;
-  model: string;
-}
-
-type WorkspaceView = "workspace" | "sessions" | "config";
-
-interface WorkbenchState {
-  discovery: DiscoveryPayload | null;
-  runtime: RuntimeStatus | null;
-  loading: boolean;
-  error: string | null;
-  running: boolean;
-  runId: string | null;
-  output: string;
-  activity: string[];
-  result: RunCompletedPayload["result"] | null;
-  preview: RoutePreview | null;
-  view: WorkspaceView;
-  recentWorkspaces: string[];
-  sessions: SessionRecord[];
-  sessionDetail: SessionDetail | null;
-  activeSessionId: string | null;
-  configSource: ConfigSource | null;
-  configDraft: string;
-  configBusy: boolean;
-  jevSettings: JevSettings | null;
-  jevApiKeyInput: string;
-  jevBusy: boolean;
-  configNotice: string | null;
-}
+import {
+  eventActivity,
+  getAvailableModelsForCli,
+  mergeRecentWorkspaces,
+  messageOf,
+  resolveRouteSelection,
+} from "./utils";
 
 const INITIAL_STATE: WorkbenchState = {
   discovery: null,
@@ -78,172 +64,6 @@ const INITIAL_STATE: WorkbenchState = {
   configNotice: null,
 };
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function modelValue(model: ModelOption): string {
-  return model.modelId;
-}
-
-function modelLabel(model: ModelOption): string {
-  const suffix = model.isDefault ? " · default" : "";
-  const id = model.modelId || "adapter default";
-  return `${model.label || id}${suffix}`;
-}
-
-function workspaceName(path: string): string {
-  const normalized = path.trim().replace(/[\\/]+$/, "");
-  if (!normalized) {
-    return "未选择工作区";
-  }
-  const segments = normalized.split(/[\\/]/);
-  return segments[segments.length - 1] || normalized;
-}
-
-function formatTimestamp(timestamp: number): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestamp));
-}
-
-function formatDuration(durationMs: number): string {
-  if (durationMs < 1000) {
-    return `${durationMs}ms`;
-  }
-  const seconds = Math.round(durationMs / 1000);
-  if (seconds < 60) {
-    return `${seconds} 秒`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes} 分 ${remainingSeconds} 秒`;
-}
-
-function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className="icon"
-      fill="none"
-      height={size}
-      viewBox="0 0 24 24"
-      width={size}
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.7"
-    >
-      {children}
-    </svg>
-  );
-}
-
-function HomeIcon() {
-  return (
-    <Icon>
-      <path d="M4 10.5 12 4l8 6.5" />
-      <path d="M6.5 9.5V20h11V9.5" />
-      <path d="M9.5 20v-6h5v6" />
-    </Icon>
-  );
-}
-
-function HistoryIcon() {
-  return (
-    <Icon>
-      <path d="M4.6 9A8 8 0 1 1 4 12" />
-      <path d="M4 5v4h4" />
-      <path d="M12 7.5V12l3 2" />
-    </Icon>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <Icon>
-      <path d="M3.5 7.5h6l1.8 2h9.2v8.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7Z" />
-      <path d="M3.5 9.5V6.2c0-.94.76-1.7 1.7-1.7h4.1l1.8 2h7.2c.94 0 1.7.76 1.7 1.7v1.3" />
-    </Icon>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <Icon>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .55 1.7 1.7 0 0 0-.4 1.1V21H9.55v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-1.55-1H2.5V10h.09A1.7 1.7 0 0 0 4.1 9a1.7 1.7 0 0 0-.34-1.88L3.7 7.06 6.56 4.2l.06.06A1.7 1.7 0 0 0 8.5 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1h.09v4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
-    </Icon>
-  );
-}
-
-function RefreshIcon() {
-  return (
-    <Icon size={15}>
-      <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-      <path d="M20 5v6h-6" />
-    </Icon>
-  );
-}
-
-function TerminalIcon() {
-  return (
-    <Icon size={16}>
-      <path d="m5 7 4 4-4 4" />
-      <path d="M11 16h7" />
-    </Icon>
-  );
-}
-
-function RouteIcon() {
-  return (
-    <Icon size={15}>
-      <circle cx="6" cy="18" r="2" />
-      <circle cx="18" cy="6" r="2" />
-      <path d="M8 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h-1" />
-    </Icon>
-  );
-}
-
-function ArrowUpIcon() {
-  return (
-    <Icon size={17}>
-      <path d="M12 19V5" />
-      <path d="m6.5 10.5 5.5-5.5 5.5 5.5" />
-    </Icon>
-  );
-}
-
-function StopIcon() {
-  return (
-    <Icon size={16}>
-      <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
-    </Icon>
-  );
-}
-
-function eventActivity(event: AgentEvent): string | null {
-  if (event.kind === "tool_started") {
-    return `tool · ${event.tool ?? "unknown"}`;
-  }
-  if (event.kind === "status") {
-    return `status · ${event.text ?? ""}`;
-  }
-  if (event.kind === "stderr") {
-    return event.text?.trim() || null;
-  }
-  if (event.kind === "failed") {
-    return `error · ${event.message ?? "agent failed"}`;
-  }
-  if (event.kind === "aborted") {
-    return `aborted · ${event.reason ?? "process stopped"}`;
-  }
-  return null;
-}
-
 export function App() {
   const [state, setState] = useState<WorkbenchState>(INITIAL_STATE);
   const [form, setForm] = useState<RouteForm>({
@@ -253,21 +73,64 @@ export function App() {
     model: "",
   });
   const [workspaceInput, setWorkspaceInput] = useState("");
+
   const activeRunId = useRef<string | null>(null);
   const currentWorkspace = useRef("");
+
+  // Navigation store
+  const view = useNavigationStore((s) => s.view);
+  const setView = useNavigationStore((s) => s.setView);
+  const activeSessionId = useNavigationStore((s) => s.activeSessionId);
+  const setActiveSessionId = useNavigationStore((s) => s.setActiveSessionId);
+  const sidebarCollapsed = useNavigationStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useNavigationStore((s) => s.toggleSidebar);
+  const rightSidebarOpen = useNavigationStore((s) => s.rightSidebarOpen);
+  const toggleRightSidebar = useNavigationStore((s) => s.toggleRightSidebar);
+  const workspaceDropdownOpen = useNavigationStore((s) => s.workspaceDropdownOpen);
+  const setWorkspaceDropdownOpen = useNavigationStore((s) => s.setWorkspaceDropdownOpen);
+  const toggleWorkspaceDropdown = useNavigationStore((s) => s.toggleWorkspaceDropdown);
+  const navigateToNewChat = useNavigationStore((s) => s.navigateToNewChat);
+  const navigateToSession = useNavigationStore((s) => s.navigateToSession);
+  const navigateToConfig = useNavigationStore((s) => s.navigateToConfig);
+  const navigateToApiKeys = useNavigationStore((s) => s.navigateToApiKeys);
+
+  const customBackground = useThemeStore((s) => s.customBackground);
+  const customBackgroundOpacity = useThemeStore((s) => s.customBackgroundOpacity);
+
+  const isConversationRoute = isConversationRouteActive(view);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        if (isConversationRouteActive(view)) {
+          toggleSidebar();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSidebar, view]);
 
   async function refreshRecentWorkspaces(): Promise<void> {
     const recentWorkspaces = await invoke<string[]>("list_recent_workspaces", {
       limit: 8,
     });
-    setState((current) => ({ ...current, recentWorkspaces }));
+    setState((current) => ({
+      ...current,
+      recentWorkspaces: mergeRecentWorkspaces(
+        currentWorkspace.current,
+        recentWorkspaces,
+        current.recentWorkspaces,
+      ),
+    }));
   }
 
   async function refreshSessions(cwd: string): Promise<SessionRecord[]> {
     const sessions = await invoke<SessionRecord[]>("list_sessions", {
       request: {
-        workspace: cwd.trim() || null,
-        limit: 30,
+        workspace: null,
+        limit: 200,
       },
     });
     setState((current) => ({ ...current, sessions }));
@@ -292,20 +155,24 @@ export function App() {
       ]);
       currentWorkspace.current = discovery.cwd;
       setWorkspaceInput(discovery.cwd);
-      setForm((current) => ({
-        ...current,
-        mode: discovery.routingModes.includes(current.mode)
-          ? current.mode
-          : (discovery.routingModes[0] ?? "local"),
-        agent: discovery.agents.some((agent) => agent.id === current.agent)
-          ? current.agent
-          : "",
-        model: "",
-      }));
+      setForm((current) => {
+        const resolved = resolveRouteSelection(
+          current,
+          discovery.routingModes,
+          discovery.agents,
+          discovery.catalog.options,
+        );
+        return {
+          ...current,
+          mode: resolved.mode,
+          agent: resolved.agent,
+          model: resolved.model,
+        };
+      });
       const sessions = await invoke<SessionRecord[]>("list_sessions", {
         request: {
-          workspace: discovery.cwd,
-          limit: 30,
+          workspace: null,
+          limit: 200,
         },
       });
       setState((current) => ({
@@ -313,7 +180,11 @@ export function App() {
         runtime,
         discovery,
         sessions,
-        recentWorkspaces: discovery.recentWorkspaces,
+        recentWorkspaces: mergeRecentWorkspaces(
+          discovery.cwd,
+          discovery.recentWorkspaces,
+          current.recentWorkspaces,
+        ),
         sessionDetail: null,
         activeSessionId: null,
         loading: false,
@@ -328,9 +199,36 @@ export function App() {
     }
   }
 
+  async function handleDeleteSession(sessionId: string): Promise<void> {
+    try {
+      await invoke<boolean>("delete_session", { sessionId });
+      if (activeSessionId === sessionId) {
+        startNewTask();
+      }
+      await refreshSessions(currentWorkspace.current);
+      await refreshRecentWorkspaces();
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
+  async function handleDeleteWorkspaceSessions(workspace: string | null): Promise<void> {
+    try {
+      await invoke<number>("delete_workspace_sessions", { request: { workspace } });
+      const remaining = await refreshSessions(currentWorkspace.current);
+      if (activeSessionId && !remaining.some((session) => session.id === activeSessionId)) {
+        startNewTask();
+      }
+      await refreshRecentWorkspaces();
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
   async function openSession(sessionId: string): Promise<void> {
     try {
       const detail = await invoke<SessionDetail>("get_session", { sessionId });
+      setActiveSessionId(sessionId);
       setState((current) => ({
         ...current,
         sessionDetail: detail,
@@ -452,6 +350,7 @@ export function App() {
           : { path, exists: true, raw: current.configDraft },
       }));
       await loadDiscovery(workspaceInput);
+      setView("config");
       setState((current) => ({ ...current, view: "config" }));
     } catch (error) {
       setState((current) => ({
@@ -464,6 +363,7 @@ export function App() {
 
   function startNewTask(): void {
     setForm((current) => ({ ...current, prompt: "" }));
+    navigateToNewChat();
     setState((current) => ({
       ...current,
       view: "workspace",
@@ -509,6 +409,7 @@ export function App() {
           return;
         }
         activeRunId.current = null;
+        setActiveSessionId(payload.sessionId);
         setState((current) => ({
           ...current,
           running: false,
@@ -535,22 +436,15 @@ export function App() {
       disposed = true;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, []);
+  }, [setActiveSessionId]);
 
   const discovery = state.discovery;
   const agents = discovery?.agents ?? [];
   const selectedAgent = agents.find((agent) => agent.id === form.agent);
-  const models =
-    discovery?.catalog.options.filter(
-      (model) =>
-        model.available &&
-        (!form.agent || model.cliId === form.agent),
-    ) ?? [];
 
   async function previewRoute(): Promise<void> {
     const prompt = form.prompt.trim();
     if (!prompt) {
-      setState((current) => ({ ...current, error: "先输入任务内容。" }));
       return;
     }
     try {
@@ -589,10 +483,11 @@ export function App() {
           agent: form.agent || null,
           model: form.model || null,
           timeoutMs: null,
-          sessionId: state.activeSessionId,
+          sessionId: activeSessionId,
         },
       });
       activeRunId.current = response.runId;
+      setActiveSessionId(response.sessionId);
       setState((current) => ({
         ...current,
         running: true,
@@ -625,606 +520,217 @@ export function App() {
   }
 
   function selectAgent(agent: AgentEntry): void {
+    const nextModels = getAvailableModelsForCli(
+      discovery?.catalog.options ?? [],
+      agent.id,
+    );
     setForm((current) => ({
       ...current,
-      agent: current.agent === agent.id ? "" : agent.id,
-      model: "",
+      agent: agent.id,
+      model: nextModels[0]?.modelId ?? "",
     }));
   }
 
-  const activeTaskTitle = form.prompt.trim().split("\n")[0]?.trim() || "新任务";
-  const statusTone = state.error ? "error" : state.loading ? "loading" : state.running ? "running" : "ready";
-  const statusLabel = state.error
-    ? "需要处理"
-    : state.loading
-      ? "正在扫描"
-      : state.running
-        ? "正在执行"
-        : "Core 已连接";
+  function handleSelectView(nextView: WorkspaceViewType): void {
+    setView(nextView);
+    setState((current) => ({ ...current, view: nextView }));
+    if (nextView === "sessions") {
+      void refreshSessions(currentWorkspace.current);
+    } else if (nextView === "config") {
+      void loadConfigSource();
+    } else if (nextView === "apikeys") {
+      void loadJevSettings();
+    }
+  }
+
+  function handleSelectWorkspace(ws: string): void {
+    setWorkspaceDropdownOpen(false);
+    void loadDiscovery(ws);
+  }
+
+  async function handlePickWorkspace(): Promise<void> {
+    try {
+      const selected = await invoke<string | null>("pick_workspace", {
+        initialDir: currentWorkspace.current || workspaceInput.trim() || null,
+      });
+      if (selected) {
+        setWorkspaceDropdownOpen(false);
+        await loadDiscovery(selected);
+      }
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
+  function handleOpenSession(sessionId: string): void {
+    navigateToSession(sessionId);
+    setState((current) => ({ ...current, view: "workspace" }));
+    void openSession(sessionId);
+  }
+
+  function handleContinueSession(): void {
+    setView("workspace");
+    setState((current) => ({ ...current, view: "workspace" }));
+    setForm((current) => ({ ...current, prompt: "" }));
+  }
+
   const showThread = Boolean(
     state.preview || state.output || state.activity.length > 0 || state.result || state.running,
   );
 
+  function renderComposer(compact = false): ReactNode {
+    return (
+      <Composer
+        compact={compact}
+        prompt={form.prompt}
+        onPromptChange={(val) => setForm((c) => ({ ...c, prompt: val }))}
+        running={state.running}
+        onStartRun={() => void startRun()}
+        onCancelRun={() => void cancelRun()}
+        workspaceInput={workspaceInput}
+        onPickWorkspace={() => void handlePickWorkspace()}
+        mode={form.mode}
+        routingModes={discovery?.routingModes ?? ["local"]}
+        onModeChange={(nextMode) => setForm((c) => ({ ...c, mode: nextMode }))}
+        onPreviewRoute={() => void previewRoute()}
+        agent={form.agent}
+        model={form.model}
+        onAgentModelChange={(agentId, modelId) =>
+          setForm((c) => ({ ...c, agent: agentId, model: modelId }))
+        }
+        agents={agents}
+        catalogOptions={discovery?.catalog.options ?? []}
+        selectedAgentLabel={selectedAgent?.label}
+      />
+    );
+  }
+
   return (
-    <div className="app-frame">
-      <header className="titlebar" data-tauri-drag-region>
-        <div className="titlebar-brand" data-tauri-drag-region />
-        <button className="titlebar-document" onClick={startNewTask} type="button">
-          <TerminalIcon />
-          <span>{activeTaskTitle}</span>
-        </button>
-        <div className="titlebar-status" data-tauri-drag-region>
-          <span className="status-dot" data-tone={statusTone} />
-          <span>{statusLabel}</span>
-        </div>
-      </header>
+    <div className="relative flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
+      {customBackground ? (
+        <div
+          data-testid="custom-background-layer"
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
+          style={{
+            backgroundImage: `url(${customBackground})`,
+            opacity: customBackgroundOpacity,
+          }}
+        />
+      ) : null}
+      <Titlebar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={isConversationRoute ? toggleSidebar : undefined}
+        rightSidebarOpen={rightSidebarOpen}
+        onToggleRightSidebar={toggleRightSidebar}
+      />
 
-      <div className="app-layout">
-        <nav className="icon-rail" aria-label="工作台导航">
-          <div className="rail-nav">
-            <button
-              aria-label="工作台"
-              className={`rail-action ${state.view === "workspace" ? "rail-action--active" : ""}`}
-              onClick={() => setState((current) => ({ ...current, view: "workspace" }))}
-              title="工作台"
-              type="button"
-            >
-              <HomeIcon />
-            </button>
-            <button
-              aria-label="会话历史"
-              className={`rail-action ${state.view === "sessions" ? "rail-action--active" : ""}`}
-              onClick={() => {
-                setState((current) => ({ ...current, view: "sessions" }));
-                void refreshSessions(currentWorkspace.current);
-              }}
-              title="会话历史"
-              type="button"
-            >
-              <HistoryIcon />
-            </button>
-            <button
-              aria-label="新任务"
-              className="rail-action"
-              onClick={startNewTask}
-              title="新任务"
-              type="button"
-            >
-              <FolderIcon />
-            </button>
-          </div>
-          <div className="rail-footer">
-            <button
-              aria-label="配置"
-              className={`rail-action ${state.view === "config" ? "rail-action--active" : ""}`}
-              onClick={() => {
-                setState((current) => ({ ...current, view: "config" }));
-                void Promise.all([loadConfigSource(), loadJevSettings()]);
-              }}
-              title="配置"
-              type="button"
-            >
-              <SettingsIcon />
-            </button>
-          </div>
-        </nav>
+      <div
+        className="flex min-h-0 flex-1 overflow-hidden bg-canvas"
+        data-sidebar-collapsed={!isConversationRoute || sidebarCollapsed}
+        data-right-sidebar-open={rightSidebarOpen}
+      >
+        <IconRail
+          currentView={view}
+          onSelectView={handleSelectView}
+          onStartNewTask={startNewTask}
+        />
 
-        <aside className="sidebar">
-          <div className="sidebar-header">
-            <div className="brand-lockup">
-              <h1>CodeRelay</h1>
-              <p className="sidebar-kicker">Local coding agents</p>
-            </div>
-            <span className="local-chip">{state.loading ? "SYNC" : "LOCAL"}</span>
-          </div>
+        {isConversationRoute ? (
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            workspaceInput={workspaceInput}
+            recentWorkspaces={state.recentWorkspaces}
+            workspaceDropdownOpen={workspaceDropdownOpen}
+            onToggleWorkspaceDropdown={toggleWorkspaceDropdown}
+            onSelectWorkspace={handleSelectWorkspace}
+            onPickWorkspace={() => void handlePickWorkspace()}
+            loading={state.loading}
+            onRefreshDiscovery={() => void loadDiscovery(workspaceInput)}
+            onStartNewTask={startNewTask}
+            sessions={state.sessions}
+            activeSessionId={activeSessionId}
+            onOpenSession={handleOpenSession}
+            onDeleteSession={(id) => void handleDeleteSession(id)}
+            onDeleteWorkspaceSessions={(ws) => void handleDeleteWorkspaceSessions(ws)}
+          />
+        ) : null}
 
-          <div className="sidebar-thread">
-            <span className="thread-icon"><TerminalIcon /></span>
-            <span className="thread-copy">
-              <strong>{activeTaskTitle}</strong>
-              <small>{state.running ? "正在执行" : state.result ? "已完成" : "当前任务"}</small>
-            </span>
-            <span className={`thread-state ${state.running ? "thread-state--running" : ""}`} />
-          </div>
-
-          <div className="sidebar-scroll">
-            <section className="sidebar-section">
-              <div className="sidebar-section-title">
-                <span>WORKSPACE</span>
-                <span className="section-count">{state.loading ? "扫描中" : "已连接"}</span>
-              </div>
-              <div className="workspace-field">
-                <FolderIcon />
-                <input
-                  id="workspace"
-                  aria-label="工作区路径"
-                  value={workspaceInput}
-                  onChange={(event) => setWorkspaceInput(event.target.value)}
-                  placeholder="选择或输入工作区"
-                  spellCheck={false}
-                />
-                <button
-                  aria-label="重新扫描工作区"
-                  className="icon-button"
-                  disabled={state.loading}
-                  onClick={() => void loadDiscovery(workspaceInput)}
-                  title="重新扫描"
-                  type="button"
-                >
-                  <RefreshIcon />
-                </button>
-              </div>
-              {state.recentWorkspaces.length > 0 ? (
-                <div className="recent-workspaces">
-                  {state.recentWorkspaces.slice(0, 4).map((workspace) => (
-                    <button
-                      className={`workspace-chip ${workspace === workspaceInput ? "workspace-chip--active" : ""}`}
-                      key={workspace}
-                      onClick={() => void loadDiscovery(workspace)}
-                      title={workspace}
-                      type="button"
-                    >
-                      {workspaceName(workspace)}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          </div>
-
-          <div className="sidebar-footer">
-            <span className="status-dot" data-tone={statusTone} />
-            <div>
-              <strong>Local runtime</strong>
-              <span>{state.runtime?.coreVersion ? `Rust Core v${state.runtime.coreVersion}` : "正在连接"}</span>
-            </div>
-            <span className="protocol-pill">{state.runtime?.transport ?? "local"}</span>
-          </div>
-        </aside>
-
-        <main className="main-panel" data-view={state.view}>
-          <header className="main-toolbar">
-            <div className="toolbar-breadcrumbs">
-              <span className="breadcrumbs-root"><FolderIcon /> {workspaceName(workspaceInput)}</span>
-              <span className="breadcrumbs-separator">/</span>
-              <strong>{activeTaskTitle}</strong>
-            </div>
-            <div className="toolbar-right">
-              <span className="route-chip"><RouteIcon /> {selectedAgent?.label ?? "Auto route"}</span>
-              <span className={`connection-pill connection-pill--${statusTone}`}>{statusLabel}</span>
-            </div>
-          </header>
-
-          <section className="secondary-view" aria-live="polite">
-            {state.view === "sessions" ? (
-              <div className="secondary-page">
-                <div className="secondary-header">
-                  <div>
-                    <p className="sidebar-kicker">Conversation archive</p>
-                    <h2>会话历史</h2>
-                    <p>每次桌面任务都会写入共享 SQLite；选择历史会话后，下一条任务会带上它的上下文。</p>
-                  </div>
-                  <button
-                    className="ghost-button"
-                    onClick={() => void refreshSessions(currentWorkspace.current)}
-                    type="button"
-                  >
-                    <RefreshIcon />
-                    刷新
-                  </button>
-                </div>
-
-                <div className="session-layout">
-                  <div className="session-list">
-                    {state.sessions.length === 0 ? (
-                      <div className="secondary-empty">
-                        <HistoryIcon />
-                        <strong>还没有会话</strong>
-                        <span>完成第一条任务后，这里会出现可续跑的历史。</span>
-                      </div>
-                    ) : (
-                      state.sessions.map((session) => (
-                        <button
-                          className={`session-row ${state.activeSessionId === session.id ? "session-row--selected" : ""}`}
-                          key={session.id}
-                          onClick={() => void openSession(session.id)}
-                          type="button"
-                        >
-                          <span className="session-agent">{session.cliId}</span>
-                          <strong>{session.title}</strong>
-                          <small>{formatTimestamp(session.updatedAt)}</small>
-                        </button>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="session-detail">
-                    {state.sessionDetail ? (
-                      <>
-                        <div className="session-detail-head">
-                          <div>
-                            <p className="sidebar-kicker">{state.sessionDetail.session.cliId}</p>
-                            <h3>{state.sessionDetail.session.title}</h3>
-                          </div>
-                          <button
-                            className="primary-button"
-                            onClick={() => {
-                              setState((current) => ({ ...current, view: "workspace" }));
-                              setForm((current) => ({ ...current, prompt: "" }));
-                            }}
-                            type="button"
-                          >
-                            继续这个会话
-                          </button>
-                        </div>
-                        <div className="turn-list">
-                          {state.sessionDetail.turns.map((turn) => (
-                            <article className="turn-card" key={turn.id}>
-                              <div className="turn-meta">
-                                <span>{turn.cliId}</span>
-                                <span>{turn.modelId ?? "default model"}</span>
-                                <span>{turn.status ?? "unknown"}</span>
-                              </div>
-                              <div className="turn-prompt">{turn.prompt}</div>
-                              <pre className="turn-output">{turn.output || "（无文本输出）"}</pre>
-                            </article>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="secondary-empty">
-                        <TerminalIcon />
-                        <strong>选择一个会话</strong>
-                        <span>查看跨 CLI 的完整任务记录和运行元数据。</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="secondary-page config-page">
-                <div className="secondary-header">
-                  <div>
-                    <p className="sidebar-kicker">Workspace configuration</p>
-                    <h2>配置</h2>
-                    <p>
-                      {state.configSource?.path ?? "正在读取配置文件…"}
-                    </p>
-                  </div>
-                  <div className="config-actions">
-                    <button
-                      className="ghost-button"
-                      disabled={state.configBusy}
-                      onClick={() => void loadConfigSource()}
-                      type="button"
-                    >
-                      重新读取
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={state.configBusy || !state.configDraft.trim()}
-                      onClick={() => void saveConfig()}
-                      type="button"
-                    >
-                      {state.configBusy ? "保存中…" : "保存配置"}
-                    </button>
-                  </div>
-                </div>
-                <section className="credential-panel" aria-labelledby="jev-credential-title">
-                  <div className="credential-copy">
-                    <p className="sidebar-kicker">Jev routing credential</p>
-                    <h3 id="jev-credential-title">TypeSafe API Key</h3>
-                    <p>
-                      在界面填写后会保存到本机 SQLite。Jev 路由优先使用这里保存的密钥，
-                      环境变量和本地配置文件只作为兼容兜底。
-                    </p>
-                  </div>
-                  <span className={`credential-status ${state.jevSettings?.stored ? "credential-status--stored" : ""}`}>
-                    {state.jevSettings?.stored
-                      ? "已保存到 SQLite"
-                      : state.jevSettings?.environmentConfigured
-                        ? "正在使用环境变量"
-                        : "未配置"}
-                  </span>
-                  <div className="credential-form">
-                    <label htmlFor="jev-api-key">
-                      <span>TYPESAFE_API_KEY</span>
-                      <input
-                        autoComplete="off"
-                        disabled={state.jevBusy}
-                        id="jev-api-key"
-                        onChange={(event) =>
-                          setState((current) => ({
-                            ...current,
-                            jevApiKeyInput: event.target.value,
-                          }))
-                        }
-                        placeholder={state.jevSettings?.stored ? "已保存，输入新密钥可替换" : "粘贴 API Key"}
-                        spellCheck={false}
-                        type="password"
-                        value={state.jevApiKeyInput}
-                      />
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={state.jevBusy || !state.jevApiKeyInput.trim()}
-                      onClick={() => void saveJevApiKey()}
-                      type="button"
-                    >
-                      {state.jevBusy ? "保存中…" : "保存密钥"}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      disabled={state.jevBusy || !state.jevSettings?.stored}
-                      onClick={() => void clearJevApiKey()}
-                      type="button"
-                    >
-                      清除
-                    </button>
-                  </div>
-                  {state.configNotice ? (
-                    <p className="credential-notice" role="status">{state.configNotice}</p>
-                  ) : null}
-                </section>
-                <div className="config-note">
-                  <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
-                    {state.configSource?.exists ? "workspace config" : "new workspace config"}
-                  </span>
-                  保存前会完整校验 YAML；校验失败不会覆盖现有文件。
-                </div>
-                <textarea
-                  aria-label="配置文件内容"
-                  className="config-editor"
-                  onChange={(event) =>
-                    setState((current) => ({ ...current, configDraft: event.target.value }))
-                  }
-                  spellCheck={false}
-                  value={state.configDraft}
-                />
-              </div>
-            )}
-          </section>
-
-          <section className="conversation" aria-live="polite">
-            <div className="conversation-inner">
-              {state.error ? (
-                <div className="alert" role="alert">
-                  <strong>连接出现问题</strong>
-                  <span>{state.error}</span>
-                </div>
-              ) : null}
-
-              {!showThread ? (
-                <div className="empty-state">
-                  <div className="empty-topline">
-                    <span className="empty-kicker">LOCAL-FIRST CODING AGENT</span>
-                  </div>
-                  <h2>今天准备<br />构建什么？</h2>
-                  <p className="empty-copy">
-                    CodeRelay 会在本机发现可用的 Agent，把任务交给最合适的那一个，并保留完整的执行上下文。
-                  </p>
-                  <div className="empty-signals">
-                    <span><FolderIcon /> {workspaceName(workspaceInput)}</span>
-                    <span><span className="status-dot" data-tone={statusTone} /> {agents.filter((agent) => agent.available).length} agents ready</span>
-                    <span><TerminalIcon /> {state.runtime?.transport ?? "in-process"}</span>
-                  </div>
-                </div>
-              ) : (
-                <article className="assistant-message">
-                  <div className="message-header">
-                    <div className="assistant-identity">
-                      <span>
-                        {state.running
-                          ? "正在处理任务"
-                          : state.result
-                            ? `已处理 ${formatDuration(state.result.durationMs)}`
-                            : "已准备路由"}
-                      </span>
-                    </div>
-                    <span className={`run-state ${state.running ? "run-state--running" : ""}`}>
-                      {state.running ? "running" : state.result?.status ?? "idle"}
-                    </span>
-                  </div>
-
-                  {state.preview ? (
-                    <div className="route-preview">
-                      <span className="route-preview-label"><RouteIcon /> 路由</span>
-                      <strong>
-                        {state.preview.agent}
-                        {state.preview.model ? ` / ${state.preview.model}` : ""}
-                      </strong>
-                      <span className="route-reasons">{state.preview.reasons.join(" · ") || "显式指定"}</span>
-                    </div>
-                  ) : null}
-
-                  <div className={`message-copy ${state.running ? "message-copy--running" : ""}`}>
-                    {state.output || (state.running ? "正在等待 Agent 返回结果…" : "任务已就绪。")}
-                    {state.running && !state.output ? <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span> : null}
-                  </div>
-
-                  {state.activity.length > 0 ? (
-                    <div className="activity-log">
-                      <div className="activity-head">
-                        <span className="activity-label"><TerminalIcon /> RUN LOG</span>
-                        <span>{state.activity.length} events</span>
-                      </div>
-                      <div className="activity-body">
-                        {state.activity.map((entry, index) => (
-                          <div className="activity-row" key={`${index}-${entry}`}>
-                            <span className="activity-prefix">›</span>
-                            <span>{entry}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {state.result ? (
-                    <div className="result-strip">
-                      <span><b>状态</b> {state.result.status}</span>
-                      <span><b>退出码</b> {state.result.code ?? "—"}</span>
-                      <span><b>耗时</b> {formatDuration(state.result.durationMs)}</span>
-                    </div>
-                  ) : null}
-                </article>
-              )}
-            </div>
-          </section>
-
-          <div className="composer-dock">
-            <div className="composer">
-              <div className="composer-head">
-                <span>PROMPT</span>
-                <span>{workspaceName(workspaceInput)}</span>
-              </div>
-              <textarea
-                aria-label="任务内容"
-                value={form.prompt}
-                onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-                placeholder="描述需求，或粘贴一段代码…"
-                disabled={state.running}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas" data-view={view}>
+          <AnimatePresence mode="wait">
+            {view === "workspace" ? (
+              <WorkspaceView
+                key="workspace"
+                error={state.error}
+                showThread={showThread}
+                running={state.running}
+                result={state.result}
+                preview={state.preview}
+                output={state.output}
+                activity={state.activity}
+                renderComposer={renderComposer}
               />
-              <div className="composer-bar">
-                <div className="composer-controls">
-                  <label className="composer-control">
-                    <span>模式</span>
-                    <select
-                      value={form.mode}
-                      onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value }))}
-                      disabled={state.running}
-                    >
-                      {(discovery?.routingModes ?? []).map((mode) => (
-                        <option value={mode} key={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+            ) : view === "sessions" ? (
+              <SessionsView
+                key="sessions"
+                workspaceInput={workspaceInput}
+                sessions={state.sessions}
+                activeSessionId={activeSessionId}
+                sessionDetail={state.sessionDetail}
+                onRefreshSessions={() => void refreshSessions(currentWorkspace.current)}
+                onOpenSession={handleOpenSession}
+                onContinueSession={handleContinueSession}
+              />
+            ) : view === "apikeys" ? (
+              <ApiKeyView
+                key="apikeys"
+                jevBusy={state.jevBusy}
+                jevSettings={state.jevSettings}
+                jevApiKeyInput={state.jevApiKeyInput}
+                notice={state.configNotice}
+                onJevApiKeyInputChange={(val) =>
+                  setState((current) => ({ ...current, jevApiKeyInput: val }))
+                }
+                onSaveJevApiKey={() => void saveJevApiKey()}
+                onClearJevApiKey={() => void clearJevApiKey()}
+              />
+            ) : (
+              <ConfigView
+                key="config"
+                configPath={state.configSource?.path}
+                configBusy={state.configBusy}
+                configDraft={state.configDraft}
+                onConfigDraftChange={(val) =>
+                  setState((current) => ({ ...current, configDraft: val }))
+                }
+                onLoadConfigSource={() => void loadConfigSource()}
+                onSaveConfig={() => void saveConfig()}
+              />
+            )}
+          </AnimatePresence>
 
-                  <label className="composer-control">
-                    <span>Agent</span>
-                    <select
-                      value={form.agent}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          agent: event.target.value,
-                          model: "",
-                        }))
-                      }
-                      disabled={state.running}
-                    >
-                      <option value="">自动选择</option>
-                      {agents.map((agent) => (
-                        <option value={agent.id} key={agent.id}>
-                          {agent.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="composer-control composer-control--model">
-                    <span>模型</span>
-                    <select
-                      value={form.model}
-                      onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
-                      disabled={state.running || models.length === 0}
-                    >
-                      <option value="">Agent 默认</option>
-                      {models.map((model) => (
-                        <option value={modelValue(model)} key={`${model.cliId}:${model.modelId}`}>
-                          {modelLabel(model)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="composer-actions">
-                  <button
-                    className="preview-button"
-                    disabled={state.running}
-                    onClick={() => void previewRoute()}
-                    type="button"
-                  >
-                    <RouteIcon />
-                    <span>预览路由</span>
-                  </button>
-                  {state.running ? (
-                    <button
-                      aria-label="停止任务"
-                      className="send-button send-button--stop"
-                      onClick={() => void cancelRun()}
-                      title="停止任务"
-                      type="button"
-                    >
-                      <StopIcon />
-                    </button>
-                  ) : (
-                    <button
-                      aria-label="开始执行"
-                      className="send-button"
-                      disabled={!form.prompt.trim()}
-                      onClick={() => void startRun()}
-                      title="开始执行"
-                      type="button"
-                    >
-                      <ArrowUpIcon />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-            <p className="composer-note">
-              <span>LOCAL EXECUTION</span>
-              <span>NO SHELL BRIDGE</span>
-              <span>PROTOCOL {state.runtime?.protocolVersion ?? "—"}</span>
-            </p>
-          </div>
+          <AnimatePresence>
+            {view === "workspace" && showThread ? (
+              <motion.div
+                key="composer-dock"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                className="relative z-5 shrink-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-canvas)_28%)] px-8 pt-2.5 pb-[18px]"
+              >
+                {renderComposer(true)}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </main>
 
-        <aside className="sidebar sidebar--right" aria-label="Agent 选择">
-          <div className="sidebar-scroll">
-            <section className="sidebar-section sidebar-section--agents">
-              <div className="sidebar-section-title">
-                <span>AGENTS</span>
-                <span className="section-count">{agents.filter((agent) => agent.available).length}/{agents.length}</span>
-              </div>
-              <div className="agent-list">
-                {agents.length === 0 ? (
-                  <p className="sidebar-empty">{state.loading ? "正在发现可用 Agent…" : "当前工作区没有可用的 Agent。"}</p>
-                ) : (
-                  agents.map((agent) => (
-                    <button
-                      className={`agent-row ${form.agent === agent.id ? "agent-row--selected" : ""}`}
-                      key={agent.id}
-                      onClick={() => selectAgent(agent)}
-                      type="button"
-                    >
-                      <span className="agent-copy">
-                        <strong>{agent.label}</strong>
-                        <small>{agent.version ?? agent.command}</small>
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="sidebar-section sidebar-section--context">
-              <div className="sidebar-section-title">
-                <span>ROUTING</span>
-              </div>
-              <div className="context-row">
-                <span className="context-icon"><RouteIcon /></span>
-                <div>
-                  <strong>{selectedAgent?.label ?? "自动选择"}</strong>
-                  <span>{form.mode} · {form.model || "default"}</span>
-                </div>
-              </div>
-            </section>
-          </div>
-        </aside>
+        <RightSidebar
+          open={rightSidebarOpen}
+          agents={agents}
+          selectedAgentId={form.agent}
+          onSelectAgent={selectAgent}
+        />
       </div>
     </div>
   );

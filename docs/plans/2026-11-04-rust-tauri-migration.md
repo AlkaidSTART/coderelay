@@ -2,7 +2,7 @@
 
 > **执行要求：** 后续实现按任务顺序进行，每个任务先补测试，再写最小实现，完成验证后提交。
 
-> **当前进度：** Task 1–11 已完成（2026-11-04）。下一步为 Task 12：迁移兼容验收与默认入口切换。
+> **当前进度：** Task 1–11 已完成，Task 12 入口切换与兼容门禁已完成（2026-11-04）。剩余发布验收：Windows/Linux 真机 smoke、签名/公证与自动更新。
 
 **目标：** 将 coderelay 从 Bun 优先的 CLI/TUI 产品迁移为桌面优先的 Rust Core + Tauri 2 产品，同时保留共享同一核心的轻量 CLI 与可演进 SDK。
 
@@ -83,7 +83,7 @@ bun run typecheck
 
 **Step 3：确定兼容版本**
 
-- 产品版本：`0.3.2`
+- 产品版本：`0.3.3`
 - 协议版本：`1`
 - 配置 schema：沿用现有 YAML 字段名
 - 数据库 schema：先只读兼容，迁移完成后再统一迁移入口
@@ -128,7 +128,7 @@ cargo test -p coderelay-core
 
 **Step 3：实现最小 workspace**
 
-`Cargo.toml` 使用 resolver 3、edition 2024，并把产品版本固定为 `0.3.2`。
+`Cargo.toml` 使用 resolver 3、edition 2024，并把产品版本固定为 `0.3.3`。
 
 `coderelay-core` 至少定义：
 
