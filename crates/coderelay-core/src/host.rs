@@ -286,3 +286,34 @@ impl FileSystem for SystemHost {
 
 pub trait Host: CommandRunner + FileSystem {}
 impl<T: CommandRunner + FileSystem> Host for T {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn system_host_exec_captures_stdout_and_stderr() {
+        let host = SystemHost;
+        let output = host
+            .exec(
+                &ExecRequest::new("sh", ["-c", "printf 'codex 1.2.3'; printf 'warn' >&2"])
+                    .with_timeout(Duration::from_secs(2)),
+            )
+            .expect("run sh");
+        assert_eq!(output.stdout, "codex 1.2.3");
+        assert_eq!(output.stderr, "warn");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_host_exec_enforces_timeout() {
+        let host = SystemHost;
+        let error = host
+            .exec(
+                &ExecRequest::new("sh", ["-c", "sleep 1"]).with_timeout(Duration::from_millis(10)),
+            )
+            .expect_err("sleep must time out");
+        assert!(matches!(error, CommandError::Timeout { .. }));
+    }
+}

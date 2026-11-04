@@ -226,7 +226,7 @@ fn latest_claude_version_directory_is_used_with_numeric_ordering() {
 }
 
 #[test]
-fn windows_scan_adds_wsl_candidate_after_native_candidates() {
+fn windows_scan_selects_a_wsl_candidate_when_no_native_cli_exists() {
     let host = FakeHost::default()
         .with_output("wsl.exe -l -q", "Ubuntu\0\r\n")
         .with_output(
@@ -242,7 +242,8 @@ fn windows_scan_adds_wsl_candidate_after_native_candidates() {
 
     let detected = scan_coding_clis(&host, &options);
     let codex = &detected[0];
-    assert!(!codex.available);
+    assert!(codex.available);
+    assert_eq!(codex.runtime, CliRuntime::Wsl);
     let wsl = codex
         .candidates
         .iter()

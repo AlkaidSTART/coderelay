@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::agent::AgentId;
-use crate::agents::types::{CliCapabilities, ProbeResult, ProbedModel, capabilities_for};
+use crate::agents::types::{ProbeResult, ProbedModel, capabilities_for};
 use crate::config::Config;
 use crate::host::FileSystem;
 
@@ -556,14 +556,6 @@ pub fn create_model_probes(roots: ModelProbeRoots) -> ModelProbeRegistry {
             }),
         ),
     ])
-}
-
-#[allow(dead_code)]
-fn _capabilities_for_tests() -> BTreeMap<AgentId, CliCapabilities> {
-    [AgentId::Codex, AgentId::Claude, AgentId::Pi, AgentId::Omp]
-        .into_iter()
-        .map(|agent| (agent, capabilities_for(agent)))
-        .collect()
 }
 
 #[cfg(test)]
