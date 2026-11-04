@@ -29,7 +29,13 @@ import type {
   WorkbenchState,
   WorkspaceView as WorkspaceViewType,
 } from "./types";
-import { eventActivity, mergeRecentWorkspaces, messageOf } from "./utils";
+import {
+  eventActivity,
+  getAvailableModelsForCli,
+  mergeRecentWorkspaces,
+  messageOf,
+  resolveRouteSelection,
+} from "./utils";
 
 const INITIAL_STATE: WorkbenchState = {
   discovery: null,
@@ -140,16 +146,20 @@ export function App() {
       ]);
       currentWorkspace.current = discovery.cwd;
       setWorkspaceInput(discovery.cwd);
-      setForm((current) => ({
-        ...current,
-        mode: discovery.routingModes.includes(current.mode)
-          ? current.mode
-          : (discovery.routingModes[0] ?? "local"),
-        agent: discovery.agents.some((agent) => agent.id === current.agent)
-          ? current.agent
-          : "",
-        model: "",
-      }));
+      setForm((current) => {
+        const resolved = resolveRouteSelection(
+          current,
+          discovery.routingModes,
+          discovery.agents,
+          discovery.catalog.options,
+        );
+        return {
+          ...current,
+          mode: resolved.mode,
+          agent: resolved.agent,
+          model: resolved.model,
+        };
+      });
       const sessions = await invoke<SessionRecord[]>("list_sessions", {
         request: {
           workspace: discovery.cwd,
@@ -475,10 +485,14 @@ export function App() {
   }
 
   function selectAgent(agent: AgentEntry): void {
+    const nextModels = getAvailableModelsForCli(
+      discovery?.catalog.options ?? [],
+      agent.id,
+    );
     setForm((current) => ({
       ...current,
-      agent: current.agent === agent.id ? "" : agent.id,
-      model: "",
+      agent: agent.id,
+      model: nextModels[0]?.modelId ?? "",
     }));
   }
 

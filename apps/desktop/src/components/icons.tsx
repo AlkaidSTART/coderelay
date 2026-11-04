@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 export interface IconProps {
   children?: ReactNode;
   size?: number;
+  className?: string;
 }
 
-export function Icon({ children, size = 18 }: IconProps) {
+export function Icon({ children, size = 18, className = "" }: IconProps) {
   return (
     <svg
       aria-hidden="true"
-      className="block shrink-0"
+      className={`block shrink-0 ${className}`.trim()}
       fill="none"
       height={size}
       viewBox="0 0 24 24"
@@ -132,9 +133,12 @@ export function ShieldIcon({ size = 14 }: { size?: number } = {}) {
   );
 }
 
-export function ChevronDownIcon({ size = 12 }: { size?: number } = {}) {
+export function ChevronDownIcon({
+  size = 12,
+  className,
+}: { size?: number; className?: string } = {}) {
   return (
-    <Icon size={size}>
+    <Icon className={className} size={size}>
       <path d="m6 9 6 6 6-6" />
     </Icon>
   );

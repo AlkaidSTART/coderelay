@@ -1,14 +1,17 @@
-import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { motion } from "motion/react";
+import type { KeyboardEvent } from "react";
 
 import type { AgentEntry, ModelOption } from "../types";
 import {
+  formatModeLabel,
+  getAvailableModelsForCli,
+  resolveRouteSelection,
+} from "../utils";
+import {
   ArrowUpIcon,
-  CheckIcon,
   ChevronDownIcon,
   FolderIcon,
   RouteIcon,
-  ShieldIcon,
   StopIcon,
 } from "./icons";
 
@@ -36,6 +39,9 @@ export interface ComposerProps {
 const ACTION_BTN_BASE =
   "grid h-[30px] w-[30px] place-items-center rounded-lg transition-all duration-140 enabled:hover:bg-surface-subtle enabled:hover:text-ink disabled:opacity-30";
 
+const SELECT_PILL_BASE =
+  "relative inline-flex cursor-pointer items-center gap-1 rounded-lg border border-black/[0.06] bg-surface-subtle/80 px-2.5 py-1.5 font-code text-[11.5px] font-medium text-ink transition-colors hover:border-black/[0.12] hover:bg-surface-hover";
+
 export function Composer({
   compact = false,
   prompt,
@@ -54,60 +60,7 @@ export function Composer({
   onAgentModelChange,
   agents,
   catalogOptions,
-  selectedAgentLabel,
 }: ComposerProps) {
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [menuPlacement, setMenuPlacement] = useState<"top" | "bottom">("bottom");
-  const modelMenuRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (running && modelMenuOpen) {
-      setModelMenuOpen(false);
-    }
-  }, [running, modelMenuOpen]);
-
-  useEffect(() => {
-    if (!modelMenuOpen) {
-      return;
-    }
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target;
-      if (target instanceof Node && modelMenuRef.current && !modelMenuRef.current.contains(target)) {
-        setModelMenuOpen(false);
-      }
-    }
-    function handleEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") {
-        setModelMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [modelMenuOpen]);
-
-  function toggleModelMenu() {
-    if (running) {
-      return;
-    }
-    if (!modelMenuOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      setMenuPlacement(compact || (spaceBelow < 280 && spaceAbove > spaceBelow) ? "top" : "bottom");
-    }
-    setModelMenuOpen((prev) => !prev);
-  }
-
-  function handleSelectOption(nextAgent: string, nextModel: string) {
-    onAgentModelChange(nextAgent, nextModel);
-    setModelMenuOpen(false);
-  }
-
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -117,22 +70,42 @@ export function Composer({
     }
   }
 
-  function cycleRoutingMode() {
-    const modes = routingModes.length > 0 ? routingModes : ["local"];
-    const nextIdx = (modes.indexOf(mode) + 1) % modes.length;
-    onModeChange(modes[nextIdx] ?? "local");
+  const effectiveRoutingModes = routingModes.length > 0 ? routingModes : ["local"];
+  const resolved = resolveRouteSelection(
+    { mode, agent, model },
+    effectiveRoutingModes,
+    agents,
+    catalogOptions,
+  );
+
+  const activeMode = resolved.mode;
+  const activeAgent = resolved.agent;
+  const activeModel = resolved.model;
+
+  const currentAgentEntry = agents.find((ag) => ag.id === activeAgent) ?? agents[0];
+  const currentAgentLabel = currentAgentEntry?.label ?? activeAgent;
+
+  const availableModels = getAvailableModelsForCli(catalogOptions, activeAgent);
+  const currentModelOption =
+    availableModels.find((m) => m.modelId === activeModel) ?? availableModels[0];
+  const currentModelLabel =
+    currentModelOption?.label ||
+    currentModelOption?.modelId ||
+    activeModel ||
+    currentAgentLabel ||
+    "默认";
+
+  function handleCliChange(nextAgentId: string) {
+    const nextModels = getAvailableModelsForCli(catalogOptions, nextAgentId);
+    const nextModelId = nextModels[0]?.modelId ?? "";
+    onAgentModelChange(nextAgentId, nextModelId);
+  }
+
+  function handleModelChange(nextModelId: string) {
+    onAgentModelChange(activeAgent, nextModelId);
   }
 
   const hasPrompt = Boolean(prompt.trim());
-  const selectedModelOption = model
-    ? catalogOptions.find((m) => m.cliId === agent && m.modelId === model)
-    : undefined;
-  const currentSelectionLabel = model
-    ? selectedModelOption?.label || model
-    : selectedAgentLabel
-      ? selectedAgentLabel
-      : "Auto";
-  const isAutoSelected = !agent && !model;
 
   return (
     <div
@@ -156,7 +129,7 @@ export function Composer({
         disabled={running}
       />
 
-      <div className="flex items-center justify-between px-3.5 pt-1.5 pb-3">
+      <div className="flex items-center justify-between gap-2 px-3.5 pt-1.5 pb-3">
         <div className="flex items-center gap-1.5">
           <button
             aria-label="选择文件夹"
@@ -166,17 +139,6 @@ export function Composer({
             title={workspaceInput ? `选择文件夹（当前：${workspaceInput}）` : "选择文件夹"}
           >
             <FolderIcon size={14} />
-          </button>
-          <button
-            aria-label="Routing mode"
-            className={`${ACTION_BTN_BASE} ${
-              mode !== "local" ? "bg-surface-subtle text-ink" : "bg-transparent text-muted"
-            }`}
-            type="button"
-            onClick={cycleRoutingMode}
-            title={mode}
-          >
-            <ShieldIcon size={14} />
           </button>
           <button
             aria-label="Route preview"
@@ -190,160 +152,99 @@ export function Composer({
           </button>
         </div>
 
-        <div ref={modelMenuRef} className="relative inline-flex items-center">
-          <button
-            ref={triggerRef}
-            aria-expanded={modelMenuOpen}
-            aria-haspopup="listbox"
-            aria-label="选择模型"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-black/[0.06] bg-surface-subtle/80 px-3 py-1.5 font-code text-[11.5px] font-medium text-muted-strong shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all duration-140 hover:border-black/[0.12] hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-black/10"
-            disabled={running}
-            onClick={toggleModelMenu}
-            title={currentSelectionLabel}
-            type="button"
-          >
-            <span className="max-w-[140px] truncate">{currentSelectionLabel}</span>
-            <span
-              className={`text-muted transition-transform duration-200 ${
-                modelMenuOpen ? "rotate-180" : ""
-              }`}
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {/* 第一块：选模式 */}
+          <div className={SELECT_PILL_BASE} title={`模式: ${activeMode}`}>
+            <select
+              aria-label="模式"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              value={activeMode}
+              onChange={(e) => onModeChange(e.target.value)}
+              disabled={running}
             >
-              <ChevronDownIcon size={11} />
-            </span>
-          </button>
+              {effectiveRoutingModes.map((m) => (
+                <option key={m} value={m}>
+                  {formatModeLabel(m)}
+                </option>
+              ))}
+            </select>
+            <span className="max-w-[70px] truncate">{formatModeLabel(activeMode)}</span>
+            <ChevronDownIcon size={11} className="text-muted" />
+          </div>
 
-          <AnimatePresence>
-            {modelMenuOpen ? (
-              <motion.div
-                role="listbox"
-                aria-label="模型列表"
-                initial={{
-                  opacity: 0,
-                  scale: 0.96,
-                  y: menuPlacement === "top" ? 6 : -6,
-                }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.96,
-                  y: menuPlacement === "top" ? 6 : -6,
-                }}
-                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                className={`absolute right-0 z-50 flex max-h-[320px] w-[260px] flex-col overflow-hidden rounded-[20px] border border-black/[0.08] bg-white/95 p-1.5 shadow-[0_18px_48px_-8px_rgba(0,0,0,0.14),0_4px_16px_-4px_rgba(0,0,0,0.06)] backdrop-blur-md ${
-                  menuPlacement === "top" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"
-                }`}
-              >
-                <div className="flex-1 overflow-y-auto p-1 [scrollbar-color:rgba(0,0,0,0.12)_transparent] [scrollbar-width:thin]">
-                  {/* Auto option */}
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={isAutoSelected}
-                    onClick={() => handleSelectOption("", "")}
-                    className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-2 text-left font-code text-xs transition-all duration-120 ${
-                      isAutoSelected
-                        ? "bg-black/[0.06] font-semibold text-ink"
-                        : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
-                    }`}
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
-                      {isAutoSelected ? <CheckIcon size={13} /> : null}
-                    </span>
-                    <span className="truncate">Auto</span>
-                  </button>
+          {/* 第二块：选 CLI */}
+          <div className={SELECT_PILL_BASE} title={`CLI: ${currentAgentLabel}`}>
+            <select
+              aria-label="CLI"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              value={activeAgent}
+              onChange={(e) => handleCliChange(e.target.value)}
+              disabled={running}
+            >
+              {agents.map((ag) => (
+                <option key={ag.id} value={ag.id}>
+                  {ag.label}
+                </option>
+              ))}
+            </select>
+            <span className="max-w-[90px] truncate">{currentAgentLabel}</span>
+            <ChevronDownIcon size={11} className="text-muted" />
+          </div>
 
-                  {/* Agents and their models */}
-                  {agents.map((ag) => {
-                    const agentModels = catalogOptions.filter(
-                      (m) => m.cliId === ag.id && m.available,
-                    );
-                    const isAgentDefaultSelected = agent === ag.id && !model;
+          {/* 第三块：选 agent / 模型 */}
+          <div className={SELECT_PILL_BASE} title={`模型: ${currentModelLabel}`}>
+            <select
+              aria-label="Agent 模型"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              value={activeModel}
+              onChange={(e) => handleModelChange(e.target.value)}
+              disabled={running}
+            >
+              {availableModels.length > 0 ? (
+                availableModels.map((m) => (
+                  <option key={m.modelId} value={m.modelId}>
+                    {m.label || m.modelId}
+                  </option>
+                ))
+              ) : (
+                <option value="">{currentAgentLabel || "默认"}</option>
+              )}
+            </select>
+            <span className="max-w-[120px] truncate">{currentModelLabel}</span>
+            <ChevronDownIcon size={11} className="text-muted" />
+          </div>
 
-                    return (
-                      <div key={ag.id} className="mt-2.5 first:mt-1">
-                        <div className="px-2.5 py-1 text-[10.5px] font-semibold tracking-wider text-muted/70 uppercase select-none">
-                          {ag.label}
-                        </div>
-
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={isAgentDefaultSelected}
-                          onClick={() => handleSelectOption(ag.id, "")}
-                          className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left font-code text-xs transition-all duration-120 ${
-                            isAgentDefaultSelected
-                              ? "bg-black/[0.06] font-semibold text-ink"
-                              : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
-                          }`}
-                        >
-                          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
-                            {isAgentDefaultSelected ? <CheckIcon size={13} /> : null}
-                          </span>
-                          <span className="truncate">{ag.label}</span>
-                        </button>
-
-                        {agentModels.map((m) => {
-                          const isModelSelected = agent === ag.id && model === m.modelId;
-                          return (
-                            <button
-                              key={`${ag.id}:::${m.modelId}`}
-                              type="button"
-                              role="option"
-                              aria-selected={isModelSelected}
-                              onClick={() => handleSelectOption(ag.id, m.modelId)}
-                              className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left font-code text-xs transition-all duration-120 ${
-                                isModelSelected
-                                  ? "bg-black/[0.06] font-semibold text-ink"
-                                  : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
-                              }`}
-                              title={m.label || m.modelId}
-                            >
-                              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
-                                {isModelSelected ? <CheckIcon size={13} /> : null}
-                              </span>
-                              <span className="truncate">{m.label || m.modelId}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+          {running ? (
+            <motion.button
+              aria-label="Stop"
+              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-ink text-white transition-all duration-140"
+              onClick={onCancelRun}
+              title="Stop"
+              type="button"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.94 }}
+            >
+              <StopIcon size={12} />
+            </motion.button>
+          ) : (
+            <motion.button
+              aria-label="Run"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-140 ${
+                hasPrompt
+                  ? "cursor-pointer bg-ink text-white enabled:hover:bg-black disabled:bg-surface-subtle disabled:text-zinc-300"
+                  : "bg-surface-subtle text-zinc-400"
+              }`}
+              disabled={!hasPrompt}
+              onClick={onStartRun}
+              title="Run"
+              type="button"
+              whileHover={hasPrompt ? { scale: 1.05 } : undefined}
+              whileTap={hasPrompt ? { scale: 0.94 } : undefined}
+            >
+              <ArrowUpIcon size={16} />
+            </motion.button>
+          )}
         </div>
-
-        {running ? (
-          <motion.button
-            aria-label="Stop"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-ink text-white transition-all duration-140"
-            onClick={onCancelRun}
-            title="Stop"
-            type="button"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.94 }}
-          >
-            <StopIcon size={12} />
-          </motion.button>
-        ) : (
-          <motion.button
-            aria-label="Run"
-            className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition-all duration-140 ${
-              hasPrompt
-                ? "cursor-pointer bg-ink text-white enabled:hover:bg-black disabled:bg-surface-subtle disabled:text-zinc-300"
-                : "bg-surface-subtle text-zinc-400"
-            }`}
-            disabled={!hasPrompt}
-            onClick={onStartRun}
-            title="Run"
-            type="button"
-            whileHover={hasPrompt ? { scale: 1.05 } : undefined}
-            whileTap={hasPrompt ? { scale: 0.94 } : undefined}
-          >
-            <ArrowUpIcon size={16} />
-          </motion.button>
-        )}
       </div>
     </div>
   );

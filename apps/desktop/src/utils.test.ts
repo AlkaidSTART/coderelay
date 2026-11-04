@@ -1,12 +1,16 @@
 import { describe, expect, it } from "bun:test";
+import type { AgentEntry, ModelOption } from "./types";
 import { isTimePeriod, TIME_PERIODS } from "./types";
 import {
   ENCOURAGEMENT_MESSAGES,
+  formatModeLabel,
   formatTimestamp,
+  getAvailableModelsForCli,
   getTimePeriod,
   getWelcomeTimeSnapshot,
   mergeRecentWorkspaces,
   PERIOD_GREETINGS,
+  resolveRouteSelection,
   workspaceName,
 } from "./utils";
 
@@ -89,5 +93,182 @@ describe("dayjs time formatting & welcome encouragement utilities", () => {
     expect(workspaceName("/Users/allure/Desktop/new-folder/")).toBe("new-folder");
     expect(workspaceName("C:\\Projects\\coderelay\\")).toBe("coderelay");
     expect(workspaceName("   ")).toBe("—");
+  });
+
+  describe("three-tier route cascading selection (mode / cli / agent-model)", () => {
+    const mockAgents: AgentEntry[] = [
+      {
+        id: "codex",
+        label: "Codex",
+        enabled: true,
+        isDefault: true,
+        available: true,
+        command: "codex",
+        path: "/usr/local/bin/codex",
+        version: "0.9.1",
+        models: ["qwen-3.8-flash", "deepseek-v4-flash"],
+        runtime: "local",
+        source: "path",
+        candidates: [
+          {
+            path: "/usr/local/bin/codex",
+            runtime: "local",
+            source: "path",
+            version: "0.9.1",
+          },
+        ],
+        diagnostics: [],
+      },
+      {
+        id: "claude",
+        label: "Claude Code",
+        enabled: true,
+        isDefault: false,
+        available: true,
+        command: "claude",
+        path: "/usr/local/bin/claude",
+        version: "1.0.2",
+        models: ["claude-3-7-sonnet"],
+        runtime: "local",
+        source: "path",
+        candidates: [],
+        diagnostics: [],
+      },
+    ];
+
+    const mockCatalogOptions: ModelOption[] = [
+      {
+        cliId: "codex",
+        modelId: "qwen-3.8-flash",
+        label: "Qwen 3.8 Flash",
+        isDefault: true,
+        available: true,
+        strengths: ["fast", "chat"],
+        cost: 0.001,
+        contextWindow: 128000,
+        capabilities: {
+          structuredEvents: true,
+          nativeResume: true,
+          nonInteractivePrompt: true,
+          explicitModel: true,
+          toolEvents: true,
+        },
+      },
+      {
+        cliId: "codex",
+        modelId: "deepseek-v4-flash",
+        label: "DeepSeek V4 Flash",
+        isDefault: false,
+        available: true,
+        strengths: ["coding", "reasoning"],
+        cost: 0.002,
+        contextWindow: 64000,
+        capabilities: {
+          structuredEvents: true,
+          nativeResume: true,
+          nonInteractivePrompt: true,
+          explicitModel: true,
+          toolEvents: true,
+        },
+      },
+      {
+        cliId: "claude",
+        modelId: "claude-3-7-sonnet",
+        label: "Claude 3.7 Sonnet",
+        isDefault: true,
+        available: true,
+        strengths: ["coding", "complex"],
+        cost: 0.015,
+        contextWindow: 200000,
+        capabilities: {
+          structuredEvents: true,
+          nativeResume: false,
+          nonInteractivePrompt: true,
+          explicitModel: true,
+          toolEvents: true,
+        },
+      },
+    ];
+
+    it("formats mode labels correctly", () => {
+      expect(formatModeLabel("local")).toBe("Local");
+      expect(formatModeLabel("manual")).toBe("Manual");
+      expect(formatModeLabel("jev")).toBe("Jev");
+      expect(formatModeLabel("custom_mode")).toBe("Custom_mode");
+      expect(formatModeLabel("")).toBe("Local");
+    });
+
+    it("filters available models for a given CLI", () => {
+      const codexModels = getAvailableModelsForCli(mockCatalogOptions, "codex");
+      expect(codexModels.map((m) => m.modelId)).toEqual(["qwen-3.8-flash", "deepseek-v4-flash"]);
+      expect(codexModels[0]?.strengths).toEqual(["fast", "chat"]);
+      expect(codexModels[0]?.cost).toBe(0.001);
+
+      const claudeModels = getAvailableModelsForCli(mockCatalogOptions, "claude");
+      expect(claudeModels.map((m) => m.modelId)).toEqual(["claude-3-7-sonnet"]);
+
+      expect(getAvailableModelsForCli(mockCatalogOptions, "")).toEqual([]);
+      expect(getAvailableModelsForCli(mockCatalogOptions, "non_existent")).toEqual([]);
+    });
+
+    it("defaults to the first option across all 3 tiers when nothing is selected", () => {
+      const resolved = resolveRouteSelection(
+        { mode: "", agent: "", model: "" },
+        ["local", "manual", "jev"],
+        mockAgents,
+        mockCatalogOptions,
+      );
+
+      expect(resolved).toEqual({
+        mode: "local",
+        agent: "codex",
+        model: "qwen-3.8-flash",
+      });
+    });
+
+    it("preserves valid selections when they are available", () => {
+      const resolved = resolveRouteSelection(
+        { mode: "jev", agent: "codex", model: "deepseek-v4-flash" },
+        ["local", "manual", "jev"],
+        mockAgents,
+        mockCatalogOptions,
+      );
+
+      expect(resolved).toEqual({
+        mode: "jev",
+        agent: "codex",
+        model: "deepseek-v4-flash",
+      });
+    });
+
+    it("falls back to the first available model when agent switches or current model is invalid", () => {
+      const resolved = resolveRouteSelection(
+        { mode: "manual", agent: "claude", model: "non-existent-model" },
+        ["local", "manual", "jev"],
+        mockAgents,
+        mockCatalogOptions,
+      );
+
+      expect(resolved).toEqual({
+        mode: "manual",
+        agent: "claude",
+        model: "claude-3-7-sonnet",
+      });
+    });
+
+    it("gracefully handles empty collections with safe fallbacks", () => {
+      const resolved = resolveRouteSelection(
+        { mode: "unknown", agent: "unknown", model: "unknown" },
+        [],
+        [],
+        [],
+      );
+
+      expect(resolved).toEqual({
+        mode: "local",
+        agent: "",
+        model: "",
+      });
+    });
   });
 });
