@@ -365,15 +365,17 @@ fn collect_local_candidates(
         });
     }
 
-    let ordered_by_path: BTreeMap<String, CliSource> = ordered
+    let ordered_paths: Vec<String> = ordered.iter().map(|entry| entry.path.clone()).collect();
+    let source_by_path: BTreeMap<String, CliSource> = ordered
         .into_iter()
         .map(|entry| (entry.path, entry.source))
         .collect();
-    dedupe_paths(ordered_by_path.keys().cloned(), options.platform)
+
+    dedupe_paths(ordered_paths, options.platform)
         .into_iter()
         .filter(|candidate| accessible(fs, candidate))
         .map(|path| LocalCandidate {
-            source: ordered_by_path
+            source: source_by_path
                 .get(&path)
                 .copied()
                 .unwrap_or(CliSource::Path),
@@ -397,7 +399,7 @@ fn to_local_candidates(
             mount_root: None,
             version: probe_version(
                 runner,
-                &[entry.path.clone()],
+                std::slice::from_ref(&entry.path),
                 options.version_timeout,
                 &options.version_args,
                 &options.environment,

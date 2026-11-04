@@ -270,7 +270,10 @@ pub fn scan_wsl_clis(runner: &dyn CommandRunner, options: &WslScanOptions) -> Ws
                 continue;
             };
             let mut prefix = vec![options.wsl_bin.clone()];
-            prefix.extend(build_wsl_args(Some(distro), &[linux_path.clone()]));
+            prefix.extend(build_wsl_args(
+                Some(distro),
+                std::slice::from_ref(&linux_path),
+            ));
             let version = probe_version(
                 runner,
                 &prefix,

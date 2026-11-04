@@ -101,8 +101,8 @@ fn string(value: &Value) -> Option<String> {
 }
 
 fn toml_string(text: &str, key: &str) -> Option<String> {
-    let parsed: toml::Value = text.parse().ok()?;
-    parsed.get(key)?.as_str().map(str::to_owned)
+    let parsed: toml::Value = toml::from_str(text).ok()?;
+    parsed.as_table()?.get(key)?.as_str().map(str::to_owned)
 }
 
 pub struct CodexModelProbe {
@@ -564,4 +564,19 @@ fn _capabilities_for_tests() -> BTreeMap<AgentId, CliCapabilities> {
         .into_iter()
         .map(|agent| (agent, capabilities_for(agent)))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toml_probe_reads_top_level_model_keys() {
+        let text = "model = \"gpt-5\"\nmodel_catalog_json = \"models_cache.json\"\n";
+        assert_eq!(toml_string(text, "model").as_deref(), Some("gpt-5"));
+        assert_eq!(
+            toml_string(text, "model_catalog_json").as_deref(),
+            Some("models_cache.json")
+        );
+    }
 }
