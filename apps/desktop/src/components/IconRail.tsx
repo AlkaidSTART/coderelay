@@ -23,7 +23,7 @@ const RAIL_BTN_BASE =
 function railBtnClass(active: boolean): string {
   return `${RAIL_BTN_BASE} ${
     active
-      ? "text-white hover:bg-transparent hover:text-white"
+      ? "text-ink hover:bg-transparent hover:text-ink"
       : "text-muted hover:bg-black/[0.045] hover:text-ink"
   }`;
 }
@@ -58,7 +58,7 @@ export function IconRail({
             type="button"
           >
             {currentView === "workspace" ? (
-              <LiquidRouteIndicator layoutId="rail-active-pill" variant="dark" />
+              <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
             ) : null}
             <HomeIcon />
           </button>
@@ -70,7 +70,7 @@ export function IconRail({
             type="button"
           >
             {currentView === "sessions" ? (
-              <LiquidRouteIndicator layoutId="rail-active-pill" variant="dark" />
+              <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
             ) : null}
             <HistoryIcon />
           </button>
@@ -93,7 +93,7 @@ export function IconRail({
             type="button"
           >
             {currentView === "config" ? (
-              <LiquidRouteIndicator layoutId="rail-active-pill" variant="dark" />
+              <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
             ) : null}
             <SettingsIcon />
           </button>
