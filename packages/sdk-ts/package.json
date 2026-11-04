@@ -11,9 +11,12 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm && bunx tsc --emitDeclarationOnly --declaration --outDir ./dist",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm && bunx tsc -p tsconfig.build.json",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },
