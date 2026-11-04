@@ -1,6 +1,6 @@
 {
   "name": "@alkaidstart/coderelay",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "publishConfig": {
     "access": "public"
   },
