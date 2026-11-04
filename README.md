@@ -239,11 +239,11 @@ coderelay models
 | **Jev 模式** | `-M jev` | **AI 意图路由**。<br>调用 Typesafe SystemOne API（`jev-latest` 模型），结合本地安装候选列表与任务意图做出智能决策。 | 复杂模糊意图、需要高阶语义分析的任务分发。 |
 | **Manual 模式** | `-M manual` | **直接穿透**。<br>直接校验指定的 Agent 与模型可用性，跳过所有路由算法。 | 确定只想用某一个 CLI 时的精准分发。 |
 
-> **启用 Jev 模式**：只需在环境变量或 `.env.local` 中配置 `TYPESAFE_API_KEY`：
-> ```bash
-> export TYPESAFE_API_KEY="your-api-key"
-> coderelay run -M jev "审计这个项目的安全漏洞"
+> **启用 Jev 模式**：在桌面版设置页填写 `TYPESAFE_API_KEY`，密钥会保存到本机 SQLite，后续无需再配置环境变量：
+> ```text
+> 设置 → TypeSafe API Key → 保存密钥
 > ```
+> 为兼容已有安装，环境变量和本地配置文件中的 `TYPESAFE_API_KEY` 仍会作为兜底读取。
 
 ---
 

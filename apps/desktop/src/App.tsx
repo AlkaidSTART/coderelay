@@ -142,15 +142,6 @@ function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
   );
 }
 
-function BrandMark() {
-  return (
-    <span className="brand-command" aria-hidden="true">
-      <span className="brand-command-symbol">&gt;</span>
-      <span className="brand-command-cursor" />
-    </span>
-  );
-}
-
 function HomeIcon() {
   return (
     <Icon>
