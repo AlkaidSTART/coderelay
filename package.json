@@ -36,13 +36,17 @@
     "rust:check": "cargo check --workspace",
     "rust:test": "cargo test --workspace",
     "rust:fmt": "cargo fmt --all -- --check",
-    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings"
+    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
+    "sdk:build": "bun run --cwd packages/sdk-ts build",
+    "sdk:typecheck": "bun run --cwd packages/sdk-ts typecheck",
+    "sdk:test": "bun run --cwd packages/sdk-ts test"
   },
   "bin": {
     "coderelay": "src/cli.ts",
     "cr": "src/cli.ts"
   },
   "workspaces": [
-    "apps/desktop"
+    "apps/desktop",
+    "packages/sdk-ts"
   ]
 }
