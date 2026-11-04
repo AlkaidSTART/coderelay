@@ -171,3 +171,16 @@ export function resolveRouteSelection(
 
   return { mode, agent, model };
 }
+
+export function formatModeLabel(mode: string): string {
+  if (mode === "local") {
+    return "Local";
+  }
+  if (mode === "manual") {
+    return "Manual";
+  }
+  if (mode === "jev") {
+    return "Jev";
+  }
+  return mode ? mode.charAt(0).toUpperCase() + mode.slice(1) : "Local";
+}

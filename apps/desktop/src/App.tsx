@@ -29,7 +29,7 @@ import type {
   WorkbenchState,
   WorkspaceView as WorkspaceViewType,
 } from "./types";
-import { eventActivity, messageOf } from "./utils";
+import { eventActivity, mergeRecentWorkspaces, messageOf } from "./utils";
 
 const INITIAL_STATE: WorkbenchState = {
   discovery: null,
@@ -101,7 +101,14 @@ export function App() {
     const recentWorkspaces = await invoke<string[]>("list_recent_workspaces", {
       limit: 8,
     });
-    setState((current) => ({ ...current, recentWorkspaces }));
+    setState((current) => ({
+      ...current,
+      recentWorkspaces: mergeRecentWorkspaces(
+        currentWorkspace.current,
+        recentWorkspaces,
+        current.recentWorkspaces,
+      ),
+    }));
   }
 
   async function refreshSessions(cwd: string): Promise<SessionRecord[]> {
@@ -154,7 +161,11 @@ export function App() {
         runtime,
         discovery,
         sessions,
-        recentWorkspaces: discovery.recentWorkspaces,
+        recentWorkspaces: mergeRecentWorkspaces(
+          discovery.cwd,
+          discovery.recentWorkspaces,
+          current.recentWorkspaces,
+        ),
         sessionDetail: null,
         activeSessionId: null,
         loading: false,
@@ -486,6 +497,20 @@ export function App() {
     void loadDiscovery(ws);
   }
 
+  async function handlePickWorkspace(): Promise<void> {
+    try {
+      const selected = await invoke<string | null>("pick_workspace", {
+        initialDir: currentWorkspace.current || workspaceInput.trim() || null,
+      });
+      if (selected) {
+        setWorkspaceDropdownOpen(false);
+        await loadDiscovery(selected);
+      }
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
   function handleOpenSession(sessionId: string): void {
     navigateToSession(sessionId);
     setState((current) => ({ ...current, view: "workspace" }));
@@ -525,7 +550,7 @@ export function App() {
         onStartRun={() => void startRun()}
         onCancelRun={() => void cancelRun()}
         workspaceInput={workspaceInput}
-        onToggleWorkspaceDropdown={toggleWorkspaceDropdown}
+        onPickWorkspace={() => void handlePickWorkspace()}
         mode={form.mode}
         routingModes={discovery?.routingModes ?? ["local"]}
         onModeChange={(nextMode) => setForm((c) => ({ ...c, mode: nextMode }))}
@@ -570,6 +595,7 @@ export function App() {
           workspaceDropdownOpen={workspaceDropdownOpen}
           onToggleWorkspaceDropdown={toggleWorkspaceDropdown}
           onSelectWorkspace={handleSelectWorkspace}
+          onPickWorkspace={() => void handlePickWorkspace()}
           loading={state.loading}
           onRefreshDiscovery={() => void loadDiscovery(workspaceInput)}
           onStartNewTask={startNewTask}

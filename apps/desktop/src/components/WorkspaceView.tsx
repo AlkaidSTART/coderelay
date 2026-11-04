@@ -35,7 +35,7 @@ export function WorkspaceView({
     setTimeSnapshot(getWelcomeTimeSnapshot());
     const timer = window.setInterval(() => {
       setTimeSnapshot(getWelcomeTimeSnapshot());
-    }, 1000);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [showThread]);
 
@@ -76,22 +76,10 @@ export function WorkspaceView({
               className="flex min-h-[calc(100dvh-130px)] flex-col items-center justify-center pt-6 pb-16"
             >
               <div className="mb-9 flex flex-col items-center text-center select-none">
-                <time
-                  dateTime={timeSnapshot.formattedTime}
-                  className="mb-4 flex items-baseline justify-center font-display leading-none tabular-nums"
-                >
-                  <span className="text-[56px] font-light tracking-[-0.04em] text-ink">
-                    {timeSnapshot.formattedTime.slice(0, 5)}
-                  </span>
-                  <span className="ml-1 text-[24px] font-light tracking-[-0.02em] text-muted/65">
-                    {timeSnapshot.formattedTime.slice(5)}
-                  </span>
-                </time>
-
-                <h1 className="m-0 mb-2.5 font-display text-[28px] leading-[1.2] font-semibold tracking-[-0.025em] text-ink">
+                <h1 className="m-0 mb-3 font-display text-[32px] leading-[1.2] font-semibold tracking-[-0.03em] text-ink">
                   {timeSnapshot.greeting}
                 </h1>
-                <p className="m-0 max-w-[520px] text-[15px] leading-[1.65] tracking-[0.01em] text-muted">
+                <p className="m-0 max-w-[480px] text-[15px] leading-[1.6] text-muted">
                   {timeSnapshot.encouragement}
                 </p>
               </div>

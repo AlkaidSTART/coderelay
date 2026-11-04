@@ -65,6 +65,16 @@ export function WorkspaceDropdown({
                 ))}
               </div>
             ) : null}
+            <div className={workspaces.length > 0 ? "mt-1 border-t border-line pt-1" : ""}>
+              <button
+                type="button"
+                className="flex w-full items-center gap-[7px] rounded-[7px] bg-transparent px-2 py-1.5 text-left text-xs font-medium text-ink-soft transition-all duration-120 hover:bg-surface-subtle hover:text-ink"
+                onClick={onPickWorkspace}
+              >
+                <PlusIcon size={14} />
+                <span>打开文件夹...</span>
+              </button>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>

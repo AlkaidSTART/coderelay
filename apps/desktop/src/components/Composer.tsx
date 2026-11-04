@@ -190,43 +190,128 @@ export function Composer({
           </button>
         </div>
 
-        <div
-          className="relative inline-flex cursor-pointer items-center gap-[5px] rounded-lg bg-transparent px-2.5 py-[5px] font-code text-[11.5px] text-muted-strong transition-colors duration-140 hover:bg-surface-subtle hover:text-ink"
-          title={model || selectedAgentLabel || "Auto"}
-        >
-          <select
-            aria-label="Model"
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            value={agent ? `${agent}:::${model}` : ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (!val) {
-                onAgentModelChange("", "");
-              } else {
-                const [agentId, modelId] = val.split(":::");
-                onAgentModelChange(agentId ?? "", modelId ?? "");
-              }
-            }}
+        <div ref={modelMenuRef} className="relative inline-flex items-center">
+          <button
+            ref={triggerRef}
+            aria-expanded={modelMenuOpen}
+            aria-haspopup="listbox"
+            aria-label="选择模型"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-black/[0.06] bg-surface-subtle/80 px-3 py-1.5 font-code text-[11.5px] font-medium text-muted-strong shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all duration-140 hover:border-black/[0.12] hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-black/10"
             disabled={running}
+            onClick={toggleModelMenu}
+            title={currentSelectionLabel}
+            type="button"
           >
-            <option value="">Auto</option>
-            {agents.map((ag) => (
-              <optgroup key={ag.id} label={ag.label}>
-                <option value={`${ag.id}:::`}>{ag.label}</option>
-                {catalogOptions
-                  .filter((m) => m.cliId === ag.id && m.available)
-                  .map((m) => (
-                    <option key={`${ag.id}:::${m.modelId}`} value={`${ag.id}:::${m.modelId}`}>
-                      {m.label || m.modelId}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </select>
-          <span className="max-w-[150px] truncate">
-            {model ? model : selectedAgentLabel ? selectedAgentLabel : "Auto"}
-          </span>
-          <ChevronDownIcon size={11} />
+            <span className="max-w-[140px] truncate">{currentSelectionLabel}</span>
+            <span
+              className={`text-muted transition-transform duration-200 ${
+                modelMenuOpen ? "rotate-180" : ""
+              }`}
+            >
+              <ChevronDownIcon size={11} />
+            </span>
+          </button>
+
+          <AnimatePresence>
+            {modelMenuOpen ? (
+              <motion.div
+                role="listbox"
+                aria-label="模型列表"
+                initial={{
+                  opacity: 0,
+                  scale: 0.96,
+                  y: menuPlacement === "top" ? 6 : -6,
+                }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.96,
+                  y: menuPlacement === "top" ? 6 : -6,
+                }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className={`absolute right-0 z-50 flex max-h-[320px] w-[260px] flex-col overflow-hidden rounded-[20px] border border-black/[0.08] bg-white/95 p-1.5 shadow-[0_18px_48px_-8px_rgba(0,0,0,0.14),0_4px_16px_-4px_rgba(0,0,0,0.06)] backdrop-blur-md ${
+                  menuPlacement === "top" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"
+                }`}
+              >
+                <div className="flex-1 overflow-y-auto p-1 [scrollbar-color:rgba(0,0,0,0.12)_transparent] [scrollbar-width:thin]">
+                  {/* Auto option */}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isAutoSelected}
+                    onClick={() => handleSelectOption("", "")}
+                    className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-2 text-left font-code text-xs transition-all duration-120 ${
+                      isAutoSelected
+                        ? "bg-black/[0.06] font-semibold text-ink"
+                        : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
+                    }`}
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
+                      {isAutoSelected ? <CheckIcon size={13} /> : null}
+                    </span>
+                    <span className="truncate">Auto</span>
+                  </button>
+
+                  {/* Agents and their models */}
+                  {agents.map((ag) => {
+                    const agentModels = catalogOptions.filter(
+                      (m) => m.cliId === ag.id && m.available,
+                    );
+                    const isAgentDefaultSelected = agent === ag.id && !model;
+
+                    return (
+                      <div key={ag.id} className="mt-2.5 first:mt-1">
+                        <div className="px-2.5 py-1 text-[10.5px] font-semibold tracking-wider text-muted/70 uppercase select-none">
+                          {ag.label}
+                        </div>
+
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isAgentDefaultSelected}
+                          onClick={() => handleSelectOption(ag.id, "")}
+                          className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left font-code text-xs transition-all duration-120 ${
+                            isAgentDefaultSelected
+                              ? "bg-black/[0.06] font-semibold text-ink"
+                              : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
+                          }`}
+                        >
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
+                            {isAgentDefaultSelected ? <CheckIcon size={13} /> : null}
+                          </span>
+                          <span className="truncate">{ag.label}</span>
+                        </button>
+
+                        {agentModels.map((m) => {
+                          const isModelSelected = agent === ag.id && model === m.modelId;
+                          return (
+                            <button
+                              key={`${ag.id}:::${m.modelId}`}
+                              type="button"
+                              role="option"
+                              aria-selected={isModelSelected}
+                              onClick={() => handleSelectOption(ag.id, m.modelId)}
+                              className={`flex w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left font-code text-xs transition-all duration-120 ${
+                                isModelSelected
+                                  ? "bg-black/[0.06] font-semibold text-ink"
+                                  : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
+                              }`}
+                              title={m.label || m.modelId}
+                            >
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink">
+                                {isModelSelected ? <CheckIcon size={13} /> : null}
+                              </span>
+                              <span className="truncate">{m.label || m.modelId}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
 
         {running ? (
