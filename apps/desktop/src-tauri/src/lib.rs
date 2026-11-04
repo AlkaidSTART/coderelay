@@ -1,4 +1,4 @@
-use coderelay_core::{AgentDescriptor, CORE_VERSION, supported_agents};
+use coderelay_core::{AgentDescriptor, CORE_VERSION};
 use coderelay_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
