@@ -10,6 +10,7 @@ pub mod config;
 pub mod host;
 pub mod model;
 pub mod router;
+pub mod runtime;
 pub mod scanner;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
@@ -31,6 +32,10 @@ pub use router::{
     RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
     RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate, build_route_candidates,
     has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+};
+pub use runtime::{
+    AgentEvent, AgentProtocol, AgentRunHandle, AgentRunOptions, AgentRunResult, AgentRunStatus,
+    ChunkParser, OutputSource, start_agent_run,
 };
 pub use scanner::{
     CliCandidate, CliDiagnostic, CliRuntime, CliSource, DetectedCli, DiagnosticLevel, LaunchTarget,
