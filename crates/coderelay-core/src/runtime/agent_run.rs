@@ -144,7 +144,7 @@ fn build_command(options: &AgentRunOptions) -> Result<Command, String> {
                 .collect::<Vec<_>>()
                 .join(" ")
         };
-        let command = if options.platform == Platform::Win32 {
+        if options.platform == Platform::Win32 {
             let mut command = Command::new("cmd.exe");
             command.args(["/C", &command_line]);
             command
@@ -152,8 +152,7 @@ fn build_command(options: &AgentRunOptions) -> Result<Command, String> {
             let mut command = Command::new("sh");
             command.args(["-c", &command_line]);
             command
-        };
-        command
+        }
     } else {
         let mut command = Command::new(bin);
         command.args(args);

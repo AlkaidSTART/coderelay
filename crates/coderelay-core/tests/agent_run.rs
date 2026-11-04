@@ -252,12 +252,10 @@ fn shell_resolution_matches_windows_and_wsl_rules() {
         "/usr/bin/claude",
         Platform::Linux,
     ));
-    assert!(
-        coderelay_core::runtime::resolve_agent_shell(
-            Some(false),
-            Some(&local),
-            "C:\\fixture\\claude.cmd",
-            Platform::Win32,
-        ) == false
-    );
+    assert!(!coderelay_core::runtime::resolve_agent_shell(
+        Some(false),
+        Some(&local),
+        "C:\\fixture\\claude.cmd",
+        Platform::Win32,
+    ));
 }
