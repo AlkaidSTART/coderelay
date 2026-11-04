@@ -14,7 +14,7 @@ use coderelay_core::{
     AgentAbortHandle, AgentEvent, AgentRunOptions, AgentRunResult, AgentRunStatus, AppendTurnInput,
     CORE_VERSION, ListSessionsOptions, ModelCatalog, ROUTING_MODES, RouteRequest, RoutingMode,
     SessionRecord, SessionStore, SessionTurn, TurnContextSource, TurnProtocol, TurnRunStatus,
-    build_prompt_with_context, default_session_db_path, start_agent_run, summarize_events,
+    build_prompt_with_context, default_session_db_path, start_agent_run,
 };
 use coderelay_protocol::PROTOCOL_VERSION;
 use serde::{Deserialize, Serialize};
@@ -314,31 +314,35 @@ fn turn_status(status: AgentRunStatus) -> TurnRunStatus {
     }
 }
 
-fn record_run(
-    store: &mut SessionStore,
-    session_id: &str,
+struct RunRecordContext {
+    session_id: String,
     agent: coderelay_core::AgentId,
     model: Option<String>,
     prompt: String,
     protocol: TurnProtocol,
     context_source: Option<TurnContextSource>,
+}
+
+fn record_run(
+    store: &mut SessionStore,
+    context: RunRecordContext,
     result: &AgentRunResult,
 ) -> Result<SessionTurn, String> {
     store
         .append_turn(AppendTurnInput {
-            session_id: session_id.to_owned(),
-            cli_id: agent,
-            prompt,
+            session_id: context.session_id,
+            cli_id: context.agent,
+            prompt: context.prompt,
             output: result.text.clone(),
             exit_code: result.code,
             signal: result.signal.clone(),
             duration_ms: result.duration_ms,
-            model_id: model,
-            protocol: Some(protocol),
+            model_id: context.model,
+            protocol: Some(context.protocol),
             reused_native: Some(false),
             status: Some(turn_status(result.status)),
-            event_summary: Some(summarize_events(&result.events)),
-            context_source,
+            event_summary: Some(coderelay_core::runtime::summarize_events(&result.events)),
+            context_source: context.context_source,
         })
         .map_err(|error| error.to_string())
 }
@@ -448,17 +452,16 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
             },
         };
 
+        let record = RunRecordContext {
+            session_id: session_id.clone(),
+            agent: run_agent,
+            model: run_model,
+            prompt,
+            protocol,
+            context_source,
+        };
         let turn_id = with_session_store(&app_handle.state::<DesktopState>(), |store| {
-            record_run(
-                store,
-                &session_id,
-                run_agent,
-                run_model,
-                prompt,
-                protocol,
-                context_source,
-                &result,
-            )
+            record_run(store, record, &result)
         })
         .ok()
         .map(|turn| turn.id);
@@ -545,9 +548,7 @@ async fn read_config_source(request: WorkspaceRequest) -> Result<ConfigSourcePay
     let path = config_path(&request, &cwd)?;
     let exists = path.is_file();
     let raw = if exists {
-        tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|error| error.to_string())?
+        std::fs::read_to_string(&path).map_err(|error| error.to_string())?
     } else {
         render_default_config_yaml().map_err(|error| error.to_string())?
     };
@@ -616,12 +617,14 @@ mod tests {
         };
         let turn = record_run(
             &mut store,
-            &session.id,
-            coderelay_core::AgentId::Codex,
-            Some("gpt-5".to_owned()),
-            "fix it".to_owned(),
-            TurnProtocol::Text,
-            Some(TurnContextSource::Transcript),
+            RunRecordContext {
+                session_id: session.id.clone(),
+                agent: coderelay_core::AgentId::Codex,
+                model: Some("gpt-5".to_owned()),
+                prompt: "fix it".to_owned(),
+                protocol: TurnProtocol::Text,
+                context_source: Some(TurnContextSource::Transcript),
+            },
             &completed,
         )
         .expect("record completed");
@@ -642,12 +645,14 @@ mod tests {
         };
         let turn = record_run(
             &mut store,
-            &session.id,
-            coderelay_core::AgentId::Codex,
-            None,
-            "slow".to_owned(),
-            TurnProtocol::Structured,
-            None,
+            RunRecordContext {
+                session_id: session.id.clone(),
+                agent: coderelay_core::AgentId::Codex,
+                model: None,
+                prompt: "slow".to_owned(),
+                protocol: TurnProtocol::Structured,
+                context_source: None,
+            },
             &failed,
         )
         .expect("record failed");

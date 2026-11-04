@@ -5,12 +5,16 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   AgentEntry,
   AgentEvent,
+  ConfigSource,
   DiscoveryPayload,
   ModelOption,
   RoutePreview,
   RunCompletedPayload,
   RunEventPayload,
   RuntimeStatus,
+  SessionDetail,
+  SessionRecord,
+  SessionUpdatedPayload,
   StartRunResponse,
 } from "./types";
 
@@ -20,6 +24,8 @@ interface RouteForm {
   agent: string;
   model: string;
 }
+
+type WorkspaceView = "workspace" | "sessions" | "config";
 
 interface WorkbenchState {
   discovery: DiscoveryPayload | null;
@@ -32,6 +38,14 @@ interface WorkbenchState {
   activity: string[];
   result: RunCompletedPayload["result"] | null;
   preview: RoutePreview | null;
+  view: WorkspaceView;
+  recentWorkspaces: string[];
+  sessions: SessionRecord[];
+  sessionDetail: SessionDetail | null;
+  activeSessionId: string | null;
+  configSource: ConfigSource | null;
+  configDraft: string;
+  configBusy: boolean;
 }
 
 const INITIAL_STATE: WorkbenchState = {
@@ -45,6 +59,14 @@ const INITIAL_STATE: WorkbenchState = {
   activity: [],
   result: null,
   preview: null,
+  view: "workspace",
+  recentWorkspaces: [],
+  sessions: [],
+  sessionDetail: null,
+  activeSessionId: null,
+  configSource: null,
+  configDraft: "",
+  configBusy: false,
 };
 
 function messageOf(error: unknown): string {
@@ -68,6 +90,15 @@ function workspaceName(path: string): string {
   }
   const segments = normalized.split(/[\\/]/);
   return segments[segments.length - 1] || normalized;
+}
+
+function formatTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
 }
 
 function formatDuration(durationMs: number): string {
@@ -194,14 +225,6 @@ function StopIcon() {
   );
 }
 
-function SparkIcon() {
-  return (
-    <Icon size={17}>
-      <path d="M12 3.5c.52 4.74 3.76 7.98 8.5 8.5-4.74.52-7.98 3.76-8.5 8.5-.52-4.74-3.76-7.98-8.5-8.5 4.74-.52 7.98-3.76 8.5-8.5Z" />
-    </Icon>
-  );
-}
-
 function eventActivity(event: AgentEvent): string | null {
   if (event.kind === "tool_started") {
     return `tool · ${event.tool ?? "unknown"}`;
@@ -231,6 +254,18 @@ export function App() {
   });
   const [workspaceInput, setWorkspaceInput] = useState("");
   const activeRunId = useRef<string | null>(null);
+  const currentWorkspace = useRef("");
+
+  async function refreshSessions(cwd: string): Promise<SessionRecord[]> {
+    const sessions = await invoke<SessionRecord[]>("list_sessions", {
+      request: {
+        workspace: cwd.trim() || null,
+        limit: 30,
+      },
+    });
+    setState((current) => ({ ...current, sessions }));
+    return sessions;
+  }
 
   async function loadDiscovery(cwd?: string): Promise<void> {
     setState((current) => ({
@@ -248,6 +283,7 @@ export function App() {
           },
         }),
       ]);
+      currentWorkspace.current = discovery.cwd;
       setWorkspaceInput(discovery.cwd);
       setForm((current) => ({
         ...current,
@@ -259,10 +295,20 @@ export function App() {
           : "",
         model: "",
       }));
+      const sessions = await invoke<SessionRecord[]>("list_sessions", {
+        request: {
+          workspace: discovery.cwd,
+          limit: 30,
+        },
+      });
       setState((current) => ({
         ...current,
         runtime,
         discovery,
+        sessions,
+        recentWorkspaces: discovery.recentWorkspaces,
+        sessionDetail: null,
+        activeSessionId: null,
         loading: false,
         error: null,
       }));
@@ -273,6 +319,89 @@ export function App() {
         error: messageOf(error),
       }));
     }
+  }
+
+  async function openSession(sessionId: string): Promise<void> {
+    try {
+      const detail = await invoke<SessionDetail>("get_session", { sessionId });
+      setState((current) => ({
+        ...current,
+        sessionDetail: detail,
+        activeSessionId: sessionId,
+        error: null,
+      }));
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
+  async function loadConfigSource(): Promise<void> {
+    setState((current) => ({ ...current, configBusy: true, error: null }));
+    try {
+      const source = await invoke<ConfigSource>("read_config_source", {
+        request: {
+          cwd: workspaceInput.trim() || null,
+          configPath: null,
+        },
+      });
+      setState((current) => ({
+        ...current,
+        configSource: source,
+        configDraft: source.raw,
+        configBusy: false,
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        configBusy: false,
+        error: messageOf(error),
+      }));
+    }
+  }
+
+  async function saveConfig(): Promise<void> {
+    setState((current) => ({ ...current, configBusy: true, error: null }));
+    try {
+      const path = await invoke<string>("save_config", {
+        request: {
+          workspace: {
+            cwd: workspaceInput.trim() || null,
+            configPath: null,
+          },
+          raw: state.configDraft,
+        },
+      });
+      setState((current) => ({
+        ...current,
+        configBusy: false,
+        configSource: current.configSource
+          ? { ...current.configSource, path, exists: true, raw: current.configDraft }
+          : { path, exists: true, raw: current.configDraft },
+      }));
+      await loadDiscovery(workspaceInput);
+      setState((current) => ({ ...current, view: "config" }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        configBusy: false,
+        error: messageOf(error),
+      }));
+    }
+  }
+
+  function startNewTask(): void {
+    setForm((current) => ({ ...current, prompt: "" }));
+    setState((current) => ({
+      ...current,
+      view: "workspace",
+      activeSessionId: null,
+      sessionDetail: null,
+      output: "",
+      activity: [],
+      result: null,
+      preview: null,
+      error: null,
+    }));
   }
 
   useEffect(() => {
@@ -311,9 +440,14 @@ export function App() {
           ...current,
           running: false,
           runId: null,
+          activeSessionId: payload.sessionId,
           result: payload.result,
           output: payload.result.text || current.output,
         }));
+        void refreshSessions(currentWorkspace.current);
+      }),
+      listen<SessionUpdatedPayload>("session-updated", () => {
+        void refreshSessions(currentWorkspace.current);
       }),
     ]).then((registered) => {
       if (disposed) {
@@ -381,6 +515,7 @@ export function App() {
           agent: form.agent || null,
           model: form.model || null,
           timeoutMs: null,
+          sessionId: state.activeSessionId,
         },
       });
       activeRunId.current = response.runId;
@@ -388,6 +523,7 @@ export function App() {
         ...current,
         running: true,
         runId: response.runId,
+        activeSessionId: response.sessionId,
         output: "",
         activity: [],
         result: null,
@@ -444,10 +580,10 @@ export function App() {
           </span>
           <span>CodeRelay</span>
         </div>
-        <div className="titlebar-document" data-tauri-drag-region>
+        <button className="titlebar-document" onClick={startNewTask} type="button">
           <TerminalIcon />
           <span>{activeTaskTitle}</span>
-        </div>
+        </button>
         <div className="titlebar-status" data-tauri-drag-region>
           <span className="status-dot" data-tone={statusTone} />
           <span>{statusLabel}</span>
@@ -462,20 +598,50 @@ export function App() {
             </span>
           </div>
           <div className="rail-nav">
-            <span className="rail-action rail-action--active" aria-hidden="true">
+            <button
+              aria-label="工作台"
+              className={`rail-action ${state.view === "workspace" ? "rail-action--active" : ""}`}
+              onClick={() => setState((current) => ({ ...current, view: "workspace" }))}
+              title="工作台"
+              type="button"
+            >
               <HomeIcon />
-            </span>
-            <span className="rail-action" aria-hidden="true">
+            </button>
+            <button
+              aria-label="会话历史"
+              className={`rail-action ${state.view === "sessions" ? "rail-action--active" : ""}`}
+              onClick={() => {
+                setState((current) => ({ ...current, view: "sessions" }));
+                void refreshSessions(currentWorkspace.current);
+              }}
+              title="会话历史"
+              type="button"
+            >
               <HistoryIcon />
-            </span>
-            <span className="rail-action" aria-hidden="true">
+            </button>
+            <button
+              aria-label="新任务"
+              className="rail-action"
+              onClick={startNewTask}
+              title="新任务"
+              type="button"
+            >
               <FolderIcon />
-            </span>
+            </button>
           </div>
           <div className="rail-footer">
-            <span className="rail-action" aria-hidden="true">
+            <button
+              aria-label="配置"
+              className={`rail-action ${state.view === "config" ? "rail-action--active" : ""}`}
+              onClick={() => {
+                setState((current) => ({ ...current, view: "config" }));
+                void loadConfigSource();
+              }}
+              title="配置"
+              type="button"
+            >
               <SettingsIcon />
-            </span>
+            </button>
             <span className="rail-avatar" aria-hidden="true">CR</span>
           </div>
         </nav>
@@ -525,6 +691,21 @@ export function App() {
                   <RefreshIcon />
                 </button>
               </div>
+              {state.recentWorkspaces.length > 0 ? (
+                <div className="recent-workspaces">
+                  {state.recentWorkspaces.slice(0, 4).map((workspace) => (
+                    <button
+                      className={`workspace-chip ${workspace === workspaceInput ? "workspace-chip--active" : ""}`}
+                      key={workspace}
+                      onClick={() => void loadDiscovery(workspace)}
+                      title={workspace}
+                      type="button"
+                    >
+                      {workspaceName(workspace)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </section>
 
             <section className="sidebar-section sidebar-section--agents">
@@ -579,7 +760,7 @@ export function App() {
           </div>
         </aside>
 
-        <main className="main-panel">
+        <main className="main-panel" data-view={state.view}>
           <header className="main-toolbar">
             <div className="toolbar-breadcrumbs">
               <span className="breadcrumbs-root"><FolderIcon /> {workspaceName(workspaceInput)}</span>
@@ -591,6 +772,140 @@ export function App() {
               <span className={`connection-pill connection-pill--${statusTone}`}>{statusLabel}</span>
             </div>
           </header>
+
+          <section className="secondary-view" aria-live="polite">
+            {state.view === "sessions" ? (
+              <div className="secondary-page">
+                <div className="secondary-header">
+                  <div>
+                    <p className="sidebar-kicker">Conversation archive</p>
+                    <h2>会话历史</h2>
+                    <p>每次桌面任务都会写入共享 SQLite；选择历史会话后，下一条任务会带上它的上下文。</p>
+                  </div>
+                  <button
+                    className="ghost-button"
+                    onClick={() => void refreshSessions(currentWorkspace.current)}
+                    type="button"
+                  >
+                    <RefreshIcon />
+                    刷新
+                  </button>
+                </div>
+
+                <div className="session-layout">
+                  <div className="session-list">
+                    {state.sessions.length === 0 ? (
+                      <div className="secondary-empty">
+                        <HistoryIcon />
+                        <strong>还没有会话</strong>
+                        <span>完成第一条任务后，这里会出现可续跑的历史。</span>
+                      </div>
+                    ) : (
+                      state.sessions.map((session) => (
+                        <button
+                          className={`session-row ${state.activeSessionId === session.id ? "session-row--selected" : ""}`}
+                          key={session.id}
+                          onClick={() => void openSession(session.id)}
+                          type="button"
+                        >
+                          <span className="session-agent">{session.cliId}</span>
+                          <strong>{session.title}</strong>
+                          <small>{formatTimestamp(session.updatedAt)}</small>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="session-detail">
+                    {state.sessionDetail ? (
+                      <>
+                        <div className="session-detail-head">
+                          <div>
+                            <p className="sidebar-kicker">{state.sessionDetail.session.cliId}</p>
+                            <h3>{state.sessionDetail.session.title}</h3>
+                          </div>
+                          <button
+                            className="primary-button"
+                            onClick={() => {
+                              setState((current) => ({ ...current, view: "workspace" }));
+                              setForm((current) => ({ ...current, prompt: "" }));
+                            }}
+                            type="button"
+                          >
+                            继续这个会话
+                          </button>
+                        </div>
+                        <div className="turn-list">
+                          {state.sessionDetail.turns.map((turn) => (
+                            <article className="turn-card" key={turn.id}>
+                              <div className="turn-meta">
+                                <span>{turn.cliId}</span>
+                                <span>{turn.modelId ?? "default model"}</span>
+                                <span>{turn.status ?? "unknown"}</span>
+                              </div>
+                              <div className="turn-prompt">{turn.prompt}</div>
+                              <pre className="turn-output">{turn.output || "（无文本输出）"}</pre>
+                            </article>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="secondary-empty">
+                        <TerminalIcon />
+                        <strong>选择一个会话</strong>
+                        <span>查看跨 CLI 的完整任务记录和运行元数据。</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="secondary-page config-page">
+                <div className="secondary-header">
+                  <div>
+                    <p className="sidebar-kicker">Workspace configuration</p>
+                    <h2>配置</h2>
+                    <p>
+                      {state.configSource?.path ?? "正在读取配置文件…"}
+                    </p>
+                  </div>
+                  <div className="config-actions">
+                    <button
+                      className="ghost-button"
+                      disabled={state.configBusy}
+                      onClick={() => void loadConfigSource()}
+                      type="button"
+                    >
+                      重新读取
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={state.configBusy || !state.configDraft.trim()}
+                      onClick={() => void saveConfig()}
+                      type="button"
+                    >
+                      {state.configBusy ? "保存中…" : "保存配置"}
+                    </button>
+                  </div>
+                </div>
+                <div className="config-note">
+                  <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
+                    {state.configSource?.exists ? "workspace config" : "new global config"}
+                  </span>
+                  保存前会完整校验 YAML；校验失败不会覆盖现有文件。
+                </div>
+                <textarea
+                  aria-label="配置文件内容"
+                  className="config-editor"
+                  onChange={(event) =>
+                    setState((current) => ({ ...current, configDraft: event.target.value }))
+                  }
+                  spellCheck={false}
+                  value={state.configDraft}
+                />
+              </div>
+            )}
+          </section>
 
           <section className="conversation" aria-live="polite">
             <div className="conversation-inner">
