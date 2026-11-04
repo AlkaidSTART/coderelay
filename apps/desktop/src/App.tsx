@@ -102,6 +102,15 @@ function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
   );
 }
 
+function BrandMark() {
+  return (
+    <span className="brand-command" aria-hidden="true">
+      <span className="brand-command-symbol">&gt;</span>
+      <span className="brand-command-cursor" />
+    </span>
+  );
+}
+
 function HomeIcon() {
   return (
     <Icon>
@@ -136,23 +145,6 @@ function SettingsIcon() {
     <Icon>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .55 1.7 1.7 0 0 0-.4 1.1V21H9.55v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-1.55-1H2.5V10h.09A1.7 1.7 0 0 0 4.1 9a1.7 1.7 0 0 0-.34-1.88L3.7 7.06 6.56 4.2l.06.06A1.7 1.7 0 0 0 8.5 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1h.09v4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
-    </Icon>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <Icon>
-      <circle cx="10.8" cy="10.8" r="6.2" />
-      <path d="m15.4 15.4 4 4" />
-    </Icon>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <Icon size={14}>
-      <path d="m7 9.5 5 5 5-5" />
     </Icon>
   );
 }
@@ -447,8 +439,8 @@ export function App() {
     <div className="app-frame">
       <header className="titlebar" data-tauri-drag-region>
         <div className="titlebar-brand" data-tauri-drag-region>
-          <span className="brand-glyph brand-glyph--small" aria-hidden="true">
-            <SparkIcon />
+          <span className="brand-glyph brand-glyph--small">
+            <BrandMark />
           </span>
           <span>CodeRelay</span>
         </div>
@@ -465,8 +457,8 @@ export function App() {
       <div className="app-layout">
         <nav className="icon-rail" aria-label="工作台导航">
           <div className="rail-brand">
-            <span className="brand-glyph" aria-hidden="true">
-              <SparkIcon />
+            <span className="brand-glyph">
+              <BrandMark />
             </span>
           </div>
           <div className="rail-nav">
@@ -490,19 +482,26 @@ export function App() {
 
         <aside className="sidebar">
           <div className="sidebar-header">
-            <div>
-              <p className="sidebar-kicker">Local agent control plane</p>
-              <h1>CodeRelay <ChevronDownIcon /></h1>
+            <div className="brand-lockup">
+              <h1>CodeRelay</h1>
+              <p className="sidebar-kicker">Local coding agents</p>
             </div>
-            <span className="search-chip" aria-hidden="true">
-              <SearchIcon />
+            <span className="local-chip">{state.loading ? "SYNC" : "LOCAL"}</span>
+          </div>
+
+          <div className="sidebar-thread">
+            <span className="thread-icon"><TerminalIcon /></span>
+            <span className="thread-copy">
+              <strong>{activeTaskTitle}</strong>
+              <small>{state.running ? "正在执行" : state.result ? "已完成" : "当前任务"}</small>
             </span>
+            <span className={`thread-state ${state.running ? "thread-state--running" : ""}`} />
           </div>
 
           <div className="sidebar-scroll">
             <section className="sidebar-section">
               <div className="sidebar-section-title">
-                <span>工作区</span>
+                <span>WORKSPACE</span>
                 <span className="section-count">{state.loading ? "扫描中" : "已连接"}</span>
               </div>
               <div className="workspace-field">
@@ -530,8 +529,8 @@ export function App() {
 
             <section className="sidebar-section sidebar-section--agents">
               <div className="sidebar-section-title">
-                <span>Agents</span>
-                <span className="section-count">{agents.length.toString().padStart(2, "0")}</span>
+                <span>AGENTS</span>
+                <span className="section-count">{agents.filter((agent) => agent.available).length}/{agents.length}</span>
               </div>
               <div className="agent-list">
                 {agents.length === 0 ? (
@@ -549,7 +548,7 @@ export function App() {
                         <strong>{agent.label}</strong>
                         <small>{agent.version ?? agent.command}</small>
                       </span>
-                      <span className="agent-endpoint">{agent.available ? "ready" : "missing"}</span>
+                      <span className="agent-endpoint">{agent.available ? "online" : "offline"}</span>
                     </button>
                   ))
                 )}
@@ -558,13 +557,13 @@ export function App() {
 
             <section className="sidebar-section sidebar-section--context">
               <div className="sidebar-section-title">
-                <span>当前路由</span>
+                <span>ROUTING</span>
               </div>
               <div className="context-row">
                 <span className="context-icon"><RouteIcon /></span>
                 <div>
                   <strong>{selectedAgent?.label ?? "自动选择"}</strong>
-                  <span>{form.model || "Agent 默认模型"}</span>
+                  <span>{form.mode} · {form.model || "default"}</span>
                 </div>
               </div>
             </section>
@@ -573,8 +572,8 @@ export function App() {
           <div className="sidebar-footer">
             <span className="status-dot" data-tone={statusTone} />
             <div>
-              <strong>Rust Core</strong>
-              <span>{state.runtime?.coreVersion ? `v${state.runtime.coreVersion}` : "正在连接"}</span>
+              <strong>Local runtime</strong>
+              <span>{state.runtime?.coreVersion ? `Rust Core v${state.runtime.coreVersion}` : "正在连接"}</span>
             </div>
             <span className="protocol-pill">{state.runtime?.transport ?? "local"}</span>
           </div>
@@ -582,16 +581,13 @@ export function App() {
 
         <main className="main-panel">
           <header className="main-toolbar">
-            <div className="toolbar-left">
-              <span className="toolbar-label">Workspace</span>
-              <span className="toolbar-workspace">{workspaceName(workspaceInput)}</span>
-            </div>
-            <div className="toolbar-center">
-              <span className="toolbar-mark"><TerminalIcon /></span>
-              <span>{activeTaskTitle}</span>
+            <div className="toolbar-breadcrumbs">
+              <span className="breadcrumbs-root"><FolderIcon /> {workspaceName(workspaceInput)}</span>
+              <span className="breadcrumbs-separator">/</span>
+              <strong>{activeTaskTitle}</strong>
             </div>
             <div className="toolbar-right">
-              <span className="protocol-label">protocol {state.runtime?.protocolVersion ?? "—"}</span>
+              <span className="route-chip"><RouteIcon /> {selectedAgent?.label ?? "Auto route"}</span>
               <span className={`connection-pill connection-pill--${statusTone}`}>{statusLabel}</span>
             </div>
           </header>
@@ -607,25 +603,25 @@ export function App() {
 
               {!showThread ? (
                 <div className="empty-state">
-                  <div className="empty-mark" aria-hidden="true">
-                    <SparkIcon />
+                  <div className="empty-topline">
+                    <span className="empty-mark"><BrandMark /></span>
+                    <span className="empty-kicker">LOCAL-FIRST CODING AGENT</span>
                   </div>
-                  <p className="empty-kicker">Local agent control plane</p>
-                  <h2>让合适的 Agent，<br />接手这一棒。</h2>
+                  <h2>今天准备<br />构建什么？</h2>
                   <p className="empty-copy">
-                    发现本机可用的 Agent，比较模型与路由原因，然后在一个安静的工作台里执行任务。
+                    CodeRelay 会在本机发现可用的 Agent，把任务交给最合适的那一个，并保留完整的执行上下文。
                   </p>
-                  <div className="context-pills">
+                  <div className="empty-signals">
                     <span><FolderIcon /> {workspaceName(workspaceInput)}</span>
-                    <span><SparkIcon /> {agents.length} 个 Agent</span>
-                    <span><span className="status-dot" data-tone={statusTone} /> {statusLabel}</span>
+                    <span><span className="status-dot" data-tone={statusTone} /> {agents.filter((agent) => agent.available).length} agents ready</span>
+                    <span><TerminalIcon /> {state.runtime?.transport ?? "in-process"}</span>
                   </div>
                 </div>
               ) : (
                 <article className="assistant-message">
                   <div className="message-header">
-                    <span className="assistant-avatar" aria-hidden="true">
-                      <SparkIcon />
+                    <span className="assistant-avatar">
+                      <BrandMark />
                     </span>
                     <div className="assistant-identity">
                       <strong>CodeRelay</strong>
@@ -660,13 +656,18 @@ export function App() {
 
                   {state.activity.length > 0 ? (
                     <div className="activity-log">
-                      <p className="activity-label">活动</p>
-                      {state.activity.map((entry, index) => (
-                        <div className="activity-row" key={`${index}-${entry}`}>
-                          <span className="activity-icon"><TerminalIcon /></span>
-                          <span>{entry}</span>
-                        </div>
-                      ))}
+                      <div className="activity-head">
+                        <span className="activity-label"><TerminalIcon /> RUN LOG</span>
+                        <span>{state.activity.length} events</span>
+                      </div>
+                      <div className="activity-body">
+                        {state.activity.map((entry, index) => (
+                          <div className="activity-row" key={`${index}-${entry}`}>
+                            <span className="activity-prefix">›</span>
+                            <span>{entry}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
 
@@ -684,11 +685,15 @@ export function App() {
 
           <div className="composer-dock">
             <div className="composer">
+              <div className="composer-head">
+                <span>PROMPT</span>
+                <span>{workspaceName(workspaceInput)}</span>
+              </div>
               <textarea
                 aria-label="任务内容"
                 value={form.prompt}
                 onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-                placeholder="使用 CodeRelay，把任务交给最合适的 Agent…"
+                placeholder="描述需求，或粘贴一段代码…"
                 disabled={state.running}
               />
               <div className="composer-bar">
@@ -783,9 +788,9 @@ export function App() {
               </div>
             </div>
             <p className="composer-note">
-              <span>本地运行</span>
-              <span>不经过 shell 桥接</span>
-              <span>{state.runtime?.transport ?? "in-process"}</span>
+              <span>LOCAL EXECUTION</span>
+              <span>NO SHELL BRIDGE</span>
+              <span>PROTOCOL {state.runtime?.protocolVersion ?? "—"}</span>
             </p>
           </div>
         </main>

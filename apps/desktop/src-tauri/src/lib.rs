@@ -1,14 +1,20 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use coderelay_cli::commands::{AgentListEntry, build_agent_entries};
 use coderelay_cli::context::{CliContext, RunSelection, load_context};
 use coderelay_cli::jev::JevHttpClient;
+use coderelay_core::config::{
+    LoadConfigOptions, load_config, project_config_path, render_default_config_yaml,
+    save_config_source as write_config_source,
+};
 use coderelay_core::router::jev;
 use coderelay_core::{
-    AgentAbortHandle, AgentEvent, AgentRunOptions, AgentRunResult, CORE_VERSION, ModelCatalog,
-    ROUTING_MODES, RouteRequest, RoutingMode, start_agent_run,
+    AgentAbortHandle, AgentEvent, AgentRunOptions, AgentRunResult, AgentRunStatus, AppendTurnInput,
+    CORE_VERSION, ListSessionsOptions, ModelCatalog, ROUTING_MODES, RouteRequest, RoutingMode,
+    SessionRecord, SessionStore, SessionTurn, TurnContextSource, TurnProtocol, TurnRunStatus,
+    build_prompt_with_context, default_session_db_path, start_agent_run, summarize_events,
 };
 use coderelay_protocol::PROTOCOL_VERSION;
 use serde::{Deserialize, Serialize};
@@ -16,10 +22,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const RUN_EVENT: &str = "run-event";
 const RUN_COMPLETED: &str = "run-completed";
+const SESSION_UPDATED: &str = "session-updated";
 
 #[derive(Default)]
 struct DesktopState {
     runs: Mutex<HashMap<String, AgentAbortHandle>>,
+    sessions: Mutex<Option<SessionStore>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -46,6 +54,7 @@ struct DiscoveryPayload {
     routing_modes: Vec<RoutingMode>,
     agents: Vec<AgentListEntry>,
     catalog: ModelCatalog,
+    recent_workspaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,12 +86,14 @@ struct StartRunRequest {
     agent: Option<String>,
     model: Option<String>,
     timeout_ms: Option<u64>,
+    session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRunResponse {
     run_id: String,
+    session_id: String,
     agent: coderelay_core::AgentId,
     model: Option<String>,
     reasons: Vec<String>,
@@ -92,6 +103,7 @@ struct StartRunResponse {
 #[serde(rename_all = "camelCase")]
 struct RunEventPayload {
     run_id: String,
+    session_id: String,
     event: AgentEvent,
 }
 
@@ -99,7 +111,45 @@ struct RunEventPayload {
 #[serde(rename_all = "camelCase")]
 struct RunCompletedPayload {
     run_id: String,
+    session_id: String,
     result: AgentRunResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionUpdatedPayload {
+    session_id: String,
+    turn_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct SessionListRequest {
+    workspace: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionDetail {
+    session: SessionRecord,
+    turns: Vec<SessionTurn>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfigSourcePayload {
+    path: String,
+    exists: bool,
+    raw: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveConfigRequest {
+    #[serde(default)]
+    workspace: WorkspaceRequest,
+    raw: String,
 }
 
 #[tauri::command]
@@ -111,29 +161,82 @@ fn runtime_status() -> RuntimeStatus {
     }
 }
 
-fn workspace_paths(request: &WorkspaceRequest) -> (Option<PathBuf>, Option<PathBuf>) {
-    (
-        request
-            .cwd
-            .as_ref()
-            .map(PathBuf::from)
-            .or_else(dirs::home_dir),
-        request.config_path.as_ref().map(PathBuf::from),
-    )
+fn workspace_cwd(request: &WorkspaceRequest) -> Result<PathBuf, String> {
+    match request.cwd.as_ref().map(PathBuf::from) {
+        Some(path) if path.is_absolute() => Ok(path),
+        Some(path) => std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .map_err(|error| error.to_string()),
+        None => dirs::home_dir().ok_or_else(|| "unable to resolve home directory".to_owned()),
+    }
+}
+
+fn config_path(request: &WorkspaceRequest, cwd: &Path) -> Result<PathBuf, String> {
+    if let Some(path) = request.config_path.as_ref().map(PathBuf::from) {
+        return Ok(if path.is_absolute() {
+            path
+        } else {
+            cwd.join(path)
+        });
+    }
+    let environment: BTreeMap<String, String> = std::env::vars().collect();
+    let mut options = LoadConfigOptions::new(cwd);
+    options.home_dir = dirs::home_dir();
+    options.coderelay_home = environment.get("CODERELAY_HOME").map(PathBuf::from);
+    let loaded = load_config(&options).map_err(|error| format!("{error:#}"))?;
+    Ok(loaded.path.unwrap_or_else(|| project_config_path(cwd)))
 }
 
 async fn context_for(request: &WorkspaceRequest) -> Result<CliContext, String> {
-    let (cwd, config_path) = workspace_paths(request);
+    let cwd = workspace_cwd(request)?;
+    let config_path = request.config_path.as_ref().map(PathBuf::from);
     tauri::async_runtime::spawn_blocking(move || {
-        load_context(cwd.as_deref(), config_path.as_deref()).map_err(|error| format!("{error:#}"))
+        load_context(Some(&cwd), config_path.as_deref()).map_err(|error| format!("{error:#}"))
     })
     .await
     .map_err(|error| format!("context task failed: {error}"))?
 }
 
+fn session_store_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "unable to resolve home directory".to_owned())?;
+    let coderelay_home = std::env::var_os("CODERELAY_HOME").map(PathBuf::from);
+    default_session_db_path(Some(&home), coderelay_home.as_deref())
+        .ok_or_else(|| "unable to resolve session database path".to_owned())
+}
+
+fn with_session_store<T>(
+    state: &DesktopState,
+    action: impl FnOnce(&mut SessionStore) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut guard = state
+        .sessions
+        .lock()
+        .map_err(|_| "session store lock poisoned".to_owned())?;
+    if guard.is_none() {
+        *guard =
+            Some(SessionStore::open(session_store_path()?).map_err(|error| error.to_string())?);
+    }
+    action(guard.as_mut().expect("session store initialized"))
+}
+
+fn title_from_prompt(prompt: &str) -> String {
+    let first_line = prompt.lines().next().unwrap_or(prompt).trim();
+    let title: String = first_line.chars().take(80).collect();
+    if title.is_empty() {
+        "新任务".to_owned()
+    } else {
+        title
+    }
+}
+
 #[tauri::command]
-async fn discover(request: WorkspaceRequest) -> Result<DiscoveryPayload, String> {
+async fn discover(app: AppHandle, request: WorkspaceRequest) -> Result<DiscoveryPayload, String> {
     let context = context_for(&request).await?;
+    let recent_workspaces = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .get_recent_workspaces(8)
+            .map_err(|error| error.to_string())
+    })?;
     Ok(DiscoveryPayload {
         cwd: context.cwd.to_string_lossy().into_owned(),
         config_path: context
@@ -145,6 +248,7 @@ async fn discover(request: WorkspaceRequest) -> Result<DiscoveryPayload, String>
         routing_modes: ROUTING_MODES.to_vec(),
         agents: build_agent_entries(&context),
         catalog: context.catalog.clone(),
+        recent_workspaces,
     })
 }
 
@@ -200,6 +304,45 @@ async fn route_preview(request: SelectionRequest) -> Result<RoutePreview, String
     })
 }
 
+fn turn_status(status: AgentRunStatus) -> TurnRunStatus {
+    match status {
+        AgentRunStatus::Completed => TurnRunStatus::Completed,
+        AgentRunStatus::Failed => TurnRunStatus::Failed,
+        AgentRunStatus::Timeout => TurnRunStatus::Timeout,
+        AgentRunStatus::Aborted => TurnRunStatus::Aborted,
+        AgentRunStatus::SpawnError => TurnRunStatus::SpawnError,
+    }
+}
+
+fn record_run(
+    store: &mut SessionStore,
+    session_id: &str,
+    agent: coderelay_core::AgentId,
+    model: Option<String>,
+    prompt: String,
+    protocol: TurnProtocol,
+    context_source: Option<TurnContextSource>,
+    result: &AgentRunResult,
+) -> Result<SessionTurn, String> {
+    store
+        .append_turn(AppendTurnInput {
+            session_id: session_id.to_owned(),
+            cli_id: agent,
+            prompt,
+            output: result.text.clone(),
+            exit_code: result.code,
+            signal: result.signal.clone(),
+            duration_ms: result.duration_ms,
+            model_id: model,
+            protocol: Some(protocol),
+            reused_native: Some(false),
+            status: Some(turn_status(result.status)),
+            event_summary: Some(summarize_events(&result.events)),
+            context_source,
+        })
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunResponse, String> {
     let context = context_for(&request.workspace).await?;
@@ -211,13 +354,43 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
         model: request.model.clone(),
     };
     let selection = select_for(&context, &selection_request).await?;
+    let prompt = request.request.prompt.trim().to_owned();
+    let title = title_from_prompt(&prompt);
+    let workspace = context.cwd.clone();
+
+    let (session, history) = with_session_store(&app.state::<DesktopState>(), |store| {
+        let session = match request.session_id.as_deref() {
+            Some(session_id) => store
+                .get_session(session_id)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("session not found: {session_id}"))?,
+            None => store
+                .create_session(selection.agent, title, Some(&workspace))
+                .map_err(|error| error.to_string())?,
+        };
+        let turns = store
+            .list_turns(&session.id)
+            .map_err(|error| error.to_string())?;
+        Ok((session, turns))
+    })?;
+    let _ = app.emit(
+        SESSION_UPDATED,
+        SessionUpdatedPayload {
+            session_id: session.id.clone(),
+            turn_id: None,
+        },
+    );
+
+    let context_source = (!history.is_empty()).then_some(TurnContextSource::Transcript);
+    let effective_prompt = build_prompt_with_context(&history, &prompt);
     let prepared = context
-        .prepare_agent(
-            selection.agent,
-            selection.model.clone(),
-            &request.request.prompt,
-        )
+        .prepare_agent(selection.agent, selection.model.clone(), &effective_prompt)
         .map_err(|error| format!("{error:#}"))?;
+    let protocol = if prepared.structured {
+        TurnProtocol::Structured
+    } else {
+        TurnProtocol::Text
+    };
 
     let mut options = AgentRunOptions::new(prepared.command);
     options.cwd = prepared.cwd;
@@ -231,6 +404,7 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
     options.target = Some(prepared.target);
     let handle = start_agent_run(options);
     let run_id = handle.run_id.clone();
+    let session_id = session.id.clone();
     let abort_handle = handle.abort_handle();
     app.state::<DesktopState>()
         .runs
@@ -240,11 +414,14 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
 
     let response = StartRunResponse {
         run_id: run_id.clone(),
+        session_id: session_id.clone(),
         agent: selection.agent,
-        model: selection.model,
+        model: selection.model.clone(),
         reasons: selection.reasons,
     };
     let app_handle = app.clone();
+    let run_agent = selection.agent;
+    let run_model = selection.model;
     tauri::async_runtime::spawn(async move {
         let mut handle = handle;
         while let Some(event) = handle.events.recv().await {
@@ -252,39 +429,55 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
                 RUN_EVENT,
                 RunEventPayload {
                     run_id: run_id.clone(),
+                    session_id: session_id.clone(),
                     event,
                 },
             );
         }
-        match handle.done.await {
-            Ok(result) => {
-                let _ = app_handle.emit(
-                    RUN_COMPLETED,
-                    RunCompletedPayload {
-                        run_id: run_id.clone(),
-                        result,
-                    },
-                );
-            }
-            Err(error) => {
-                let _ = app_handle.emit(
-                    RUN_COMPLETED,
-                    RunCompletedPayload {
-                        run_id: run_id.clone(),
-                        result: AgentRunResult {
-                            status: coderelay_core::AgentRunStatus::SpawnError,
-                            code: None,
-                            signal: None,
-                            duration_ms: 0,
-                            timed_out: false,
-                            text: String::new(),
-                            stderr_tail: error.to_string(),
-                            events: Vec::new(),
-                        },
-                    },
-                );
-            }
-        }
+        let result = match handle.done.await {
+            Ok(result) => result,
+            Err(error) => AgentRunResult {
+                status: AgentRunStatus::SpawnError,
+                code: None,
+                signal: None,
+                duration_ms: 0,
+                timed_out: false,
+                text: String::new(),
+                stderr_tail: error.to_string(),
+                events: Vec::new(),
+            },
+        };
+
+        let turn_id = with_session_store(&app_handle.state::<DesktopState>(), |store| {
+            record_run(
+                store,
+                &session_id,
+                run_agent,
+                run_model,
+                prompt,
+                protocol,
+                context_source,
+                &result,
+            )
+        })
+        .ok()
+        .map(|turn| turn.id);
+
+        let _ = app_handle.emit(
+            SESSION_UPDATED,
+            SessionUpdatedPayload {
+                session_id: session_id.clone(),
+                turn_id,
+            },
+        );
+        let _ = app_handle.emit(
+            RUN_COMPLETED,
+            RunCompletedPayload {
+                run_id: run_id.clone(),
+                session_id: session_id.clone(),
+                result,
+            },
+        );
         if let Ok(mut runs) = app_handle.state::<DesktopState>().runs.lock() {
             runs.remove(&run_id);
         }
@@ -309,6 +502,71 @@ fn cancel_run(app: AppHandle, run_id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn list_recent_workspaces(app: AppHandle, limit: Option<u32>) -> Result<Vec<String>, String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .get_recent_workspaces(limit.unwrap_or(8))
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[tauri::command]
+fn list_sessions(
+    app: AppHandle,
+    request: SessionListRequest,
+) -> Result<Vec<SessionRecord>, String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .list_sessions(&ListSessionsOptions {
+                workspace: request.workspace,
+                limit: request.limit,
+            })
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[tauri::command]
+fn get_session(app: AppHandle, session_id: String) -> Result<SessionDetail, String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        let session = store
+            .get_session(&session_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
+        let turns = store
+            .list_turns(&session_id)
+            .map_err(|error| error.to_string())?;
+        Ok(SessionDetail { session, turns })
+    })
+}
+
+#[tauri::command]
+async fn read_config_source(request: WorkspaceRequest) -> Result<ConfigSourcePayload, String> {
+    let cwd = workspace_cwd(&request)?;
+    let path = config_path(&request, &cwd)?;
+    let exists = path.is_file();
+    let raw = if exists {
+        tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|error| error.to_string())?
+    } else {
+        render_default_config_yaml().map_err(|error| error.to_string())?
+    };
+    Ok(ConfigSourcePayload {
+        path: path.to_string_lossy().into_owned(),
+        exists,
+        raw,
+    })
+}
+
+#[tauri::command]
+async fn save_config(request: SaveConfigRequest) -> Result<String, String> {
+    let cwd = workspace_cwd(&request.workspace)?;
+    let path = config_path(&request.workspace, &cwd)?;
+    write_config_source(&path, &request.raw).map_err(|error| error.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 fn supported_agents() -> Vec<coderelay_core::AgentDescriptor> {
     coderelay_core::supported_agents()
 }
@@ -323,8 +581,79 @@ pub fn run() {
             discover,
             route_preview,
             start_run,
-            cancel_run
+            cancel_run,
+            list_recent_workspaces,
+            list_sessions,
+            get_session,
+            read_config_source,
+            save_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running CodeRelay desktop");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn records_completed_and_failed_runs_with_full_metadata() {
+        let mut store = SessionStore::open_in_memory().expect("store");
+        let session = store
+            .create_session(coderelay_core::AgentId::Codex, "desktop run", None)
+            .expect("session");
+        let completed = AgentRunResult {
+            status: AgentRunStatus::Completed,
+            code: Some(0),
+            signal: None,
+            duration_ms: 42,
+            timed_out: false,
+            text: "desktop output".to_owned(),
+            stderr_tail: String::new(),
+            events: vec![AgentEvent::AssistantText {
+                text: "desktop output".to_owned(),
+            }],
+        };
+        let turn = record_run(
+            &mut store,
+            &session.id,
+            coderelay_core::AgentId::Codex,
+            Some("gpt-5".to_owned()),
+            "fix it".to_owned(),
+            TurnProtocol::Text,
+            Some(TurnContextSource::Transcript),
+            &completed,
+        )
+        .expect("record completed");
+        assert_eq!(turn.status, Some(TurnRunStatus::Completed));
+        assert_eq!(turn.model_id.as_deref(), Some("gpt-5"));
+        assert_eq!(turn.context_source, Some(TurnContextSource::Transcript));
+        assert_eq!(turn.event_summary.as_deref(), Some("desktop output"));
+
+        let failed = AgentRunResult {
+            status: AgentRunStatus::Timeout,
+            code: None,
+            signal: Some("SIGKILL".to_owned()),
+            duration_ms: 120,
+            timed_out: true,
+            text: "partial".to_owned(),
+            stderr_tail: "timed out".to_owned(),
+            events: Vec::new(),
+        };
+        let turn = record_run(
+            &mut store,
+            &session.id,
+            coderelay_core::AgentId::Codex,
+            None,
+            "slow".to_owned(),
+            TurnProtocol::Structured,
+            None,
+            &failed,
+        )
+        .expect("record failed");
+        assert_eq!(turn.status, Some(TurnRunStatus::Timeout));
+        assert_eq!(turn.exit_code, None);
+        assert_eq!(turn.signal.as_deref(), Some("SIGKILL"));
+        assert_eq!(turn.protocol, Some(TurnProtocol::Structured));
+    }
 }
