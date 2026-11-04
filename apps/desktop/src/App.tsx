@@ -256,6 +256,13 @@ export function App() {
   const activeRunId = useRef<string | null>(null);
   const currentWorkspace = useRef("");
 
+  async function refreshRecentWorkspaces(): Promise<void> {
+    const recentWorkspaces = await invoke<string[]>("list_recent_workspaces", {
+      limit: 8,
+    });
+    setState((current) => ({ ...current, recentWorkspaces }));
+  }
+
   async function refreshSessions(cwd: string): Promise<SessionRecord[]> {
     const sessions = await invoke<SessionRecord[]>("list_sessions", {
       request: {
@@ -448,6 +455,7 @@ export function App() {
       }),
       listen<SessionUpdatedPayload>("session-updated", () => {
         void refreshSessions(currentWorkspace.current);
+        void refreshRecentWorkspaces();
       }),
     ]).then((registered) => {
       if (disposed) {
@@ -890,7 +898,7 @@ export function App() {
                 </div>
                 <div className="config-note">
                   <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
-                    {state.configSource?.exists ? "workspace config" : "new global config"}
+                    {state.configSource?.exists ? "workspace config" : "new workspace config"}
                   </span>
                   保存前会完整校验 YAML；校验失败不会覆盖现有文件。
                 </div>

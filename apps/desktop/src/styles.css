@@ -267,12 +267,26 @@ select {
   display: grid;
   width: 34px;
   height: 34px;
-  pointer-events: none;
   place-items: center;
   border: 1px solid transparent;
   border-radius: 9px;
   color: #7a7a74;
   background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.rail-action:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.rail-action:focus-visible {
+  outline: 2px solid rgba(241, 90, 55, 0.42);
+  outline-offset: 2px;
 }
 
 .rail-action--active {

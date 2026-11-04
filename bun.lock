@@ -21,7 +21,6 @@
     },
     "apps/desktop": {
       "name": "@coderelay/desktop",
-      "version": "0.3.2",
       "dependencies": {
         "@tauri-apps/api": "^2.9.0",
         "react": "19.3.0",
