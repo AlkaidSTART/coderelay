@@ -186,3 +186,43 @@ export interface SessionUpdatedPayload {
   sessionId: string;
   turnId: number | null;
 }
+
+export interface RouteForm {
+  prompt: string;
+  mode: string;
+  agent: string;
+  model: string;
+}
+
+export const WORKSPACE_VIEWS = ["workspace", "sessions", "config"] as const;
+export type WorkspaceView = (typeof WORKSPACE_VIEWS)[number];
+
+export function isWorkspaceView(value: unknown): value is WorkspaceView {
+  return (WORKSPACE_VIEWS as readonly unknown[]).includes(value);
+}
+
+export interface WorkbenchState {
+  discovery: DiscoveryPayload | null;
+  runtime: RuntimeStatus | null;
+  loading: boolean;
+  error: string | null;
+  running: boolean;
+  runId: string | null;
+  output: string;
+  activity: string[];
+  result: RunCompletedPayload["result"] | null;
+  preview: RoutePreview | null;
+  view: WorkspaceView;
+  recentWorkspaces: string[];
+  sessions: SessionRecord[];
+  sessionDetail: SessionDetail | null;
+  activeSessionId: string | null;
+  configSource: ConfigSource | null;
+  configDraft: string;
+  configBusy: boolean;
+  jevSettings: JevSettings | null;
+  jevApiKeyInput: string;
+  jevBusy: boolean;
+  configNotice: string | null;
+}
+
