@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg?style=flat-square" alt="platform" />
 </p>
 
+<p align="center">
+  <img src="assets/product-hero.png" alt="coderelay 产品图：cr 命令经 coderelay 路由到 claude、codex、pi、omp 等本机编码 Agent" width="760" />
+</p>
+
 ---
 
 ## 目录
@@ -24,6 +28,7 @@
 - [为什么需要 coderelay](#为什么需要-coderelay)
 - [核心特性](#核心特性)
 - [支持的 Agent 矩阵](#支持的-agent-矩阵)
+- [桌面端功能](#桌面端功能)
 - [快速开始](#快速开始)
   - [桌面端](#桌面端)
   - [Rust CLI](#rust-cli)
@@ -36,6 +41,7 @@
 - [决策模式（Routing Modes）](#决策模式routing-modes)
 - [配置说明](#配置说明)
 - [架构设计](#架构设计)
+- [项目结构](#项目结构)
 - [本地开发](#本地开发)
 - [开源协议](#开源协议)
 
@@ -62,6 +68,7 @@
 - 🔍 **环境自动发现**：跨平台检测 PATH、npm/Bun/Homebrew 等安装来源，并探测版本与模型目录。
 - 🎯 **三模智能路由**：`local` 规则与评分、`manual` 显式指定、`jev` 远程决策。
 - 💾 **跨 CLI 会话**：桌面端自动写入 SQLite；续跑会话时把历史上下文安全注入下一位 Agent。
+- 🎨 **个性化外观**：主题预设、浅色/深色切换，支持上传本地图片作为自定义背景并调节不透明度。
 - 🧰 **自动化 CLI**：`run / agents / models / doctor / favorite`，适合脚本、CI 和排障。
 - 🔌 **TypeScript SDK**：通过版本化 NDJSON stdio 协议调用本地 host，支持类型化请求和流式事件。
 - 🛡️ **受控执行**：前端只能提交领域请求，不能传任意 shell 或 argv；取消会回收整个进程组。
@@ -80,6 +87,22 @@
 | **OMP** | `omp` | 通用适配器 | 参数按标准约定传递，自动版本探针 |
 
 > 提示：运行 `coderelay agents` 可即时查看本机安装与适配状态。
+
+---
+
+## 桌面端功能
+
+桌面端（`apps/desktop`，Tauri 2 + React）是 coderelay 的主入口：
+
+| 模块 | 说明 |
+|---|---|
+| **工作区** | 通过系统对话框选择目录，下拉列表合并展示最近使用的工作区，切换后自动重新扫描 Agent 与模型。 |
+| **对话视图** | 输入任务后实时预览路由结果（Agent / 模型），流式展示输出，支持随时取消。 |
+| **会话历史** | 侧边栏按工作区列出历史会话，可展开/收起；续跑时把历史上下文注入下一位 Agent，实现跨 CLI 接力。 |
+| **Agent 与模型** | 展示各 Agent 的安装状态、版本、来源与探测到的模型目录，可手动指定模型或设置偏好 Agent。 |
+| **API Key 管理** | 在设置页保存 `TYPESAFE_API_KEY`（用于 Jev 模式），密钥存于本机 SQLite。 |
+| **配置视图** | 查看并校验当前生效的配置与路由规则。 |
+| **主题与背景** | 主题预设、浅色/深色模式，自定义背景图及不透明度，设置会持久化保存。 |
 
 ---
 
@@ -335,6 +358,24 @@ routing:
 </picture>
 
 > 💡 **交互式架构图**：在浏览器中打开 [assets/architecture.html](assets/architecture.html)，可在线缩放、按节点筛选依赖、追踪调用链及切换暗黑/浅色主题。
+
+---
+
+## 项目结构
+
+```text
+coderelay/
+├── apps/desktop/            # Tauri 2 桌面端（React 前端 + src-tauri Rust 后端）
+├── crates/
+│   ├── coderelay-core/      # 扫描、路由、执行、SQLite 会话等核心实现
+│   ├── coderelay-protocol/  # 版本化 NDJSON 协议类型（CLI / SDK / 桌面共用）
+│   └── coderelay-cli/       # Rust CLI（run / agents / models / doctor / favorite / sdk）
+├── packages/sdk-ts/         # TypeScript SDK（@alkaidstart/coderelay-sdk）
+├── src/                     # 旧 Bun CLI/TUI（迁移兼容，不再新增功能）
+├── docs/                    # 架构与设计文档
+├── assets/                  # Logo、产品图与架构图
+└── .github/workflows/       # ci / desktop-build / release
+```
 
 ---
 
