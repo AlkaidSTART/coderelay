@@ -19,6 +19,7 @@ wait-timeout.workspace = true
 tokio.workspace = true
 libc.workspace = true
 uuid.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 futures.workspace = true

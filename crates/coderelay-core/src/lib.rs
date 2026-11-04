@@ -12,6 +12,7 @@ pub mod model;
 pub mod router;
 pub mod runtime;
 pub mod scanner;
+pub mod session;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
 pub use agents::{
@@ -40,6 +41,11 @@ pub use runtime::{
 pub use scanner::{
     CliCandidate, CliDiagnostic, CliRuntime, CliSource, DetectedCli, DiagnosticLevel, LaunchTarget,
     ScannerOptions, cli_definitions, detect_host_agent, scan_coding_clis, scan_wsl_clis,
+};
+pub use session::{
+    AppendTurnInput, ListSessionsOptions, SessionRecord, SessionStore, SessionStoreError,
+    SessionTurn, TurnContextSource, TurnProtocol, TurnRunStatus, build_prompt_with_context,
+    default_session_db_path,
 };
 
 /// Semantic version of the Rust core crate.
