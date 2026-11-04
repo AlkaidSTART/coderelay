@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
@@ -208,18 +209,18 @@ function RouteIcon() {
   );
 }
 
-function ArrowUpIcon() {
+function ArrowUpIcon({ size = 17 }: { size?: number } = {}) {
   return (
-    <Icon size={17}>
+    <Icon size={size}>
       <path d="M12 19V5" />
       <path d="m6.5 10.5 5.5-5.5 5.5 5.5" />
     </Icon>
   );
 }
 
-function StopIcon() {
+function StopIcon({ size = 16 }: { size?: number } = {}) {
   return (
-    <Icon size={16}>
+    <Icon size={size}>
       <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
     </Icon>
   );
@@ -775,6 +776,13 @@ export function App() {
               title="工作台"
               type="button"
             >
+              {state.view === "workspace" ? (
+                <motion.div
+                  className="rail-action-bg"
+                  layoutId="rail-active-pill"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              ) : null}
               <HomeIcon />
             </button>
             <button
@@ -790,6 +798,13 @@ export function App() {
               title="会话历史"
               type="button"
             >
+              {state.view === "sessions" ? (
+                <motion.div
+                  className="rail-action-bg"
+                  layoutId="rail-active-pill"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              ) : null}
               <HistoryIcon />
             </button>
             <button
@@ -816,6 +831,13 @@ export function App() {
               title="配置"
               type="button"
             >
+              {state.view === "config" ? (
+                <motion.div
+                  className="rail-action-bg"
+                  layoutId="rail-active-pill"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              ) : null}
               <SettingsIcon />
             </button>
           </div>
@@ -833,36 +855,44 @@ export function App() {
                 <span className="brand-title">CodeRelay</span>
                 <ChevronDownIcon size={12} />
               </button>
-              {workspaceDropdownOpen ? (
-                <div className="workspace-dropdown">
-                  <div className="workspace-dropdown-header">
-                    <span>当前工作区</span>
-                  </div>
-                  <div className="workspace-dropdown-current">
-                    <FolderIcon />
-                    <span>{workspaceInput}</span>
-                  </div>
-                  {state.recentWorkspaces.length > 0 ? (
-                    <div className="workspace-dropdown-list">
-                      <div className="workspace-dropdown-subtitle">最近切换</div>
-                      {state.recentWorkspaces.map((ws) => (
-                        <button
-                          key={ws}
-                          type="button"
-                          className={`workspace-dropdown-item ${ws === workspaceInput ? "workspace-dropdown-item--active" : ""}`}
-                          onClick={() => {
-                            setWorkspaceDropdownOpen(false);
-                            void loadDiscovery(ws);
-                          }}
-                        >
-                          <FolderIcon />
-                          <span>{workspaceName(ws)}</span>
-                        </button>
-                      ))}
+              <AnimatePresence>
+                {workspaceDropdownOpen ? (
+                  <motion.div
+                    className="workspace-dropdown"
+                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                  >
+                    <div className="workspace-dropdown-header">
+                      <span>当前工作区</span>
                     </div>
-                  ) : null}
-                </div>
-              ) : null}
+                    <div className="workspace-dropdown-current">
+                      <FolderIcon />
+                      <span>{workspaceInput}</span>
+                    </div>
+                    {state.recentWorkspaces.length > 0 ? (
+                      <div className="workspace-dropdown-list">
+                        <div className="workspace-dropdown-subtitle">最近切换</div>
+                        {state.recentWorkspaces.map((ws) => (
+                          <button
+                            key={ws}
+                            type="button"
+                            className={`workspace-dropdown-item ${ws === workspaceInput ? "workspace-dropdown-item--active" : ""}`}
+                            onClick={() => {
+                              setWorkspaceDropdownOpen(false);
+                              void loadDiscovery(ws);
+                            }}
+                          >
+                            <FolderIcon />
+                            <span>{workspaceName(ws)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
 
             <div className="sidebar-header-actions">
@@ -1005,514 +1035,627 @@ export function App() {
             </div>
           </header>
 
-          <section className="secondary-view" aria-live="polite">
-            {state.view === "sessions" ? (
-              <div className="secondary-page">
-                <div className="secondary-header">
-                  <div>
-                    <p className="sidebar-kicker">Conversation archive</p>
-                    <h2>会话历史</h2>
-                    <p>每次桌面任务都会写入共享 SQLite；选择历史会话后，下一条任务会带上它的上下文。</p>
-                  </div>
-                  <button
-                    className="ghost-button"
-                    onClick={() => void refreshSessions(currentWorkspace.current)}
-                    type="button"
-                  >
-                    <RefreshIcon />
-                    刷新
-                  </button>
-                </div>
+          <AnimatePresence mode="wait">
+            {state.view === "workspace" ? (
+              <motion.section
+                key="workspace"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                className="conversation"
+                aria-live="polite"
+              >
+                <div className="conversation-inner">
+                  <AnimatePresence>
+                    {state.error ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8, height: 0 }}
+                        animate={{ opacity: 1, y: 0, height: "auto" }}
+                        exit={{ opacity: 0, y: -8, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="alert"
+                        role="alert"
+                      >
+                        <strong>连接出现问题</strong>
+                        <span>{state.error}</span>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
 
-                <div className="session-layout">
-                  <div className="session-list">
-                    {state.sessions.length === 0 ? (
-                      <div className="secondary-empty">
-                        <HistoryIcon />
-                        <strong>还没有会话</strong>
-                        <span>完成第一条任务后，这里会出现可续跑的历史。</span>
-                      </div>
-                    ) : (
-                      state.sessions.map((session) => (
-                        <button
-                          className={`session-row ${state.activeSessionId === session.id ? "session-row--selected" : ""}`}
-                          key={session.id}
-                          onClick={() => void openSession(session.id)}
-                          type="button"
-                        >
-                          <span className="session-agent">{session.cliId}</span>
-                          <strong>{session.title}</strong>
-                          <small>{formatTimestamp(session.updatedAt)}</small>
-                        </button>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="session-detail">
-                    {state.sessionDetail ? (
-                      <>
-                        <div className="session-detail-head">
-                          <div>
-                            <p className="sidebar-kicker">{state.sessionDetail.session.cliId}</p>
-                            <h3>{state.sessionDetail.session.title}</h3>
-                          </div>
-                          <button
-                            className="primary-button"
-                            onClick={() => {
-                              setState((current) => ({ ...current, view: "workspace" }));
-                              setForm((current) => ({ ...current, prompt: "" }));
-                            }}
-                            type="button"
-                          >
-                            继续这个会话
-                          </button>
+                  <AnimatePresence mode="wait">
+                    {!showThread ? (
+                      <motion.div
+                        key="welcome-hero"
+                        initial={{ opacity: 0, scale: 0.98, y: 12 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -12 }}
+                        transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+                        className="welcome-hero-container"
+                      >
+                        <div className="welcome-hero">
+                          <h2 className="welcome-title">我们要作什么？</h2>
                         </div>
-                        <div className="turn-list">
-                          {state.sessionDetail.turns.map((turn) => (
-                            <article className="turn-card" key={turn.id}>
-                              <div className="turn-meta">
-                                <span>{turn.cliId}</span>
-                                <span>{turn.modelId ?? "default model"}</span>
-                                <span>{turn.status ?? "unknown"}</span>
-                              </div>
-                              <div className="turn-prompt">{turn.prompt}</div>
-                              <pre className="turn-output">{turn.output || "（无文本输出）"}</pre>
-                            </article>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="secondary-empty">
-                        <TerminalIcon />
-                        <strong>选择一个会话</strong>
-                        <span>查看跨 CLI 的完整任务记录和运行元数据。</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="secondary-page config-page">
-                <div className="secondary-header">
-                  <div>
-                    <p className="sidebar-kicker">Workspace configuration</p>
-                    <h2>配置</h2>
-                    <p>
-                      {state.configSource?.path ?? "正在读取配置文件…"}
-                    </p>
-                  </div>
-                  <div className="config-actions">
-                    <button
-                      className="ghost-button"
-                      disabled={state.configBusy}
-                      onClick={() => void loadConfigSource()}
-                      type="button"
-                    >
-                      重新读取
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={state.configBusy || !state.configDraft.trim()}
-                      onClick={() => void saveConfig()}
-                      type="button"
-                    >
-                      {state.configBusy ? "保存中…" : "保存配置"}
-                    </button>
-                  </div>
-                </div>
-                <section className="credential-panel" aria-labelledby="jev-credential-title">
-                  <div className="credential-copy">
-                    <p className="sidebar-kicker">Jev routing credential</p>
-                    <h3 id="jev-credential-title">TypeSafe API Key</h3>
-                    <p>
-                      在界面填写后会保存到本机 SQLite。Jev 路由优先使用这里保存的密钥，
-                      环境变量和本地配置文件只作为兼容兜底。
-                    </p>
-                  </div>
-                  <span className={`credential-status ${state.jevSettings?.stored ? "credential-status--stored" : ""}`}>
-                    {state.jevSettings?.stored
-                      ? "已保存到 SQLite"
-                      : state.jevSettings?.environmentConfigured
-                        ? "正在使用环境变量"
-                        : "未配置"}
-                  </span>
-                  <div className="credential-form">
-                    <label htmlFor="jev-api-key">
-                      <span>TYPESAFE_API_KEY</span>
-                      <input
-                        autoComplete="off"
-                        disabled={state.jevBusy}
-                        id="jev-api-key"
-                        onChange={(event) =>
-                          setState((current) => ({
-                            ...current,
-                            jevApiKeyInput: event.target.value,
-                          }))
-                        }
-                        placeholder={state.jevSettings?.stored ? "已保存，输入新密钥可替换" : "粘贴 API Key"}
-                        spellCheck={false}
-                        type="password"
-                        value={state.jevApiKeyInput}
-                      />
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={state.jevBusy || !state.jevApiKeyInput.trim()}
-                      onClick={() => void saveJevApiKey()}
-                      type="button"
-                    >
-                      {state.jevBusy ? "保存中…" : "保存密钥"}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      disabled={state.jevBusy || !state.jevSettings?.stored}
-                      onClick={() => void clearJevApiKey()}
-                      type="button"
-                    >
-                      清除
-                    </button>
-                  </div>
-                  {state.configNotice ? (
-                    <p className="credential-notice" role="status">{state.configNotice}</p>
-                  ) : null}
-                </section>
-                <div className="config-note">
-                  <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
-                    {state.configSource?.exists ? "workspace config" : "new workspace config"}
-                  </span>
-                  保存前会完整校验 YAML；校验失败不会覆盖现有文件。
-                </div>
-                <textarea
-                  aria-label="配置文件内容"
-                  className="config-editor"
-                  onChange={(event) =>
-                    setState((current) => ({ ...current, configDraft: event.target.value }))
-                  }
-                  spellCheck={false}
-                  value={state.configDraft}
-                />
-              </div>
-            )}
-          </section>
 
-          <section className="conversation" aria-live="polite">
-            <div className="conversation-inner">
-              {state.error ? (
-                <div className="alert" role="alert">
-                  <strong>连接出现问题</strong>
-                  <span>{state.error}</span>
-                </div>
-              ) : null}
-
-              {!showThread ? (
-                <div className="welcome-hero-container">
-                  <div className="welcome-hero">
-                    <h2 className="welcome-title">我们要作什么？</h2>
-                  </div>
-
-                  <div className="hero-composer-card">
-                    <textarea
-                      aria-label="任务内容"
-                      value={form.prompt}
-                      onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-                          event.preventDefault();
-                          if (form.prompt.trim() && !state.running) {
-                            void startRun();
-                          }
-                        }
-                      }}
-                      placeholder="使用 CodeRelay"
-                      disabled={state.running}
-                    />
-
-                    <div className="composer-toolbar">
-                      <div className="composer-toolbar-left">
-                        <button
-                          className="composer-action-btn"
-                          type="button"
-                          onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
-                          title="选择工作区 / 添加"
-                        >
-                          <PlusIcon size={14} />
-                        </button>
-                        <button
-                          className="security-badge-btn"
-                          type="button"
-                          onClick={() => {
-                            const modes = discovery?.routingModes ?? ["local"];
-                            const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
-                            setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
-                          }}
-                          title={`当前访问模式: ${form.mode}（点击切换）`}
-                        >
-                          <ShieldIcon size={13} />
-                          <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
-                        </button>
-                      </div>
-
-                      <div className="composer-toolbar-right">
-                        <div className="model-select-capsule">
-                          <select
-                            value={form.agent ? `${form.agent}:::${form.model}` : ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (!val) {
-                                setForm((c) => ({ ...c, agent: "", model: "" }));
-                              } else {
-                                const [agentId, modelId] = val.split(":::");
-                                setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
+                        <div className="hero-composer-card">
+                          <textarea
+                            aria-label="任务内容"
+                            value={form.prompt}
+                            onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                                event.preventDefault();
+                                if (form.prompt.trim() && !state.running) {
+                                  void startRun();
+                                }
                               }
                             }}
+                            placeholder="使用 CodeRelay"
                             disabled={state.running}
-                          >
-                            <option value="">
-                              {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
-                            </option>
-                            {agents.map((agent) => (
-                              <optgroup key={agent.id} label={agent.label}>
-                                <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
-                                {discovery?.catalog.options
-                                  .filter((m) => m.cliId === agent.id && m.available)
-                                  .map((m) => (
-                                    <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
-                                      {m.label || m.modelId}
-                                    </option>
+                          />
+
+                          <div className="composer-toolbar">
+                            <div className="composer-toolbar-left">
+                              <button
+                                className="composer-action-btn"
+                                type="button"
+                                onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                                title="选择工作区 / 添加"
+                              >
+                                <PlusIcon size={14} />
+                              </button>
+                              <button
+                                className="security-badge-btn"
+                                type="button"
+                                onClick={() => {
+                                  const modes = discovery?.routingModes ?? ["local"];
+                                  const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
+                                  setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
+                                }}
+                                title={`当前访问模式: ${form.mode}（点击切换）`}
+                              >
+                                <ShieldIcon size={13} />
+                                <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
+                              </button>
+                            </div>
+
+                            <div className="composer-toolbar-right">
+                              <div className="model-select-capsule">
+                                <select
+                                  value={form.agent ? `${form.agent}:::${form.model}` : ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (!val) {
+                                      setForm((c) => ({ ...c, agent: "", model: "" }));
+                                    } else {
+                                      const [agentId, modelId] = val.split(":::");
+                                      setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
+                                    }
+                                  }}
+                                  disabled={state.running}
+                                >
+                                  <option value="">
+                                    {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
+                                  </option>
+                                  {agents.map((agent) => (
+                                    <optgroup key={agent.id} label={agent.label}>
+                                      <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
+                                      {discovery?.catalog.options
+                                        .filter((m) => m.cliId === agent.id && m.available)
+                                        .map((m) => (
+                                          <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
+                                            {m.label || m.modelId}
+                                          </option>
+                                        ))}
+                                    </optgroup>
                                   ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                          <span className="model-capsule-label">
-                            {form.model
-                              ? form.model
-                              : selectedAgent
-                                ? selectedAgent.label
-                                : "自动选择"}
-                          </span>
-                          <ChevronDownIcon size={11} />
+                                </select>
+                                <span className="model-capsule-label">
+                                  {form.model
+                                    ? form.model
+                                    : selectedAgent
+                                      ? selectedAgent.label
+                                      : "自动选择"}
+                                </span>
+                                <ChevronDownIcon size={11} />
+                              </div>
+
+                              {state.running ? (
+                                <motion.button
+                                  aria-label="停止任务"
+                                  className="circle-send-btn circle-send-btn--stop"
+                                  onClick={() => void cancelRun()}
+                                  title="停止任务"
+                                  type="button"
+                                  whileHover={{ scale: 1.06 }}
+                                  whileTap={{ scale: 0.92 }}
+                                >
+                                  <StopIcon size={12} />
+                                </motion.button>
+                              ) : (
+                                <motion.button
+                                  aria-label="开始执行"
+                                  className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
+                                  disabled={!form.prompt.trim()}
+                                  onClick={() => void startRun()}
+                                  title="开始执行"
+                                  type="button"
+                                  whileHover={form.prompt.trim() ? { scale: 1.06 } : undefined}
+                                  whileTap={form.prompt.trim() ? { scale: 0.92 } : undefined}
+                                >
+                                  <ArrowUpIcon size={16} />
+                                </motion.button>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        {state.running ? (
-                          <button
-                            aria-label="停止任务"
-                            className="circle-send-btn circle-send-btn--stop"
-                            onClick={() => void cancelRun()}
-                            title="停止任务"
+                        <div className="hero-pills-row">
+                          <motion.button
+                            className="hero-pill-btn"
                             type="button"
+                            onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                            title={workspaceInput}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.97 }}
                           >
-                            <StopIcon size={12} />
-                          </button>
-                        ) : (
-                          <button
-                            aria-label="开始执行"
-                            className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
-                            disabled={!form.prompt.trim()}
-                            onClick={() => void startRun()}
-                            title="开始执行"
+                            <FolderIcon />
+                            <span>{workspaceName(workspaceInput)}</span>
+                          </motion.button>
+                          <motion.button
+                            className="hero-pill-btn"
                             type="button"
+                            onClick={() => void previewRoute()}
+                            title="路由决策预览"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.97 }}
                           >
-                            <ArrowUpIcon size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="hero-pills-row">
-                    <button
-                      className="hero-pill-btn"
-                      type="button"
-                      onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
-                      title={workspaceInput}
-                    >
-                      <FolderIcon />
-                      <span>{workspaceName(workspaceInput)}</span>
-                    </button>
-                    <button
-                      className="hero-pill-btn"
-                      type="button"
-                      onClick={() => void previewRoute()}
-                      title="路由决策预览"
-                    >
-                      <RouteIcon />
-                      <span>{selectedAgent?.label ?? "智能路由"}</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <article className="assistant-message">
-                  <div className="message-header">
-                    <div className="assistant-identity">
-                      <span>
-                        {state.running
-                          ? "正在处理任务"
-                          : state.result
-                            ? `已处理 ${formatDuration(state.result.durationMs)}`
-                            : "已准备路由"}
-                      </span>
-                    </div>
-                    <span className={`run-state ${state.running ? "run-state--running" : ""}`}>
-                      {state.running ? "running" : state.result?.status ?? "idle"}
-                    </span>
-                  </div>
-
-                  {state.preview ? (
-                    <div className="route-preview">
-                      <span className="route-preview-label"><RouteIcon /> 路由</span>
-                      <strong>
-                        {state.preview.agent}
-                        {state.preview.model ? ` / ${state.preview.model}` : ""}
-                      </strong>
-                      <span className="route-reasons">{state.preview.reasons.join(" · ") || "显式指定"}</span>
-                    </div>
-                  ) : null}
-
-                  <div className={`message-copy ${state.running ? "message-copy--running" : ""}`}>
-                    {state.output || (state.running ? "正在等待 Agent 返回结果…" : "任务已就绪。")}
-                    {state.running && !state.output ? <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span> : null}
-                  </div>
-
-                  {state.activity.length > 0 ? (
-                    <div className="activity-log">
-                      <div className="activity-head">
-                        <span className="activity-label"><TerminalIcon /> RUN LOG</span>
-                        <span>{state.activity.length} events</span>
-                      </div>
-                      <div className="activity-body">
-                        {state.activity.map((entry, index) => (
-                          <div className="activity-row" key={`${index}-${entry}`}>
-                            <span className="activity-prefix">›</span>
-                            <span>{entry}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {state.result ? (
-                    <div className="result-strip">
-                      <span><b>状态</b> {state.result.status}</span>
-                      <span><b>退出码</b> {state.result.code ?? "—"}</span>
-                      <span><b>耗时</b> {formatDuration(state.result.durationMs)}</span>
-                    </div>
-                  ) : null}
-                </article>
-              )}
-            </div>
-          </section>
-
-          {showThread ? (
-            <div className="composer-dock">
-              <div className="hero-composer-card">
-                <textarea
-                  aria-label="任务内容"
-                  value={form.prompt}
-                  onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-                      event.preventDefault();
-                      if (form.prompt.trim() && !state.running) {
-                        void startRun();
-                      }
-                    }
-                  }}
-                  placeholder="继续追加指令或提问…"
-                  disabled={state.running}
-                />
-                <div className="composer-toolbar">
-                  <div className="composer-toolbar-left">
-                    <button
-                      className="composer-action-btn"
-                      type="button"
-                      onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
-                      title="选择工作区 / 添加"
-                    >
-                      <PlusIcon size={14} />
-                    </button>
-                    <button
-                      className="security-badge-btn"
-                      type="button"
-                      onClick={() => {
-                        const modes = discovery?.routingModes ?? ["local"];
-                        const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
-                        setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
-                      }}
-                      title={`访问模式: ${form.mode}`}
-                    >
-                      <ShieldIcon size={13} />
-                      <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
-                    </button>
-                  </div>
-
-                  <div className="composer-toolbar-right">
-                    <div className="model-select-capsule">
-                      <select
-                        value={form.agent ? `${form.agent}:::${form.model}` : ""}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val) {
-                            setForm((c) => ({ ...c, agent: "", model: "" }));
-                          } else {
-                            const [agentId, modelId] = val.split(":::");
-                            setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
-                          }
-                        }}
-                        disabled={state.running}
-                      >
-                        <option value="">
-                          {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
-                        </option>
-                        {agents.map((agent) => (
-                          <optgroup key={agent.id} label={agent.label}>
-                            <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
-                            {discovery?.catalog.options
-                              .filter((m) => m.cliId === agent.id && m.available)
-                              .map((m) => (
-                                <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
-                                  {m.label || m.modelId}
-                                </option>
-                              ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <span className="model-capsule-label">
-                        {form.model
-                          ? form.model
-                          : selectedAgent
-                            ? selectedAgent.label
-                            : "自动选择"}
-                      </span>
-                      <ChevronDownIcon size={11} />
-                    </div>
-
-                    {state.running ? (
-                      <button
-                        aria-label="停止任务"
-                        className="circle-send-btn circle-send-btn--stop"
-                        onClick={() => void cancelRun()}
-                        title="停止任务"
-                        type="button"
-                      >
-                        <StopIcon size={12} />
-                      </button>
+                            <RouteIcon />
+                            <span>{selectedAgent?.label ?? "智能路由"}</span>
+                          </motion.button>
+                        </div>
+                      </motion.div>
                     ) : (
-                      <button
-                        aria-label="开始执行"
-                        className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
-                        disabled={!form.prompt.trim()}
-                        onClick={() => void startRun()}
-                        title="开始执行"
-                        type="button"
+                      <motion.article
+                        key="assistant-message"
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -14 }}
+                        transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
+                        className="assistant-message"
                       >
-                        <ArrowUpIcon size={16} />
-                      </button>
+                        <div className="message-header">
+                          <div className="assistant-identity">
+                            <span>
+                              {state.running
+                                ? "正在处理任务"
+                                : state.result
+                                  ? `已处理 ${formatDuration(state.result.durationMs)}`
+                                  : "已准备路由"}
+                            </span>
+                          </div>
+                          <span className={`run-state ${state.running ? "run-state--running" : ""}`}>
+                            {state.running ? "running" : state.result?.status ?? "idle"}
+                          </span>
+                        </div>
+
+                        <AnimatePresence>
+                          {state.preview ? (
+                            <motion.div
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 6 }}
+                              transition={{ duration: 0.18 }}
+                              className="route-preview"
+                            >
+                              <span className="route-preview-label"><RouteIcon /> 路由</span>
+                              <strong>
+                                {state.preview.agent}
+                                {state.preview.model ? ` / ${state.preview.model}` : ""}
+                              </strong>
+                              <span className="route-reasons">{state.preview.reasons.join(" · ") || "显式指定"}</span>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+
+                        <div className={`message-copy ${state.running ? "message-copy--running" : ""}`}>
+                          {state.output || (state.running ? "正在等待 Agent 返回结果…" : "任务已就绪。")}
+                          {state.running && !state.output ? <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span> : null}
+                        </div>
+
+                        <AnimatePresence>
+                          {state.activity.length > 0 ? (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 8 }}
+                              transition={{ duration: 0.2 }}
+                              className="activity-log"
+                            >
+                              <div className="activity-head">
+                                <span className="activity-label"><TerminalIcon /> RUN LOG</span>
+                                <span>{state.activity.length} events</span>
+                              </div>
+                              <div className="activity-body">
+                                {state.activity.map((entry, index) => (
+                                  <div className="activity-row" key={`${index}-${entry}`}>
+                                    <span className="activity-prefix">›</span>
+                                    <span>{entry}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+
+                        <AnimatePresence>
+                          {state.result ? (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 8 }}
+                              transition={{ duration: 0.2 }}
+                              className="result-strip"
+                            >
+                              <span><b>状态</b> {state.result.status}</span>
+                              <span><b>退出码</b> {state.result.code ?? "—"}</span>
+                              <span><b>耗时</b> {formatDuration(state.result.durationMs)}</span>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </motion.article>
                     )}
+                  </AnimatePresence>
+                </div>
+              </motion.section>
+            ) : state.view === "sessions" ? (
+              <motion.section
+                key="sessions"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                className="secondary-view"
+                aria-live="polite"
+              >
+                <div className="secondary-page">
+                  <div className="secondary-header">
+                    <div>
+                      <p className="sidebar-kicker">Conversation archive</p>
+                      <h2>会话历史</h2>
+                      <p>每次桌面任务都会写入共享 SQLite；选择历史会话后，下一条任务会带上它的上下文。</p>
+                    </div>
+                    <button
+                      className="ghost-button"
+                      onClick={() => void refreshSessions(currentWorkspace.current)}
+                      type="button"
+                    >
+                      <RefreshIcon />
+                      刷新
+                    </button>
+                  </div>
+
+                  <div className="session-layout">
+                    <div className="session-list">
+                      {state.sessions.length === 0 ? (
+                        <div className="secondary-empty">
+                          <HistoryIcon />
+                          <strong>还没有会话</strong>
+                          <span>完成第一条任务后，这里会出现可续跑的历史。</span>
+                        </div>
+                      ) : (
+                        state.sessions.map((session) => (
+                          <button
+                            className={`session-row ${state.activeSessionId === session.id ? "session-row--selected" : ""}`}
+                            key={session.id}
+                            onClick={() => void openSession(session.id)}
+                            type="button"
+                          >
+                            <span className="session-agent">{session.cliId}</span>
+                            <strong>{session.title}</strong>
+                            <small>{formatTimestamp(session.updatedAt)}</small>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="session-detail">
+                      <AnimatePresence mode="wait">
+                        {state.sessionDetail ? (
+                          <motion.div
+                            key={state.sessionDetail.session.id}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.18, ease: "easeOut" }}
+                          >
+                            <div className="session-detail-head">
+                              <div>
+                                <p className="sidebar-kicker">{state.sessionDetail.session.cliId}</p>
+                                <h3>{state.sessionDetail.session.title}</h3>
+                              </div>
+                              <button
+                                className="primary-button"
+                                onClick={() => {
+                                  setState((current) => ({ ...current, view: "workspace" }));
+                                  setForm((current) => ({ ...current, prompt: "" }));
+                                }}
+                                type="button"
+                              >
+                                继续这个会话
+                              </button>
+                            </div>
+                            <div className="turn-list">
+                              {state.sessionDetail.turns.map((turn) => (
+                                <article className="turn-card" key={turn.id}>
+                                  <div className="turn-meta">
+                                    <span>{turn.cliId}</span>
+                                    <span>{turn.modelId ?? "default model"}</span>
+                                    <span>{turn.status ?? "unknown"}</span>
+                                  </div>
+                                  <div className="turn-prompt">{turn.prompt}</div>
+                                  <pre className="turn-output">{turn.output || "（无文本输出）"}</pre>
+                                </article>
+                              ))}
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="session-empty"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="secondary-empty"
+                          >
+                            <TerminalIcon />
+                            <strong>选择一个会话</strong>
+                            <span>查看跨 CLI 的完整任务记录和运行元数据。</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ) : null}
+              </motion.section>
+            ) : (
+              <motion.section
+                key="config"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                className="secondary-view config-page"
+                aria-live="polite"
+              >
+                <div className="secondary-page config-page">
+                  <div className="secondary-header">
+                    <div>
+                      <p className="sidebar-kicker">Workspace configuration</p>
+                      <h2>配置</h2>
+                      <p>
+                        {state.configSource?.path ?? "正在读取配置文件…"}
+                      </p>
+                    </div>
+                    <div className="config-actions">
+                      <button
+                        className="ghost-button"
+                        disabled={state.configBusy}
+                        onClick={() => void loadConfigSource()}
+                        type="button"
+                      >
+                        重新读取
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={state.configBusy || !state.configDraft.trim()}
+                        onClick={() => void saveConfig()}
+                        type="button"
+                      >
+                        {state.configBusy ? "保存中…" : "保存配置"}
+                      </button>
+                    </div>
+                  </div>
+                  <section className="credential-panel" aria-labelledby="jev-credential-title">
+                    <div className="credential-copy">
+                      <p className="sidebar-kicker">Jev routing credential</p>
+                      <h3 id="jev-credential-title">TypeSafe API Key</h3>
+                      <p>
+                        在界面填写后会保存到本机 SQLite。Jev 路由优先使用这里保存的密钥，
+                        环境变量和本地配置文件只作为兼容兜底。
+                      </p>
+                    </div>
+                    <span className={`credential-status ${state.jevSettings?.stored ? "credential-status--stored" : ""}`}>
+                      {state.jevSettings?.stored
+                        ? "已保存到 SQLite"
+                        : state.jevSettings?.environmentConfigured
+                          ? "正在使用环境变量"
+                          : "未配置"}
+                    </span>
+                    <div className="credential-form">
+                      <label htmlFor="jev-api-key">
+                        <span>TYPESAFE_API_KEY</span>
+                        <input
+                          autoComplete="off"
+                          disabled={state.jevBusy}
+                          id="jev-api-key"
+                          onChange={(event) =>
+                            setState((current) => ({
+                              ...current,
+                              jevApiKeyInput: event.target.value,
+                            }))
+                          }
+                          placeholder={state.jevSettings?.stored ? "已保存，输入新密钥可替换" : "粘贴 API Key"}
+                          spellCheck={false}
+                          type="password"
+                          value={state.jevApiKeyInput}
+                        />
+                      </label>
+                      <button
+                        className="primary-button"
+                        disabled={state.jevBusy || !state.jevApiKeyInput.trim()}
+                        onClick={() => void saveJevApiKey()}
+                        type="button"
+                      >
+                        {state.jevBusy ? "保存中…" : "保存密钥"}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={state.jevBusy || !state.jevSettings?.stored}
+                        onClick={() => void clearJevApiKey()}
+                        type="button"
+                      >
+                        清除
+                      </button>
+                    </div>
+                    {state.configNotice ? (
+                      <p className="credential-notice" role="status">{state.configNotice}</p>
+                    ) : null}
+                  </section>
+                  <div className="config-note">
+                    <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
+                      {state.configSource?.exists ? "workspace config" : "new workspace config"}
+                    </span>
+                    保存前会完整校验 YAML；校验失败不会覆盖现有文件。
+                  </div>
+                  <textarea
+                    aria-label="配置文件内容"
+                    className="config-editor"
+                    onChange={(event) =>
+                      setState((current) => ({ ...current, configDraft: event.target.value }))
+                    }
+                    spellCheck={false}
+                    value={state.configDraft}
+                  />
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {state.view === "workspace" && showThread ? (
+              <motion.div
+                key="composer-dock"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
+                className="composer-dock"
+              >
+                <div className="hero-composer-card">
+                  <textarea
+                    aria-label="任务内容"
+                    value={form.prompt}
+                    onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        if (form.prompt.trim() && !state.running) {
+                          void startRun();
+                        }
+                      }
+                    }}
+                    placeholder="继续追加指令或提问…"
+                    disabled={state.running}
+                  />
+                  <div className="composer-toolbar">
+                    <div className="composer-toolbar-left">
+                      <button
+                        className="composer-action-btn"
+                        type="button"
+                        onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                        title="选择工作区 / 添加"
+                      >
+                        <PlusIcon size={14} />
+                      </button>
+                      <button
+                        className="security-badge-btn"
+                        type="button"
+                        onClick={() => {
+                          const modes = discovery?.routingModes ?? ["local"];
+                          const nextIdx = (modes.indexOf(form.mode) + 1) % modes.length;
+                          setForm((current) => ({ ...current, mode: modes[nextIdx] ?? "local" }));
+                        }}
+                        title={`访问模式: ${form.mode}`}
+                      >
+                        <ShieldIcon size={13} />
+                        <span>{form.mode === "local" ? "完全访问" : form.mode}</span>
+                      </button>
+                    </div>
+
+                    <div className="composer-toolbar-right">
+                      <div className="model-select-capsule">
+                        <select
+                          value={form.agent ? `${form.agent}:::${form.model}` : ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                              setForm((c) => ({ ...c, agent: "", model: "" }));
+                            } else {
+                              const [agentId, modelId] = val.split(":::");
+                              setForm((c) => ({ ...c, agent: agentId ?? "", model: modelId ?? "" }));
+                            }
+                          }}
+                          disabled={state.running}
+                        >
+                          <option value="">
+                            {selectedAgent ? `${selectedAgent.label} (默认)` : "自动选择"}
+                          </option>
+                          {agents.map((agent) => (
+                            <optgroup key={agent.id} label={agent.label}>
+                              <option value={`${agent.id}:::`}>{agent.label} · 默认</option>
+                              {discovery?.catalog.options
+                                .filter((m) => m.cliId === agent.id && m.available)
+                                .map((m) => (
+                                  <option key={`${agent.id}:::${m.modelId}`} value={`${agent.id}:::${m.modelId}`}>
+                                    {m.label || m.modelId}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <span className="model-capsule-label">
+                          {form.model
+                            ? form.model
+                            : selectedAgent
+                              ? selectedAgent.label
+                              : "自动选择"}
+                        </span>
+                        <ChevronDownIcon size={11} />
+                      </div>
+
+                      {state.running ? (
+                        <motion.button
+                          aria-label="停止任务"
+                          className="circle-send-btn circle-send-btn--stop"
+                          onClick={() => void cancelRun()}
+                          title="停止任务"
+                          type="button"
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                        >
+                          <StopIcon size={12} />
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          aria-label="开始执行"
+                          className={`circle-send-btn ${form.prompt.trim() ? "circle-send-btn--active" : ""}`}
+                          disabled={!form.prompt.trim()}
+                          onClick={() => void startRun()}
+                          title="开始执行"
+                          type="button"
+                          whileHover={form.prompt.trim() ? { scale: 1.06 } : undefined}
+                          whileTap={form.prompt.trim() ? { scale: 0.92 } : undefined}
+                        >
+                          <ArrowUpIcon size={16} />
+                        </motion.button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </main>
 
         <aside
