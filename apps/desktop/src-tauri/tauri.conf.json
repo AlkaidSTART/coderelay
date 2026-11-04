@@ -19,7 +19,14 @@
         "minWidth": 900,
         "minHeight": 640,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 19
+        },
+        "theme": "Light"
       }
     ],
     "security": {

@@ -468,6 +468,7 @@ dependencies = [
  "coderelay-cli",
  "coderelay-core",
  "coderelay-protocol",
+ "dirs",
  "serde",
  "tauri",
  "tauri-build",

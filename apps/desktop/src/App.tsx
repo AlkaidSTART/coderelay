@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
   AgentEntry,
@@ -59,6 +59,155 @@ function modelLabel(model: ModelOption): string {
   const suffix = model.isDefault ? " · default" : "";
   const id = model.modelId || "adapter default";
   return `${model.label || id}${suffix}`;
+}
+
+function workspaceName(path: string): string {
+  const normalized = path.trim().replace(/[\\/]+$/, "");
+  if (!normalized) {
+    return "未选择工作区";
+  }
+  const segments = normalized.split(/[\\/]/);
+  return segments[segments.length - 1] || normalized;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  const seconds = Math.round(durationMs / 1000);
+  if (seconds < 60) {
+    return `${seconds} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes} 分 ${remainingSeconds} 秒`;
+}
+
+function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="icon"
+      fill="none"
+      height={size}
+      viewBox="0 0 24 24"
+      width={size}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <Icon>
+      <path d="M4 10.5 12 4l8 6.5" />
+      <path d="M6.5 9.5V20h11V9.5" />
+      <path d="M9.5 20v-6h5v6" />
+    </Icon>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <Icon>
+      <path d="M4.6 9A8 8 0 1 1 4 12" />
+      <path d="M4 5v4h4" />
+      <path d="M12 7.5V12l3 2" />
+    </Icon>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <Icon>
+      <path d="M3.5 7.5h6l1.8 2h9.2v8.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7Z" />
+      <path d="M3.5 9.5V6.2c0-.94.76-1.7 1.7-1.7h4.1l1.8 2h7.2c.94 0 1.7.76 1.7 1.7v1.3" />
+    </Icon>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .55 1.7 1.7 0 0 0-.4 1.1V21H9.55v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-1.55-1H2.5V10h.09A1.7 1.7 0 0 0 4.1 9a1.7 1.7 0 0 0-.34-1.88L3.7 7.06 6.56 4.2l.06.06A1.7 1.7 0 0 0 8.5 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1h.09v4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+    </Icon>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="10.8" cy="10.8" r="6.2" />
+      <path d="m15.4 15.4 4 4" />
+    </Icon>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <Icon size={14}>
+      <path d="m7 9.5 5 5 5-5" />
+    </Icon>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <Icon size={15}>
+      <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+      <path d="M20 5v6h-6" />
+    </Icon>
+  );
+}
+
+function TerminalIcon() {
+  return (
+    <Icon size={16}>
+      <path d="m5 7 4 4-4 4" />
+      <path d="M11 16h7" />
+    </Icon>
+  );
+}
+
+function RouteIcon() {
+  return (
+    <Icon size={15}>
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="6" r="2" />
+      <path d="M8 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h-1" />
+    </Icon>
+  );
+}
+
+function ArrowUpIcon() {
+  return (
+    <Icon size={17}>
+      <path d="M12 19V5" />
+      <path d="m6.5 10.5 5.5-5.5 5.5 5.5" />
+    </Icon>
+  );
+}
+
+function StopIcon() {
+  return (
+    <Icon size={16}>
+      <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+function SparkIcon() {
+  return (
+    <Icon size={17}>
+      <path d="M12 3.5c.52 4.74 3.76 7.98 8.5 8.5-4.74.52-7.98 3.76-8.5 8.5-.52-4.74-3.76-7.98-8.5-8.5 4.74-.52 7.98-3.76 8.5-8.5Z" />
+    </Icon>
+  );
 }
 
 function eventActivity(event: AgentEvent): string | null {
@@ -281,221 +430,366 @@ export function App() {
     }));
   }
 
+  const activeTaskTitle = form.prompt.trim().split("\n")[0]?.trim() || "新任务";
+  const statusTone = state.error ? "error" : state.loading ? "loading" : state.running ? "running" : "ready";
+  const statusLabel = state.error
+    ? "需要处理"
+    : state.loading
+      ? "正在扫描"
+      : state.running
+        ? "正在执行"
+        : "Core 已连接";
+  const showThread = Boolean(
+    state.preview || state.output || state.activity.length > 0 || state.result || state.running,
+  );
+
   return (
-    <main className="shell">
-      <header className="masthead">
-        <div className="brand">
-          <span className="mark">CR</span>
-          <div>
-            <p className="eyebrow">Local agent control plane</p>
-            <h1>CodeRelay</h1>
-          </div>
+    <div className="app-frame">
+      <header className="titlebar" data-tauri-drag-region>
+        <div className="titlebar-brand" data-tauri-drag-region>
+          <span className="brand-glyph brand-glyph--small" aria-hidden="true">
+            <SparkIcon />
+          </span>
+          <span>CodeRelay</span>
         </div>
-        <div className="system-line">
-          <span className={`signal signal--${state.error ? "error" : state.loading ? "loading" : "ready"}`}>
-            {state.loading ? "Scanning" : state.error ? "Needs attention" : "Rust core connected"}
-          </span>
-          <span className="protocol">
-            protocol {state.runtime?.protocolVersion ?? "—"}
-          </span>
+        <div className="titlebar-document" data-tauri-drag-region>
+          <TerminalIcon />
+          <span>{activeTaskTitle}</span>
+        </div>
+        <div className="titlebar-status" data-tauri-drag-region>
+          <span className="status-dot" data-tone={statusTone} />
+          <span>{statusLabel}</span>
         </div>
       </header>
 
-      <div className="workspace-row">
-        <label htmlFor="workspace">Workspace</label>
-        <input
-          id="workspace"
-          value={workspaceInput}
-          onChange={(event) => setWorkspaceInput(event.target.value)}
-          placeholder="当前工作区"
-          spellCheck={false}
-        />
-        <button className="quiet-button" onClick={() => void loadDiscovery(workspaceInput)} disabled={state.loading}>
-          重新扫描
-        </button>
-      </div>
-
-      {state.error ? <div className="alert">{state.error}</div> : null}
-
-      <div className="workbench">
-        <aside className="agent-rail">
-          <div className="section-heading">
-            <div>
-              <p className="section-label">Discovery</p>
-              <h2>Agents</h2>
-            </div>
-            <span className="count">{agents.length.toString().padStart(2, "0")}</span>
-          </div>
-
-          <div className="agent-stack">
-            {agents.map((agent, index) => (
-              <button
-                className={`agent-row ${form.agent === agent.id ? "agent-row--selected" : ""}`}
-                key={agent.id}
-                onClick={() => selectAgent(agent)}
-              >
-                <span className="ordinal">{(index + 1).toString().padStart(2, "0")}</span>
-                <span className="agent-copy">
-                  <strong>{agent.label}</strong>
-                  <small>{agent.version ?? agent.command}</small>
-                </span>
-                <span className={`availability ${agent.available ? "availability--ready" : ""}`}>
-                  {agent.available ? "ready" : "missing"}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="model-card">
-            <p className="section-label">Selected model</p>
-            <strong>{selectedAgent?.label ?? "Auto route"}</strong>
-            <span>
-              {selectedAgent
-                ? `${selectedAgent.runtime} · ${selectedAgent.source}`
-                : "由规则和评分选择最合适的 Agent"}
+      <div className="app-layout">
+        <nav className="icon-rail" aria-label="工作台导航">
+          <div className="rail-brand">
+            <span className="brand-glyph" aria-hidden="true">
+              <SparkIcon />
             </span>
+          </div>
+          <div className="rail-nav">
+            <span className="rail-action rail-action--active" aria-hidden="true">
+              <HomeIcon />
+            </span>
+            <span className="rail-action" aria-hidden="true">
+              <HistoryIcon />
+            </span>
+            <span className="rail-action" aria-hidden="true">
+              <FolderIcon />
+            </span>
+          </div>
+          <div className="rail-footer">
+            <span className="rail-action" aria-hidden="true">
+              <SettingsIcon />
+            </span>
+            <span className="rail-avatar" aria-hidden="true">CR</span>
+          </div>
+        </nav>
+
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <div>
+              <p className="sidebar-kicker">Local agent control plane</p>
+              <h1>CodeRelay <ChevronDownIcon /></h1>
+            </div>
+            <span className="search-chip" aria-hidden="true">
+              <SearchIcon />
+            </span>
+          </div>
+
+          <div className="sidebar-scroll">
+            <section className="sidebar-section">
+              <div className="sidebar-section-title">
+                <span>工作区</span>
+                <span className="section-count">{state.loading ? "扫描中" : "已连接"}</span>
+              </div>
+              <div className="workspace-field">
+                <FolderIcon />
+                <input
+                  id="workspace"
+                  aria-label="工作区路径"
+                  value={workspaceInput}
+                  onChange={(event) => setWorkspaceInput(event.target.value)}
+                  placeholder="选择或输入工作区"
+                  spellCheck={false}
+                />
+                <button
+                  aria-label="重新扫描工作区"
+                  className="icon-button"
+                  disabled={state.loading}
+                  onClick={() => void loadDiscovery(workspaceInput)}
+                  title="重新扫描"
+                  type="button"
+                >
+                  <RefreshIcon />
+                </button>
+              </div>
+            </section>
+
+            <section className="sidebar-section sidebar-section--agents">
+              <div className="sidebar-section-title">
+                <span>Agents</span>
+                <span className="section-count">{agents.length.toString().padStart(2, "0")}</span>
+              </div>
+              <div className="agent-list">
+                {agents.length === 0 ? (
+                  <p className="sidebar-empty">{state.loading ? "正在发现可用 Agent…" : "当前工作区没有可用的 Agent。"}</p>
+                ) : (
+                  agents.map((agent) => (
+                    <button
+                      className={`agent-row ${form.agent === agent.id ? "agent-row--selected" : ""}`}
+                      key={agent.id}
+                      onClick={() => selectAgent(agent)}
+                      type="button"
+                    >
+                      <span className={`agent-status ${agent.available ? "agent-status--ready" : ""}`} />
+                      <span className="agent-copy">
+                        <strong>{agent.label}</strong>
+                        <small>{agent.version ?? agent.command}</small>
+                      </span>
+                      <span className="agent-endpoint">{agent.available ? "ready" : "missing"}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="sidebar-section sidebar-section--context">
+              <div className="sidebar-section-title">
+                <span>当前路由</span>
+              </div>
+              <div className="context-row">
+                <span className="context-icon"><RouteIcon /></span>
+                <div>
+                  <strong>{selectedAgent?.label ?? "自动选择"}</strong>
+                  <span>{form.model || "Agent 默认模型"}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="sidebar-footer">
+            <span className="status-dot" data-tone={statusTone} />
+            <div>
+              <strong>Rust Core</strong>
+              <span>{state.runtime?.coreVersion ? `v${state.runtime.coreVersion}` : "正在连接"}</span>
+            </div>
+            <span className="protocol-pill">{state.runtime?.transport ?? "local"}</span>
           </div>
         </aside>
 
-        <section className="main-stage">
-          <div className="composer-card">
-            <div className="composer-head">
-              <div>
-                <p className="section-label">Task</p>
-                <h2>把任务交给最合适的 Agent。</h2>
-              </div>
-              <span className="runtime-chip">{state.runtime?.transport ?? "in-process"}</span>
+        <main className="main-panel">
+          <header className="main-toolbar">
+            <div className="toolbar-left">
+              <span className="toolbar-label">Workspace</span>
+              <span className="toolbar-workspace">{workspaceName(workspaceInput)}</span>
             </div>
-
-            <textarea
-              value={form.prompt}
-              onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-              placeholder="描述要完成的任务，例如：修复认证中间件测试并解释根因……"
-              disabled={state.running}
-            />
-
-            <div className="controls">
-              <label>
-                Mode
-                <select
-                  value={form.mode}
-                  onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value }))}
-                  disabled={state.running}
-                >
-                  {(discovery?.routingModes ?? []).map((mode) => (
-                    <option value={mode} key={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Agent
-                <select
-                  value={form.agent}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      agent: event.target.value,
-                      model: "",
-                    }))
-                  }
-                  disabled={state.running}
-                >
-                  <option value="">Auto route</option>
-                  {agents.map((agent) => (
-                    <option value={agent.id} key={agent.id}>
-                      {agent.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Model
-                <select
-                  value={form.model}
-                  onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
-                  disabled={state.running || models.length === 0}
-                >
-                  <option value="">Agent default</option>
-                  {models.map((model) => (
-                    <option value={modelValue(model)} key={`${model.cliId}:${model.modelId}`}>
-                      {modelLabel(model)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="toolbar-center">
+              <span className="toolbar-mark"><TerminalIcon /></span>
+              <span>{activeTaskTitle}</span>
             </div>
+            <div className="toolbar-right">
+              <span className="protocol-label">protocol {state.runtime?.protocolVersion ?? "—"}</span>
+              <span className={`connection-pill connection-pill--${statusTone}`}>{statusLabel}</span>
+            </div>
+          </header>
 
-            <div className="actions">
-              <button className="quiet-button" onClick={() => void previewRoute()} disabled={state.running}>
-                预览路由
-              </button>
-              {state.running ? (
-                <button className="primary-button primary-button--stop" onClick={() => void cancelRun()}>
-                  停止任务
-                </button>
+          <section className="conversation" aria-live="polite">
+            <div className="conversation-inner">
+              {state.error ? (
+                <div className="alert" role="alert">
+                  <strong>连接出现问题</strong>
+                  <span>{state.error}</span>
+                </div>
+              ) : null}
+
+              {!showThread ? (
+                <div className="empty-state">
+                  <div className="empty-mark" aria-hidden="true">
+                    <SparkIcon />
+                  </div>
+                  <p className="empty-kicker">Local agent control plane</p>
+                  <h2>让合适的 Agent，<br />接手这一棒。</h2>
+                  <p className="empty-copy">
+                    发现本机可用的 Agent，比较模型与路由原因，然后在一个安静的工作台里执行任务。
+                  </p>
+                  <div className="context-pills">
+                    <span><FolderIcon /> {workspaceName(workspaceInput)}</span>
+                    <span><SparkIcon /> {agents.length} 个 Agent</span>
+                    <span><span className="status-dot" data-tone={statusTone} /> {statusLabel}</span>
+                  </div>
+                </div>
               ) : (
-                <button className="primary-button" onClick={() => void startRun()} disabled={!form.prompt.trim()}>
-                  开始执行
-                </button>
+                <article className="assistant-message">
+                  <div className="message-header">
+                    <span className="assistant-avatar" aria-hidden="true">
+                      <SparkIcon />
+                    </span>
+                    <div className="assistant-identity">
+                      <strong>CodeRelay</strong>
+                      <span>
+                        {state.running
+                          ? "正在处理任务"
+                          : state.result
+                            ? `${state.result.status} · ${formatDuration(state.result.durationMs)}`
+                            : "已准备路由"}
+                      </span>
+                    </div>
+                    <span className={`run-state ${state.running ? "run-state--running" : ""}`}>
+                      {state.running ? "running" : state.result?.status ?? "idle"}
+                    </span>
+                  </div>
+
+                  {state.preview ? (
+                    <div className="route-preview">
+                      <span className="route-preview-label"><RouteIcon /> 路由</span>
+                      <strong>
+                        {state.preview.agent}
+                        {state.preview.model ? ` / ${state.preview.model}` : ""}
+                      </strong>
+                      <span className="route-reasons">{state.preview.reasons.join(" · ") || "显式指定"}</span>
+                    </div>
+                  ) : null}
+
+                  <div className={`message-copy ${state.running ? "message-copy--running" : ""}`}>
+                    {state.output || (state.running ? "正在等待 Agent 返回结果…" : "任务已就绪。")}
+                    {state.running && !state.output ? <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span> : null}
+                  </div>
+
+                  {state.activity.length > 0 ? (
+                    <div className="activity-log">
+                      <p className="activity-label">活动</p>
+                      {state.activity.map((entry, index) => (
+                        <div className="activity-row" key={`${index}-${entry}`}>
+                          <span className="activity-icon"><TerminalIcon /></span>
+                          <span>{entry}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {state.result ? (
+                    <div className="result-strip">
+                      <span><b>状态</b> {state.result.status}</span>
+                      <span><b>退出码</b> {state.result.code ?? "—"}</span>
+                      <span><b>耗时</b> {formatDuration(state.result.durationMs)}</span>
+                    </div>
+                  ) : null}
+                </article>
               )}
             </div>
-          </div>
-
-          {state.preview ? (
-            <div className="route-preview">
-              <div>
-                <p className="section-label">Route</p>
-                <strong>
-                  {state.preview.agent}
-                  {state.preview.model ? `:${state.preview.model}` : ""}
-                </strong>
-              </div>
-              <p>{state.preview.reasons.join(" · ") || "explicit target"}</p>
-            </div>
-          ) : null}
-
-          <section className="output-panel">
-            <div className="output-head">
-              <div>
-                <p className="section-label">Live stream</p>
-                <h2>Agent output</h2>
-              </div>
-              <span className={`run-state ${state.running ? "run-state--running" : ""}`}>
-                {state.running ? "running" : state.result?.status ?? "idle"}
-              </span>
-            </div>
-
-            <pre className="terminal">{state.output || (state.running ? "等待 Agent 输出…" : "运行结果会在这里实时出现。")}</pre>
-
-            <div className="activity">
-              {state.activity.length === 0 ? (
-                <span className="activity-empty">No activity yet</span>
-              ) : (
-                state.activity.map((entry, index) => (
-                  <span key={`${index}-${entry}`}>{entry}</span>
-                ))
-              )}
-            </div>
-
-            {state.result ? (
-              <div className="result-strip">
-                <span>status: {state.result.status}</span>
-                <span>exit: {state.result.code ?? "—"}</span>
-                <span>duration: {state.result.durationMs}ms</span>
-              </div>
-            ) : null}
           </section>
-        </section>
-      </div>
 
-      <footer>
-        <span>Rust Core + Tauri 2</span>
-        <span>No shell bridge · Domain commands only</span>
-      </footer>
-    </main>
+          <div className="composer-dock">
+            <div className="composer">
+              <textarea
+                aria-label="任务内容"
+                value={form.prompt}
+                onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+                placeholder="使用 CodeRelay，把任务交给最合适的 Agent…"
+                disabled={state.running}
+              />
+              <div className="composer-bar">
+                <div className="composer-controls">
+                  <label className="composer-control">
+                    <span>模式</span>
+                    <select
+                      value={form.mode}
+                      onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value }))}
+                      disabled={state.running}
+                    >
+                      {(discovery?.routingModes ?? []).map((mode) => (
+                        <option value={mode} key={mode}>
+                          {mode}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="composer-control">
+                    <span>Agent</span>
+                    <select
+                      value={form.agent}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          agent: event.target.value,
+                          model: "",
+                        }))
+                      }
+                      disabled={state.running}
+                    >
+                      <option value="">自动选择</option>
+                      {agents.map((agent) => (
+                        <option value={agent.id} key={agent.id}>
+                          {agent.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="composer-control composer-control--model">
+                    <span>模型</span>
+                    <select
+                      value={form.model}
+                      onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
+                      disabled={state.running || models.length === 0}
+                    >
+                      <option value="">Agent 默认</option>
+                      {models.map((model) => (
+                        <option value={modelValue(model)} key={`${model.cliId}:${model.modelId}`}>
+                          {modelLabel(model)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="composer-actions">
+                  <button
+                    className="preview-button"
+                    disabled={state.running}
+                    onClick={() => void previewRoute()}
+                    type="button"
+                  >
+                    <RouteIcon />
+                    <span>预览路由</span>
+                  </button>
+                  {state.running ? (
+                    <button
+                      aria-label="停止任务"
+                      className="send-button send-button--stop"
+                      onClick={() => void cancelRun()}
+                      title="停止任务"
+                      type="button"
+                    >
+                      <StopIcon />
+                    </button>
+                  ) : (
+                    <button
+                      aria-label="开始执行"
+                      className="send-button"
+                      disabled={!form.prompt.trim()}
+                      onClick={() => void startRun()}
+                      title="开始执行"
+                      type="button"
+                    >
+                      <ArrowUpIcon />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="composer-note">
+              <span>本地运行</span>
+              <span>不经过 shell 桥接</span>
+              <span>{state.runtime?.transport ?? "in-process"}</span>
+            </p>
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }

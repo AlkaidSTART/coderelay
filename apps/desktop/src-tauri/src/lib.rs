@@ -113,7 +113,11 @@ fn runtime_status() -> RuntimeStatus {
 
 fn workspace_paths(request: &WorkspaceRequest) -> (Option<PathBuf>, Option<PathBuf>) {
     (
-        request.cwd.as_ref().map(PathBuf::from),
+        request
+            .cwd
+            .as_ref()
+            .map(PathBuf::from)
+            .or_else(dirs::home_dir),
         request.config_path.as_ref().map(PathBuf::from),
     )
 }
