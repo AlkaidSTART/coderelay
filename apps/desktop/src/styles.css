@@ -29,6 +29,117 @@
   --animate-typing: typing 1.2s ease-in-out infinite;
 }
 
+:root,
+[data-theme="light"] {
+  --color-canvas: #ffffff;
+  --color-canvas-raised: #ffffff;
+  --color-rail: #f4f4f5;
+  --color-sidebar: #fafafa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f4f4f5;
+  --color-surface-hover: #ebebee;
+  --color-ink: #18181b;
+  --color-ink-soft: #27272a;
+  --color-muted: #71717a;
+  --color-muted-strong: #52525b;
+  --color-line: rgba(0, 0, 0, 0.055);
+  --color-line-strong: rgba(0, 0, 0, 0.11);
+  --color-accent: #18181b;
+  --color-accent-soft: #f4f4f5;
+  --color-success: #16805c;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --color-canvas: #212121;
+  --color-canvas-raised: #282828;
+  --color-rail: #171717;
+  --color-sidebar: #171717;
+  --color-surface: #2f2f2f;
+  --color-surface-subtle: #262626;
+  --color-surface-hover: #383838;
+  --color-ink: #ececec;
+  --color-ink-soft: #d4d4d8;
+  --color-muted: #9ca3af;
+  --color-muted-strong: #d1d5db;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-line-strong: rgba(255, 255, 255, 0.16);
+  --color-accent: #ececec;
+  --color-accent-soft: #2f2f2f;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-danger-soft: rgba(239, 68, 68, 0.15);
+  color-scheme: dark;
+}
+
+[data-theme="midnight"] {
+  --color-canvas: #000000;
+  --color-canvas-raised: #0a0a0c;
+  --color-rail: #050507;
+  --color-sidebar: #09090b;
+  --color-surface: #121215;
+  --color-surface-subtle: #18181c;
+  --color-surface-hover: #222227;
+  --color-ink: #fafafa;
+  --color-ink-soft: #e4e4e7;
+  --color-muted: #71717a;
+  --color-muted-strong: #a1a1aa;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.15);
+  --color-accent: #ffffff;
+  --color-accent-soft: #18181c;
+  --color-success: #10b981;
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(239, 68, 68, 0.15);
+  color-scheme: dark;
+}
+
+[data-theme="warm"] {
+  --color-canvas: #faf7f0;
+  --color-canvas-raised: #fdfcf9;
+  --color-rail: #ede8de;
+  --color-sidebar: #f4eee3;
+  --color-surface: #fdfcf9;
+  --color-surface-subtle: #ede6d8;
+  --color-surface-hover: #e4dccb;
+  --color-ink: #2c2825;
+  --color-ink-soft: #443f3b;
+  --color-muted: #78716c;
+  --color-muted-strong: #57534e;
+  --color-line: rgba(68, 63, 59, 0.08);
+  --color-line-strong: rgba(68, 63, 59, 0.16);
+  --color-accent: #2c2825;
+  --color-accent-soft: #ede6d8;
+  --color-success: #15803d;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  color-scheme: light;
+}
+
+[data-theme="slate"] {
+  --color-canvas: #0f172a;
+  --color-canvas-raised: #182234;
+  --color-rail: #090e17;
+  --color-sidebar: #111a2a;
+  --color-surface: #1e293b;
+  --color-surface-subtle: #162133;
+  --color-surface-hover: #27374d;
+  --color-ink: #f1f5f9;
+  --color-ink-soft: #cbd5e1;
+  --color-muted: #64748b;
+  --color-muted-strong: #94a3b8;
+  --color-line: rgba(148, 163, 184, 0.12);
+  --color-line-strong: rgba(148, 163, 184, 0.22);
+  --color-accent: #38bdf8;
+  --color-accent-soft: #1e293b;
+  --color-success: #34d399;
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(248, 113, 113, 0.15);
+  color-scheme: dark;
+}
+
 @layer base {
   :root {
     color-scheme: light;
@@ -38,6 +149,7 @@
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.16s ease, color 0.16s ease;
   }
 
   *,
@@ -88,6 +200,21 @@
     color: var(--color-ink);
     background: rgba(17, 18, 21, 0.1);
   }
+
+  [data-theme-mode="dark"] ::selection {
+    color: var(--color-ink);
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+[data-theme-mode="dark"] .liquid-glass-fx {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%) !important;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 3px 8px -1.5px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme-mode="dark"] .liquid-glass-sheen {
+  opacity: 0.12 !important;
 }
 
 @keyframes rise-in {

@@ -543,13 +543,6 @@ export function App() {
     setForm((current) => ({ ...current, prompt: "" }));
   }
 
-  const statusTone = state.error
-    ? "error"
-    : state.loading
-      ? "loading"
-      : state.running
-        ? "running"
-        : "ready";
   const showThread = Boolean(
     state.preview || state.output || state.activity.length > 0 || state.result || state.running,
   );
@@ -584,8 +577,6 @@ export function App() {
   return (
     <div className="flex h-dvh min-h-[600px] flex-col overflow-hidden bg-canvas">
       <Titlebar
-        statusTone={statusTone}
-        runtimeCoreVersion={state.runtime?.coreVersion}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={toggleRightSidebar}
       />

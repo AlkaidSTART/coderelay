@@ -208,6 +208,133 @@ export function isTimePeriod(value: unknown): value is TimePeriod {
   return (TIME_PERIODS as readonly unknown[]).includes(value);
 }
 
+export const THEME_PRESET_IDS = [
+  "light",
+  "dark",
+  "midnight",
+  "warm",
+  "slate",
+  "system",
+] as const;
+export type ThemePresetId = (typeof THEME_PRESET_IDS)[number];
+
+export function isThemePresetId(value: unknown): value is ThemePresetId {
+  return (THEME_PRESET_IDS as readonly unknown[]).includes(value);
+}
+
+export const DEFAULT_THEME_PRESET_ID: ThemePresetId = "light";
+
+export interface ThemePresetPreviewColors {
+  readonly canvas: string;
+  readonly sidebar: string;
+  readonly surface: string;
+  readonly ink: string;
+  readonly accent: string;
+  readonly border: string;
+}
+
+export interface ThemePreset {
+  readonly id: ThemePresetId;
+  readonly name: string;
+  readonly subtitle: string;
+  readonly description: string;
+  readonly mode: "light" | "dark" | "system";
+  readonly preview: ThemePresetPreviewColors;
+}
+
+export const THEME_PRESETS: readonly ThemePreset[] = Object.freeze([
+  {
+    id: "light",
+    name: "浅色",
+    subtitle: "默认",
+    description: "ChatGPT 经典纯白，明亮开阔",
+    mode: "light",
+    preview: Object.freeze({
+      canvas: "#ffffff",
+      sidebar: "#fafafa",
+      surface: "#ffffff",
+      ink: "#18181b",
+      accent: "#18181b",
+      border: "rgba(0, 0, 0, 0.08)",
+    }),
+  },
+  {
+    id: "dark",
+    name: "深色",
+    subtitle: "ChatGPT",
+    description: "经典炭灰质感，深邃沉浸",
+    mode: "dark",
+    preview: Object.freeze({
+      canvas: "#212121",
+      sidebar: "#171717",
+      surface: "#2f2f2f",
+      ink: "#ececec",
+      accent: "#ececec",
+      border: "rgba(255, 255, 255, 0.1)",
+    }),
+  },
+  {
+    id: "midnight",
+    name: "极夜黑",
+    subtitle: "OLED",
+    description: "纯黑高对比，黑曜石极简质感",
+    mode: "dark",
+    preview: Object.freeze({
+      canvas: "#000000",
+      sidebar: "#09090b",
+      surface: "#121215",
+      ink: "#fafafa",
+      accent: "#ffffff",
+      border: "rgba(255, 255, 255, 0.12)",
+    }),
+  },
+  {
+    id: "warm",
+    name: "暖米色",
+    subtitle: "护眼",
+    description: "羊皮纸温润质感，舒适久读",
+    mode: "light",
+    preview: Object.freeze({
+      canvas: "#faf7f0",
+      sidebar: "#f4eee3",
+      surface: "#fdfcf9",
+      ink: "#2c2825",
+      accent: "#2c2825",
+      border: "rgba(68, 63, 59, 0.12)",
+    }),
+  },
+  {
+    id: "slate",
+    name: "极光蓝灰",
+    subtitle: "Nordic",
+    description: "科技冷调蓝灰，现代极客格调",
+    mode: "dark",
+    preview: Object.freeze({
+      canvas: "#0f172a",
+      sidebar: "#111a2a",
+      surface: "#1e293b",
+      ink: "#f1f5f9",
+      accent: "#38bdf8",
+      border: "rgba(148, 163, 184, 0.16)",
+    }),
+  },
+  {
+    id: "system",
+    name: "跟随系统",
+    subtitle: "自动",
+    description: "根据系统外观设置自动切换",
+    mode: "system",
+    preview: Object.freeze({
+      canvas: "#ffffff",
+      sidebar: "#212121",
+      surface: "#f4f4f5",
+      ink: "#18181b",
+      accent: "#18181b",
+      border: "rgba(0, 0, 0, 0.1)",
+    }),
+  },
+]);
+
 export interface WelcomeTimeSnapshot {
   period: TimePeriod;
   greeting: string;

@@ -1,5 +1,5 @@
-import { motion } from "motion/react";
-import type { KeyboardEvent } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { AgentEntry, ModelOption } from "../types";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../utils";
 import {
   ArrowUpIcon,
+  CheckIcon,
   ChevronDownIcon,
   FolderIcon,
   RouteIcon,
@@ -39,8 +40,102 @@ export interface ComposerProps {
 const ACTION_BTN_BASE =
   "grid h-[30px] w-[30px] place-items-center rounded-lg transition-all duration-140 enabled:hover:bg-surface-subtle enabled:hover:text-ink disabled:opacity-30";
 
-const SELECT_PILL_BASE =
-  "relative inline-flex cursor-pointer items-center gap-1 rounded-lg border border-black/[0.06] bg-surface-subtle/80 px-2.5 py-1.5 font-code text-[11.5px] font-medium text-ink transition-colors hover:border-black/[0.12] hover:bg-surface-hover";
+type ActiveMenu = "mode" | "cli" | "model" | null;
+
+interface DropdownOption {
+  value: string;
+  label: string;
+}
+
+interface CustomSelectPillProps {
+  label: string;
+  value: string;
+  options: DropdownOption[];
+  onSelect: (value: string) => void;
+  open: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  title?: string;
+  maxLabelWidth?: string;
+  minDropdownWidth?: string;
+}
+
+function CustomSelectPill({
+  label,
+  value,
+  options,
+  onSelect,
+  open,
+  onToggle,
+  disabled = false,
+  title,
+  maxLabelWidth = "max-w-[100px]",
+  minDropdownWidth = "min-w-[140px]",
+}: CustomSelectPillProps) {
+  return (
+    <div className="relative inline-flex items-center" title={title}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={`relative inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1.5 font-code text-[11.5px] font-medium transition-all duration-140 select-none ${
+          open
+            ? "border-black/20 bg-surface-hover text-ink shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+            : "border-black/[0.06] bg-surface-subtle/80 text-ink shadow-[0_1px_2px_rgba(0,0,0,0.02)] hover:border-black/[0.14] hover:bg-surface-hover"
+        } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+      >
+        <span className={`truncate ${maxLabelWidth}`}>{label}</span>
+        <span
+          className={`text-muted transition-transform duration-180 ${
+            open ? "rotate-180" : ""
+          }`}
+        >
+          <ChevronDownIcon size={11} />
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {open && !disabled ? (
+          <motion.div
+            role="listbox"
+            initial={{ opacity: 0, scale: 0.95, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 4 }}
+            transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+            className={`absolute bottom-[calc(100%+6px)] right-0 z-50 flex max-h-[260px] flex-col overflow-hidden rounded-[14px] border border-black/[0.08] bg-white/95 p-1 shadow-[0_14px_40px_-6px_rgba(0,0,0,0.16),0_3px_10px_-2px_rgba(0,0,0,0.05)] backdrop-blur-md ${minDropdownWidth}`}
+          >
+            <div className="flex-1 overflow-y-auto p-0.5 [scrollbar-color:rgba(0,0,0,0.12)_transparent] [scrollbar-width:thin]">
+              {options.map((opt) => {
+                const isSelected = opt.value === value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => onSelect(opt.value)}
+                    className={`flex w-full items-center gap-1.5 rounded-[9px] px-2 py-1.5 text-left font-code text-xs transition-colors duration-100 ${
+                      isSelected
+                        ? "bg-black/[0.06] font-semibold text-ink"
+                        : "text-ink-soft hover:bg-black/[0.035] hover:text-ink"
+                    }`}
+                  >
+                    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-ink">
+                      {isSelected ? <CheckIcon size={12} /> : null}
+                    </span>
+                    <span className="truncate">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export function Composer({
   compact = false,
@@ -61,6 +156,38 @@ export function Composer({
   agents,
   catalogOptions,
 }: ComposerProps) {
+  const [activeMenu, setActiveMenu] = useState<ActiveMenu>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (running && activeMenu) {
+      setActiveMenu(null);
+    }
+  }, [running, activeMenu]);
+
+  useEffect(() => {
+    if (!activeMenu) {
+      return;
+    }
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Node && containerRef.current && !containerRef.current.contains(target)) {
+        setActiveMenu(null);
+      }
+    }
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setActiveMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeMenu]);
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -95,15 +222,45 @@ export function Composer({
     currentAgentLabel ||
     "默认";
 
+  function handleModeSelect(nextMode: string) {
+    onModeChange(nextMode);
+    setActiveMenu(null);
+  }
+
   function handleCliChange(nextAgentId: string) {
     const nextModels = getAvailableModelsForCli(catalogOptions, nextAgentId);
     const nextModelId = nextModels[0]?.modelId ?? "";
     onAgentModelChange(nextAgentId, nextModelId);
+    setActiveMenu(null);
   }
 
   function handleModelChange(nextModelId: string) {
     onAgentModelChange(activeAgent, nextModelId);
+    setActiveMenu(null);
   }
+
+  const modeOptions: DropdownOption[] = effectiveRoutingModes.map((m) => ({
+    value: m,
+    label: formatModeLabel(m),
+  }));
+
+  const cliOptions: DropdownOption[] = agents.map((ag) => ({
+    value: ag.id,
+    label: ag.label,
+  }));
+
+  const modelOptions: DropdownOption[] =
+    availableModels.length > 0
+      ? availableModels.map((m) => ({
+          value: m.modelId,
+          label: m.label || m.modelId,
+        }))
+      : [
+          {
+            value: "",
+            label: currentAgentLabel || "默认",
+          },
+        ];
 
   const hasPrompt = Boolean(prompt.trim());
 
@@ -152,67 +309,54 @@ export function Composer({
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div ref={containerRef} className="flex items-center gap-1.5 flex-wrap justify-end">
           {/* 第一块：选模式 */}
-          <div className={SELECT_PILL_BASE} title={`模式: ${activeMode}`}>
-            <select
-              aria-label="模式"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              value={activeMode}
-              onChange={(e) => onModeChange(e.target.value)}
-              disabled={running}
-            >
-              {effectiveRoutingModes.map((m) => (
-                <option key={m} value={m}>
-                  {formatModeLabel(m)}
-                </option>
-              ))}
-            </select>
-            <span className="max-w-[70px] truncate">{formatModeLabel(activeMode)}</span>
-            <ChevronDownIcon size={11} className="text-muted" />
-          </div>
+          <CustomSelectPill
+            label={formatModeLabel(activeMode)}
+            value={activeMode}
+            options={modeOptions}
+            onSelect={handleModeSelect}
+            open={activeMenu === "mode"}
+            onToggle={() =>
+              setActiveMenu((curr) => (curr === "mode" ? null : "mode"))
+            }
+            disabled={running}
+            title={`模式: ${activeMode}`}
+            maxLabelWidth="max-w-[75px]"
+            minDropdownWidth="min-w-[110px]"
+          />
 
           {/* 第二块：选 CLI */}
-          <div className={SELECT_PILL_BASE} title={`CLI: ${currentAgentLabel}`}>
-            <select
-              aria-label="CLI"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              value={activeAgent}
-              onChange={(e) => handleCliChange(e.target.value)}
-              disabled={running}
-            >
-              {agents.map((ag) => (
-                <option key={ag.id} value={ag.id}>
-                  {ag.label}
-                </option>
-              ))}
-            </select>
-            <span className="max-w-[90px] truncate">{currentAgentLabel}</span>
-            <ChevronDownIcon size={11} className="text-muted" />
-          </div>
+          <CustomSelectPill
+            label={currentAgentLabel}
+            value={activeAgent}
+            options={cliOptions}
+            onSelect={handleCliChange}
+            open={activeMenu === "cli"}
+            onToggle={() =>
+              setActiveMenu((curr) => (curr === "cli" ? null : "cli"))
+            }
+            disabled={running}
+            title={`CLI: ${currentAgentLabel}`}
+            maxLabelWidth="max-w-[95px]"
+            minDropdownWidth="min-w-[130px]"
+          />
 
           {/* 第三块：选 agent / 模型 */}
-          <div className={SELECT_PILL_BASE} title={`模型: ${currentModelLabel}`}>
-            <select
-              aria-label="Agent 模型"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              value={activeModel}
-              onChange={(e) => handleModelChange(e.target.value)}
-              disabled={running}
-            >
-              {availableModels.length > 0 ? (
-                availableModels.map((m) => (
-                  <option key={m.modelId} value={m.modelId}>
-                    {m.label || m.modelId}
-                  </option>
-                ))
-              ) : (
-                <option value="">{currentAgentLabel || "默认"}</option>
-              )}
-            </select>
-            <span className="max-w-[120px] truncate">{currentModelLabel}</span>
-            <ChevronDownIcon size={11} className="text-muted" />
-          </div>
+          <CustomSelectPill
+            label={currentModelLabel}
+            value={activeModel}
+            options={modelOptions}
+            onSelect={handleModelChange}
+            open={activeMenu === "model"}
+            onToggle={() =>
+              setActiveMenu((curr) => (curr === "model" ? null : "model"))
+            }
+            disabled={running}
+            title={`模型: ${currentModelLabel}`}
+            maxLabelWidth="max-w-[130px]"
+            minDropdownWidth="min-w-[180px]"
+          />
 
           {running ? (
             <motion.button
