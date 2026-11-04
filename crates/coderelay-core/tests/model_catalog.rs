@@ -29,7 +29,7 @@ impl FileSystem for FakeFileSystem {
     }
 
     fn read_to_string(&self, path: &Path) -> Result<String, FsError> {
-        let key = path.to_string_lossy().into_owned();
+        let key = path.to_string_lossy().replace('\\', "/");
         self.files.get(&key).cloned().ok_or(FsError::NotFound {
             path: PathBuf::from(key),
         })
