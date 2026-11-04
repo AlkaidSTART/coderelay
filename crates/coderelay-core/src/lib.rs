@@ -10,13 +10,15 @@ pub mod config;
 pub mod host;
 pub mod model;
 pub mod router;
+pub mod runtime;
 pub mod scanner;
+pub mod session;
 
 pub use agent::{AgentDescriptor, AgentId, agent_ids, supported_agents};
 pub use agents::{
     CliCapabilities, ModelCatalog, ModelOption, ModelProbeRoots, ProbeDisplay, ProbeDisplayStatus,
-    ProbeResult, ProbedModel, TargetSelection, create_model_probes, probe_model_catalog,
-    to_route_candidates, validate_explicit_target,
+    ProbeResult, ProbedModel, PromptBuildOptions, TargetSelection, build_prompt_args,
+    create_model_probes, probe_model_catalog, to_route_candidates, validate_explicit_target,
 };
 pub use config::{
     Config, ConfigError, LoadConfigOptions, LoadedConfig, default_config, load_config,
@@ -28,13 +30,22 @@ pub use model::{
     parse_model_ref,
 };
 pub use router::{
-    RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
-    RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate, build_route_candidates,
-    has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+    ROUTING_MODES, RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest,
+    RouteStrategy, RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate,
+    build_route_candidates, has_ambiguous_route, resolve_routing_mode, route, select_candidate,
+};
+pub use runtime::{
+    AgentAbortHandle, AgentEvent, AgentProtocol, AgentRunHandle, AgentRunOptions, AgentRunResult,
+    AgentRunStatus, ChunkParser, OutputSource, start_agent_run,
 };
 pub use scanner::{
     CliCandidate, CliDiagnostic, CliRuntime, CliSource, DetectedCli, DiagnosticLevel, LaunchTarget,
     ScannerOptions, cli_definitions, detect_host_agent, scan_coding_clis, scan_wsl_clis,
+};
+pub use session::{
+    AppendTurnInput, ListSessionsOptions, SessionRecord, SessionStore, SessionStoreError,
+    SessionTurn, TurnContextSource, TurnProtocol, TurnRunStatus, build_prompt_with_context,
+    default_session_db_path,
 };
 
 /// Semantic version of the Rust core crate.

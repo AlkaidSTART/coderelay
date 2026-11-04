@@ -8,6 +8,6 @@ pub use engine::{
     build_route_candidates, has_ambiguous_route, resolve_routing_mode, route, select_candidate,
 };
 pub use types::{
-    RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest, RouteStrategy,
-    RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate,
+    ROUTING_MODES, RouteCandidate, RouteDecision, RouteError, RouteOptions, RouteRequest,
+    RouteStrategy, RoutingMode, RoutingStrategy, RuleMatch, ScoredCandidate,
 };

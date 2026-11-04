@@ -15,6 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+coderelay-cli.workspace = true
 coderelay-core.workspace = true
 coderelay-protocol.workspace = true
 serde.workspace = true

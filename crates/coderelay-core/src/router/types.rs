@@ -14,6 +14,32 @@ pub enum RoutingMode {
     Jev,
 }
 
+pub const ROUTING_MODES: [RoutingMode; 3] =
+    [RoutingMode::Local, RoutingMode::Manual, RoutingMode::Jev];
+
+impl std::str::FromStr for RoutingMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "local" => Ok(Self::Local),
+            "manual" => Ok(Self::Manual),
+            "jev" => Ok(Self::Jev),
+            other => Err(format!("expected one of: local, manual, jev; got {other}")),
+        }
+    }
+}
+
+impl std::fmt::Display for RoutingMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Local => "local",
+            Self::Manual => "manual",
+            Self::Jev => "jev",
+        })
+    }
+}
+
 /// Strategy configured for local routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
