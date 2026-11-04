@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 
 import { CoderelayClient } from "../src";
+import packageManifest from "../package.json";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/fake-host.ts", import.meta.url));
 const clients: CoderelayClient[] = [];
@@ -27,7 +28,7 @@ describe("CoderelayClient", () => {
       sdk.discoverAgents({ cwd: "/fixture/workspace" }),
     ]);
 
-    expect(status.coreVersion).toBe("0.3.3");
+    expect(status.coreVersion).toBe(packageManifest.version);
     expect(status.protocolVersion).toBe(1);
     expect(status.transport).toBe("stdio");
     expect(discovery.defaultAgent).toBe("codex");

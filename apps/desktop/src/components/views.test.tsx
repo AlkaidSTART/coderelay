@@ -157,6 +157,7 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
         id: "sess-abc-123",
         title: "重构对话路由",
         cliId: "claude",
+        createdAt: 1729999999000,
         updatedAt: 1730000000000,
         workspace: "/Users/allure/Desktop/coderelay",
       },
