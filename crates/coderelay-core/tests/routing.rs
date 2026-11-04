@@ -199,6 +199,56 @@ fn available_implicit_agents_remain_candidates_but_disabled_agents_do_not() {
             .iter()
             .any(|candidate| candidate.agent == AgentId::Pi)
     );
+
+    let without_default = build_route_candidates(
+        &config,
+        &RouteOptions {
+            available_agents: Some(vec![AgentId::Claude, AgentId::Pi]),
+            ..RouteOptions::default()
+        },
+    );
+    assert_eq!(without_default.len(), 1);
+    assert_eq!(without_default[0].agent, AgentId::Claude);
+}
+
+#[test]
+fn cost_penalty_can_break_an_otherwise_equal_score() {
+    let config = parse_config_yaml(
+        r#"
+defaultAgent: codex
+agents:
+  codex:
+    models:
+      - id: expensive
+        strengths: [coding]
+        cost: 5
+      - id: cheap
+        strengths: [coding]
+        cost: 1
+routing:
+  strategy: score
+  weights:
+    default: 0
+    strength: 2
+    cost: 3
+"#,
+    )
+    .expect("valid config");
+    let decision = route(
+        &RouteRequest {
+            prompt: "implement the code".to_owned(),
+            ..RouteRequest::default()
+        },
+        &config,
+        &RouteOptions {
+            available_agents: Some(vec![AgentId::Codex]),
+            ..RouteOptions::default()
+        },
+    )
+    .expect("score route");
+
+    assert_eq!(decision.model.as_deref(), Some("cheap"));
+    assert!(decision.score > 0.0);
 }
 
 #[test]

@@ -52,15 +52,11 @@ fn dedupe_candidates(candidates: Vec<RouteCandidate>) -> Vec<RouteCandidate> {
         .collect()
 }
 
-fn candidate_agent_order(config: &Config, available_agents: Option<&[AgentId]>) -> Vec<AgentId> {
-    let mut ids = match available_agents {
+fn candidate_agent_order(available_agents: Option<&[AgentId]>) -> Vec<AgentId> {
+    let ids = match available_agents {
         Some(available) => available.to_vec(),
         None => agent_ids().collect(),
     };
-
-    if !ids.contains(&config.default_agent) {
-        ids.push(config.default_agent);
-    }
 
     let mut seen = HashSet::new();
     ids.into_iter()
@@ -82,7 +78,7 @@ pub fn build_route_candidates(config: &Config, options: &RouteOptions) -> Vec<Ro
     };
 
     let mut candidates = Vec::new();
-    for agent_id in candidate_agent_order(config, options.available_agents.as_deref()) {
+    for agent_id in candidate_agent_order(options.available_agents.as_deref()) {
         let agent = config.agents.get(&agent_id);
         if agent.is_some_and(|agent| !agent.enabled) {
             continue;
@@ -268,7 +264,7 @@ pub fn has_ambiguous_route(
     scored.sort_by(compare_scores);
 
     scored
-        .get(0)
+        .first()
         .zip(scored.get(1))
         .is_some_and(|(left, right)| left.score == right.score)
 }
