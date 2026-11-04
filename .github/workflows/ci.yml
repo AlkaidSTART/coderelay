@@ -6,8 +6,41 @@ on:
   pull_request:
     branches: [main, dev]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  rust-core-cli:
+    name: Rust Core + CLI (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy -p coderelay-core -p coderelay-protocol -p coderelay-cli --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p coderelay-core -p coderelay-protocol -p coderelay-cli
+
+  web-sdk-desktop:
+    name: Web + SDK + Desktop frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,11 +49,41 @@ jobs:
         with:
           bun-version: latest
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Version alignment
+        run: bun run version:check
+
+      - name: Root typecheck
         run: bun run typecheck
 
-      - name: Test
+      - name: Root compatibility tests
         run: bun test
+
+      - name: SDK typecheck
+        run: bun run sdk:typecheck
+
+      - name: SDK tests
+        run: bun run sdk:test
+
+      - name: SDK build
+        run: bun run sdk:build
+
+      - name: Desktop typecheck
+        run: bun run desktop:typecheck
+
+      - name: Desktop frontend build
+        run: bun run --cwd apps/desktop build
+
+      - name: Desktop Rust check
+        run: cargo check -p coderelay-desktop

@@ -427,7 +427,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "coderelay-cli"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "coderelay-core"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "dirs",
  "futures",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "coderelay-desktop"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "coderelay-cli",
  "coderelay-core",
@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "coderelay-protocol"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "coderelay-core",
  "serde",
