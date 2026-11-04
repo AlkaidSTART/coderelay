@@ -1,7 +1,14 @@
 import dayjs, { type ConfigType } from "dayjs";
 import "dayjs/locale/zh-cn";
 
-import type { AgentEvent, TimePeriod, WelcomeTimeSnapshot } from "./types";
+import type {
+  AgentEntry,
+  AgentEvent,
+  ModelOption,
+  RouteForm,
+  TimePeriod,
+  WelcomeTimeSnapshot,
+} from "./types";
 
 dayjs.locale("zh-cn");
 
@@ -68,6 +75,31 @@ export function workspaceName(path: string): string {
   return segments[segments.length - 1] || normalized;
 }
 
+export function mergeRecentWorkspaces(
+  currentCwd: string,
+  discoveredWorkspaces: readonly string[],
+  existingWorkspaces: readonly string[] = [],
+  limit = 8,
+): string[] {
+  const maxItems = Math.max(1, Math.trunc(limit));
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const candidate of [currentCwd, ...discoveredWorkspaces, ...existingWorkspaces]) {
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+    if (result.length >= maxItems) {
+      break;
+    }
+  }
+
+  return result;
+}
+
 export function formatTimestamp(timestamp: number): string {
   return dayjs(timestamp).format("MM/DD HH:mm");
 }
@@ -97,4 +129,45 @@ export function eventActivity(event: AgentEvent): string | null {
     return `aborted · ${event.reason ?? "process stopped"}`;
   }
   return null;
+}
+
+export interface ResolvedRouteSelection {
+  mode: string;
+  agent: string;
+  model: string;
+}
+
+export function getAvailableModelsForCli(
+  catalogOptions: readonly ModelOption[],
+  cliId: string,
+): ModelOption[] {
+  if (!cliId) {
+    return [];
+  }
+  return catalogOptions.filter((option) => option.cliId === cliId && option.available);
+}
+
+export function resolveRouteSelection(
+  current: Pick<RouteForm, "mode" | "agent" | "model">,
+  routingModes: readonly string[],
+  agents: readonly AgentEntry[],
+  catalogOptions: readonly ModelOption[],
+): ResolvedRouteSelection {
+  const mode =
+    routingModes.length > 0 && routingModes.includes(current.mode)
+      ? current.mode
+      : (routingModes[0] ?? "local");
+
+  const agent =
+    agents.length > 0 && agents.some((item) => item.id === current.agent)
+      ? current.agent
+      : (agents[0]?.id ?? "");
+
+  const availableModels = getAvailableModelsForCli(catalogOptions, agent);
+  const model =
+    availableModels.length > 0 && availableModels.some((item) => item.modelId === current.model)
+      ? current.model
+      : (availableModels[0]?.modelId ?? "");
+
+  return { mode, agent, model };
 }

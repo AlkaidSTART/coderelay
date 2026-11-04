@@ -24,28 +24,30 @@ export function RightSidebar({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-[18px] [scrollbar-color:rgba(15,23,42,0.12)_transparent] [scrollbar-width:thin]">
         <div className="flex flex-col gap-[3px] pt-2.5">
-          {agents.map((agent) => (
-            <button
-              className={`relative flex w-full items-center gap-[9px] rounded-lg px-2.5 py-2 text-left transition-colors duration-140 ${
-                selectedAgentId === agent.id
-                  ? "bg-zinc-200 text-ink"
-                  : "bg-transparent text-ink-soft hover:bg-zinc-900/4 hover:text-ink"
-              }`}
-              key={agent.id}
-              onClick={() => onSelectAgent(agent)}
-              title={agent.version ?? agent.command}
-              type="button"
-            >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  agent.available ? "bg-success" : "bg-zinc-300"
-                }`}
-              />
-              <span className="flex min-w-0 flex-col">
-                <strong className="truncate text-xs font-medium">{agent.label}</strong>
-              </span>
-            </button>
-          ))}
+          {agents.map((agent) => {
+            const isSelected = selectedAgentId === agent.id;
+            const toneClass = agent.available
+              ? isSelected
+                ? "bg-[#3b6e5c]/[0.12] text-[#24493b]"
+                : "bg-transparent text-[#3b6e5c] hover:bg-[#3b6e5c]/[0.07] hover:text-[#2a5445]"
+              : isSelected
+                ? "bg-[#9e5350]/[0.12] text-[#783734]"
+                : "bg-transparent text-[#9e5350] hover:bg-[#9e5350]/[0.07] hover:text-[#823e3b]";
+
+            return (
+              <button
+                className={`relative flex w-full items-center rounded-lg px-2.5 py-2 text-left transition-colors duration-140 ${toneClass}`}
+                key={agent.id}
+                onClick={() => onSelectAgent(agent)}
+                title={agent.version ?? agent.command}
+                type="button"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <strong className="truncate text-xs font-medium">{agent.label}</strong>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </aside>

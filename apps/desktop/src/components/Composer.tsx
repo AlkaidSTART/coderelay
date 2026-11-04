@@ -1,9 +1,10 @@
-import { motion } from "motion/react";
-import type { KeyboardEvent } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { AgentEntry, ModelOption } from "../types";
 import {
   ArrowUpIcon,
+  CheckIcon,
   ChevronDownIcon,
   FolderIcon,
   RouteIcon,
@@ -19,7 +20,7 @@ export interface ComposerProps {
   onStartRun: () => void;
   onCancelRun: () => void;
   workspaceInput: string;
-  onToggleWorkspaceDropdown: () => void;
+  onPickWorkspace: () => void;
   mode: string;
   routingModes: string[];
   onModeChange: (mode: string) => void;
@@ -43,7 +44,7 @@ export function Composer({
   onStartRun,
   onCancelRun,
   workspaceInput,
-  onToggleWorkspaceDropdown,
+  onPickWorkspace,
   mode,
   routingModes,
   onModeChange,
@@ -55,6 +56,58 @@ export function Composer({
   catalogOptions,
   selectedAgentLabel,
 }: ComposerProps) {
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<"top" | "bottom">("bottom");
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (running && modelMenuOpen) {
+      setModelMenuOpen(false);
+    }
+  }, [running, modelMenuOpen]);
+
+  useEffect(() => {
+    if (!modelMenuOpen) {
+      return;
+    }
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Node && modelMenuRef.current && !modelMenuRef.current.contains(target)) {
+        setModelMenuOpen(false);
+      }
+    }
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setModelMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [modelMenuOpen]);
+
+  function toggleModelMenu() {
+    if (running) {
+      return;
+    }
+    if (!modelMenuOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      setMenuPlacement(compact || (spaceBelow < 280 && spaceAbove > spaceBelow) ? "top" : "bottom");
+    }
+    setModelMenuOpen((prev) => !prev);
+  }
+
+  function handleSelectOption(nextAgent: string, nextModel: string) {
+    onAgentModelChange(nextAgent, nextModel);
+    setModelMenuOpen(false);
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -71,6 +124,15 @@ export function Composer({
   }
 
   const hasPrompt = Boolean(prompt.trim());
+  const selectedModelOption = model
+    ? catalogOptions.find((m) => m.cliId === agent && m.modelId === model)
+    : undefined;
+  const currentSelectionLabel = model
+    ? selectedModelOption?.label || model
+    : selectedAgentLabel
+      ? selectedAgentLabel
+      : "Auto";
+  const isAutoSelected = !agent && !model;
 
   return (
     <div
@@ -97,11 +159,11 @@ export function Composer({
       <div className="flex items-center justify-between px-3.5 pt-1.5 pb-3">
         <div className="flex items-center gap-1.5">
           <button
-            aria-label="Workspace"
+            aria-label="选择文件夹"
             className={`${ACTION_BTN_BASE} bg-transparent text-muted`}
             type="button"
-            onClick={onToggleWorkspaceDropdown}
-            title={workspaceInput || "Workspace"}
+            onClick={onPickWorkspace}
+            title={workspaceInput ? `选择文件夹（当前：${workspaceInput}）` : "选择文件夹"}
           >
             <FolderIcon size={14} />
           </button>

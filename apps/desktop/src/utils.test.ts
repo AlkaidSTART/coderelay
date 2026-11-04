@@ -5,7 +5,9 @@ import {
   formatTimestamp,
   getTimePeriod,
   getWelcomeTimeSnapshot,
+  mergeRecentWorkspaces,
   PERIOD_GREETINGS,
+  workspaceName,
 } from "./utils";
 
 describe("dayjs time formatting & welcome encouragement utilities", () => {
@@ -69,5 +71,23 @@ describe("dayjs time formatting & welcome encouragement utilities", () => {
   it("formats session timestamps with dayjs", () => {
     const ts = new Date("2026-11-04T15:34:08").getTime();
     expect(formatTimestamp(ts)).toBe("11/04 15:34");
+  });
+
+  it("merges picked workspace with discovered and existing recent workspaces without duplicates", () => {
+    const merged = mergeRecentWorkspaces(
+      "/Users/allure/Desktop/new-folder",
+      ["/Users/allure/Desktop/coderelay", "/Users/allure/Desktop/new-folder"],
+      ["/Users/allure/Desktop/archive-repo", "   ", "/Users/allure/Desktop/coderelay"],
+      3,
+    );
+
+    expect(merged).toEqual([
+      "/Users/allure/Desktop/new-folder",
+      "/Users/allure/Desktop/coderelay",
+      "/Users/allure/Desktop/archive-repo",
+    ]);
+    expect(workspaceName("/Users/allure/Desktop/new-folder/")).toBe("new-folder");
+    expect(workspaceName("C:\\Projects\\coderelay\\")).toBe("coderelay");
+    expect(workspaceName("   ")).toBe("—");
   });
 });

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 
 import { workspaceName } from "../utils";
-import { ChevronDownIcon, FolderIcon } from "./icons";
+import { ChevronDownIcon, FolderIcon, PlusIcon } from "./icons";
 
 export interface WorkspaceDropdownProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ export interface WorkspaceDropdownProps {
   currentWorkspace: string;
   recentWorkspaces: string[];
   onSelectWorkspace: (workspace: string) => void;
+  onPickWorkspace: () => void;
 }
 
 export function WorkspaceDropdown({
@@ -17,6 +18,7 @@ export function WorkspaceDropdown({
   currentWorkspace,
   recentWorkspaces,
   onSelectWorkspace,
+  onPickWorkspace,
 }: WorkspaceDropdownProps) {
   const workspaces = Array.from(
     new Set([currentWorkspace, ...recentWorkspaces].filter(Boolean)),

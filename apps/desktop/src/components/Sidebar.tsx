@@ -19,6 +19,7 @@ export interface SidebarProps {
   workspaceDropdownOpen?: boolean;
   onToggleWorkspaceDropdown?: () => void;
   onSelectWorkspace: (workspace: string) => void;
+  onPickWorkspace: () => void;
   loading: boolean;
   onRefreshDiscovery: () => void;
   onStartNewTask: () => void;
@@ -38,6 +39,7 @@ export function Sidebar({
   workspaceDropdownOpen: propDropdownOpen,
   onToggleWorkspaceDropdown: propToggleDropdown,
   onSelectWorkspace,
+  onPickWorkspace,
   loading,
   onRefreshDiscovery,
   onStartNewTask,
@@ -75,6 +77,7 @@ export function Sidebar({
           currentWorkspace={workspaceInput}
           recentWorkspaces={recentWorkspaces}
           onSelectWorkspace={onSelectWorkspace}
+          onPickWorkspace={onPickWorkspace}
         />
 
         <div className="flex items-center gap-0.5">
