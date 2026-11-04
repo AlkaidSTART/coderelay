@@ -118,6 +118,8 @@ cargo run -p coderelay-cli -- agents --json
 cargo run -p coderelay-cli -- doctor --json
 ```
 
+> npm 包中的 `coderelay`/`cr` 命令仍指向旧 Bun 实现，作为迁移期的回退入口；新的原生 CLI 通过 Cargo 安装。
+
 ### TypeScript SDK
 
 ```bash
@@ -169,22 +171,6 @@ bun run legacy:dev
 
 ### CLI 任务路由模式（run）
 
-在项目根目录下直接运行 `cr` 或 `coderelay`：
-
-```bash
-cr
-```
-
-终端将启动交互式面板：
-1. **环境探测**：自动扫描并列出可用 Agent。
-2. **选择目标**：可直接使用已持久化的最爱 Agent 或即时选择。
-3. **编写任务**：输入待处理的编码任务描述。
-4. **实时执行**：直接无缝桥接到目标 Agent CLI。
-
-### 环境与规则诊断（doctor / agents / models）
-
-直接向 Agent 分发单条任务：
-
 ```bash
 # 智能走完整规则与评分路由
 coderelay run "重构 router 模块的评分逻辑，补齐 TypeScript 类型"
@@ -219,6 +205,24 @@ coderelay run \
 | `--context-size <tokens>` | - | number | 预估上下文 Token 规模，参与评分模型加权 |
 | `--timeout <ms>` | - | number | 超时守护：超时后自动中止目标 Agent 进程 |
 
+### 环境与规则诊断（doctor / agents / models）
+
+```bash
+# 全面诊断：配置文件、路由规则、Agent 安装和模型探测
+coderelay doctor
+
+# 查看 Agent 安装状态、版本、运行来源和候选路径
+coderelay agents
+
+# 查看本机实际探测到的模型目录
+coderelay models
+
+# 机器可读输出
+coderelay agents --json
+coderelay models --json
+coderelay doctor --json
+```
+
 ### 初始化偏好管理（favorite）
 
 设置日常最习惯的默认初始 Agent，配置将保存在本地 SQLite 数据库中：
@@ -230,25 +234,19 @@ coderelay favorite
 # 设置 Claude Code 为偏好
 coderelay favorite claude
 
-# 使用短别名设置 Codex
-cr fav codex
-
 # 清除偏好
-cr fav clear
+coderelay favorite clear
 ```
 
 ### 旧 Bun TUI（迁移兼容）
 
+旧 Ink TUI 仍保留一个迁移版本，用于对照和回退，但不再新增功能：
+
 ```bash
-# 全面诊断：检查配置文件有效性、语法规则、已安装 CLI 及路径
-coderelay doctor
-
-# 查看支持的 Agent 列表、版本与本机就绪状态
-coderelay agents
-
-# 查看配置的模型列表、能力标签、费用与兜底默认值
-coderelay models
+bun run legacy:dev
 ```
+
+新功能应进入 Rust CLI、Tauri 桌面端或 SDK。
 
 ---
 
@@ -342,22 +340,39 @@ routing:
 
 ## 本地开发
 
-本项目使用 [Bun](https://bun.sh) 作为运行时与工具链：
+桌面端与 SDK 的前端工具链使用 Bun，核心、CLI 和 Tauri 后端使用 Rust：
 
 ```bash
-# 1. 克隆并安装依赖
 git clone https://github.com/GeWu-academy/coderelay.git
 cd coderelay
 bun install
 
-# 2. 运行测试套件（内置 230+ 单元与集成测试）
-bun test
-
-# 3. 静态类型检查
-bun run typecheck
-
-# 4. 本地启动开发 CLI
+# 默认开发入口：Tauri 桌面端
 bun run dev
+
+# Rust CLI
+bun run cli agents --json
+
+# SDK
+bun run sdk:test
+bun run sdk:build
+
+# 全量检查
+bun run version:check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bun test
+bun run typecheck
+bun run desktop:typecheck
+bun run sdk:typecheck
+bun run --cwd apps/desktop build
+```
+
+旧 Bun TUI 仍可运行：
+
+```bash
+bun run legacy:dev
 ```
 
 ---

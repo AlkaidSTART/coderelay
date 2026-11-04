@@ -63,9 +63,11 @@ jobs:
           if gh release view "$TAG" --json assets >/dev/null 2>&1; then
             DMG_COUNT=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".dmg"))] | length')
             EXE_COUNT=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".exe"))] | length')
-            if [[ "$DMG_COUNT" -gt 0 && "$EXE_COUNT" -gt 0 ]]; then
+            DEB_COUNT=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".deb"))] | length')
+            APPIMAGE_COUNT=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".AppImage"))] | length')
+            if [[ "$DMG_COUNT" -gt 0 && "$EXE_COUNT" -gt 0 && "$DEB_COUNT" -gt 0 && "$APPIMAGE_COUNT" -gt 0 ]]; then
               echo "should_release=false" >> "$GITHUB_OUTPUT"
-              echo "Release ${TAG} already contains DMG and EXE assets; skipping."
+              echo "Release ${TAG} already contains macOS, Windows, and Linux assets; skipping."
               exit 0
             fi
             echo "::warning::Release ${TAG} exists but is missing desktop assets; rebuilding."
@@ -118,6 +120,8 @@ jobs:
           set -euo pipefail
           test -n "$(find release-assets -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           test -n "$(find release-assets -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           find release-assets -maxdepth 1 -type f -print
 
       - name: Publish GitHub Release
