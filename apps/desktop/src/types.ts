@@ -177,6 +177,11 @@ export interface ConfigSource {
   raw: string;
 }
 
+export interface JevSettings {
+  stored: boolean;
+  environmentConfigured: boolean;
+}
+
 export interface SessionUpdatedPayload {
   sessionId: string;
   turnId: number | null;

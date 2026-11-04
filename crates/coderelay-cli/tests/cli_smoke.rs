@@ -320,8 +320,17 @@ fn sdk_host_serves_versioned_ndjson() {
         .map(|line| serde_json::from_str(line).expect("json line"))
         .collect();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0]["status"], "ok");
-    assert_eq!(lines[0]["result"]["transport"], "stdio");
-    assert_eq!(lines[1]["status"], "error");
-    assert_eq!(lines[1]["error"]["code"], "unsupportedVersion");
+    let valid = lines
+        .iter()
+        .find(|line| line["requestId"] == "status-1")
+        .expect("valid response");
+    assert_eq!(valid["status"], "ok");
+    assert_eq!(valid["protocolVersion"], 1);
+    assert_eq!(valid["result"]["transport"], "stdio");
+    let invalid = lines
+        .iter()
+        .find(|line| line["requestId"] == "status-2")
+        .expect("invalid response");
+    assert_eq!(invalid["status"], "error");
+    assert_eq!(invalid["error"]["code"], "unsupportedVersion");
 }

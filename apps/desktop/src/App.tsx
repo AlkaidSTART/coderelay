@@ -7,6 +7,7 @@ import type {
   AgentEvent,
   ConfigSource,
   DiscoveryPayload,
+  JevSettings,
   ModelOption,
   RoutePreview,
   RunCompletedPayload,
@@ -46,6 +47,10 @@ interface WorkbenchState {
   configSource: ConfigSource | null;
   configDraft: string;
   configBusy: boolean;
+  jevSettings: JevSettings | null;
+  jevApiKeyInput: string;
+  jevBusy: boolean;
+  configNotice: string | null;
 }
 
 const INITIAL_STATE: WorkbenchState = {
@@ -67,6 +72,10 @@ const INITIAL_STATE: WorkbenchState = {
   configSource: null,
   configDraft: "",
   configBusy: false,
+  jevSettings: null,
+  jevApiKeyInput: "",
+  jevBusy: false,
+  configNotice: null,
 };
 
 function messageOf(error: unknown): string {
@@ -342,6 +351,72 @@ export function App() {
     }
   }
 
+  async function loadJevSettings(): Promise<void> {
+    try {
+      const settings = await invoke<JevSettings>("get_jev_settings");
+      setState((current) => ({
+        ...current,
+        jevSettings: settings,
+      }));
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageOf(error) }));
+    }
+  }
+
+  async function saveJevApiKey(): Promise<void> {
+    const apiKey = state.jevApiKeyInput.trim();
+    if (!apiKey) {
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      jevBusy: true,
+      error: null,
+      configNotice: null,
+    }));
+    try {
+      const settings = await invoke<JevSettings>("save_jev_api_key", { apiKey });
+      setState((current) => ({
+        ...current,
+        jevSettings: settings,
+        jevApiKeyInput: "",
+        jevBusy: false,
+        configNotice: "API Key 已保存到本地 SQLite。",
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        jevBusy: false,
+        error: messageOf(error),
+      }));
+    }
+  }
+
+  async function clearJevApiKey(): Promise<void> {
+    setState((current) => ({
+      ...current,
+      jevBusy: true,
+      error: null,
+      configNotice: null,
+    }));
+    try {
+      const settings = await invoke<JevSettings>("clear_jev_api_key");
+      setState((current) => ({
+        ...current,
+        jevSettings: settings,
+        jevApiKeyInput: "",
+        jevBusy: false,
+        configNotice: "已从本地 SQLite 清除 API Key。",
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        jevBusy: false,
+        error: messageOf(error),
+      }));
+    }
+  }
+
   async function loadConfigSource(): Promise<void> {
     setState((current) => ({ ...current, configBusy: true, error: null }));
     try {
@@ -582,12 +657,7 @@ export function App() {
   return (
     <div className="app-frame">
       <header className="titlebar" data-tauri-drag-region>
-        <div className="titlebar-brand" data-tauri-drag-region>
-          <span className="brand-glyph brand-glyph--small">
-            <BrandMark />
-          </span>
-          <span>CodeRelay</span>
-        </div>
+        <div className="titlebar-brand" data-tauri-drag-region />
         <button className="titlebar-document" onClick={startNewTask} type="button">
           <TerminalIcon />
           <span>{activeTaskTitle}</span>
@@ -600,11 +670,6 @@ export function App() {
 
       <div className="app-layout">
         <nav className="icon-rail" aria-label="工作台导航">
-          <div className="rail-brand">
-            <span className="brand-glyph">
-              <BrandMark />
-            </span>
-          </div>
           <div className="rail-nav">
             <button
               aria-label="工作台"
@@ -643,14 +708,13 @@ export function App() {
               className={`rail-action ${state.view === "config" ? "rail-action--active" : ""}`}
               onClick={() => {
                 setState((current) => ({ ...current, view: "config" }));
-                void loadConfigSource();
+                void Promise.all([loadConfigSource(), loadJevSettings()]);
               }}
               title="配置"
               type="button"
             >
               <SettingsIcon />
             </button>
-            <span className="rail-avatar" aria-hidden="true">CR</span>
           </div>
         </nav>
 
@@ -855,6 +919,62 @@ export function App() {
                     </button>
                   </div>
                 </div>
+                <section className="credential-panel" aria-labelledby="jev-credential-title">
+                  <div className="credential-copy">
+                    <p className="sidebar-kicker">Jev routing credential</p>
+                    <h3 id="jev-credential-title">TypeSafe API Key</h3>
+                    <p>
+                      在界面填写后会保存到本机 SQLite。Jev 路由优先使用这里保存的密钥，
+                      环境变量和本地配置文件只作为兼容兜底。
+                    </p>
+                  </div>
+                  <span className={`credential-status ${state.jevSettings?.stored ? "credential-status--stored" : ""}`}>
+                    {state.jevSettings?.stored
+                      ? "已保存到 SQLite"
+                      : state.jevSettings?.environmentConfigured
+                        ? "正在使用环境变量"
+                        : "未配置"}
+                  </span>
+                  <div className="credential-form">
+                    <label htmlFor="jev-api-key">
+                      <span>TYPESAFE_API_KEY</span>
+                      <input
+                        autoComplete="off"
+                        disabled={state.jevBusy}
+                        id="jev-api-key"
+                        onChange={(event) =>
+                          setState((current) => ({
+                            ...current,
+                            jevApiKeyInput: event.target.value,
+                          }))
+                        }
+                        placeholder={state.jevSettings?.stored ? "已保存，输入新密钥可替换" : "粘贴 API Key"}
+                        spellCheck={false}
+                        type="password"
+                        value={state.jevApiKeyInput}
+                      />
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={state.jevBusy || !state.jevApiKeyInput.trim()}
+                      onClick={() => void saveJevApiKey()}
+                      type="button"
+                    >
+                      {state.jevBusy ? "保存中…" : "保存密钥"}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      disabled={state.jevBusy || !state.jevSettings?.stored}
+                      onClick={() => void clearJevApiKey()}
+                      type="button"
+                    >
+                      清除
+                    </button>
+                  </div>
+                  {state.configNotice ? (
+                    <p className="credential-notice" role="status">{state.configNotice}</p>
+                  ) : null}
+                </section>
                 <div className="config-note">
                   <span className={state.configSource?.exists ? "config-state config-state--exists" : "config-state"}>
                     {state.configSource?.exists ? "workspace config" : "new workspace config"}
@@ -886,7 +1006,6 @@ export function App() {
               {!showThread ? (
                 <div className="empty-state">
                   <div className="empty-topline">
-                    <span className="empty-mark"><BrandMark /></span>
                     <span className="empty-kicker">LOCAL-FIRST CODING AGENT</span>
                   </div>
                   <h2>今天准备<br />构建什么？</h2>
@@ -902,16 +1021,12 @@ export function App() {
               ) : (
                 <article className="assistant-message">
                   <div className="message-header">
-                    <span className="assistant-avatar">
-                      <BrandMark />
-                    </span>
                     <div className="assistant-identity">
-                      <strong>CodeRelay</strong>
                       <span>
                         {state.running
                           ? "正在处理任务"
                           : state.result
-                            ? `${state.result.status} · ${formatDuration(state.result.durationMs)}`
+                            ? `已处理 ${formatDuration(state.result.durationMs)}`
                             : "已准备路由"}
                       </span>
                     </div>

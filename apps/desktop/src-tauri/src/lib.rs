@@ -9,7 +9,7 @@ use coderelay_core::config::{
     LoadConfigOptions, load_config, project_config_path, render_default_config_yaml,
     save_config_source as write_config_source,
 };
-use coderelay_core::router::jev;
+use coderelay_core::router::jev::{self, TYPESAFE_ENV_KEY};
 use coderelay_core::{
     AgentAbortHandle, AgentEvent, AgentRunOptions, AgentRunResult, AgentRunStatus, AppendTurnInput,
     CORE_VERSION, ListSessionsOptions, ModelCatalog, ROUTING_MODES, RouteRequest, RoutingMode,
@@ -144,6 +144,13 @@ struct ConfigSourcePayload {
     raw: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JevSettingsPayload {
+    stored: bool,
+    environment_configured: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SaveConfigRequest {
@@ -219,6 +226,24 @@ fn with_session_store<T>(
     action(guard.as_mut().expect("session store initialized"))
 }
 
+fn stored_jev_api_key(app: &AppHandle) -> Result<Option<String>, String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store.get_jev_api_key().map_err(|error| error.to_string())
+    })
+}
+
+fn jev_settings_payload(app: &AppHandle) -> Result<JevSettingsPayload, String> {
+    let stored = stored_jev_api_key(app)?.is_some();
+    let environment_configured = std::env::var(TYPESAFE_ENV_KEY)
+        .ok()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    Ok(JevSettingsPayload {
+        stored,
+        environment_configured,
+    })
+}
+
 fn title_from_prompt(prompt: &str) -> String {
     let first_line = prompt.lines().next().unwrap_or(prompt).trim();
     let title: String = first_line.chars().take(80).collect();
@@ -255,6 +280,7 @@ async fn discover(app: AppHandle, request: WorkspaceRequest) -> Result<Discovery
 async fn select_for(
     context: &CliContext,
     request: &SelectionRequest,
+    stored_jev_api_key: Option<&str>,
 ) -> Result<RunSelection, String> {
     if request.agent.is_some() || request.model.is_some() {
         return context
@@ -273,10 +299,14 @@ async fn select_for(
             if candidates.is_empty() {
                 return Err("没有可用的已探测模型".to_owned());
             }
-            let client =
-                JevHttpClient::from_config(context.config(), &context.cwd, &context.environment)
-                    .await
-                    .map_err(|error| error.to_string())?;
+            let client = JevHttpClient::from_config_with_stored_key(
+                context.config(),
+                &context.cwd,
+                &context.environment,
+                stored_jev_api_key,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             let decision = jev::route_with_jev(&request.request, &candidates, &client)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -294,9 +324,10 @@ async fn select_for(
 }
 
 #[tauri::command]
-async fn route_preview(request: SelectionRequest) -> Result<RoutePreview, String> {
+async fn route_preview(app: AppHandle, request: SelectionRequest) -> Result<RoutePreview, String> {
     let context = context_for(&request.workspace).await?;
-    let selection = select_for(&context, &request).await?;
+    let stored_api_key = stored_jev_api_key(&app)?;
+    let selection = select_for(&context, &request, stored_api_key.as_deref()).await?;
     Ok(RoutePreview {
         agent: selection.agent,
         model: selection.model,
@@ -357,7 +388,8 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
         agent: request.agent.clone(),
         model: request.model.clone(),
     };
-    let selection = select_for(&context, &selection_request).await?;
+    let stored_api_key = stored_jev_api_key(&app)?;
+    let selection = select_for(&context, &selection_request, stored_api_key.as_deref()).await?;
     let prompt = request.request.prompt.trim().to_owned();
     let title = title_from_prompt(&prompt);
     let workspace = context.cwd.clone();
@@ -568,6 +600,33 @@ async fn save_config(request: SaveConfigRequest) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_jev_settings(app: AppHandle) -> Result<JevSettingsPayload, String> {
+    jev_settings_payload(&app)
+}
+
+#[tauri::command]
+fn save_jev_api_key(app: AppHandle, api_key: String) -> Result<JevSettingsPayload, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("API key must not be empty".to_owned());
+    }
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .set_jev_api_key(api_key)
+            .map_err(|error| error.to_string())
+    })?;
+    jev_settings_payload(&app)
+}
+
+#[tauri::command]
+fn clear_jev_api_key(app: AppHandle) -> Result<JevSettingsPayload, String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store.clear_jev_api_key().map_err(|error| error.to_string())
+    })?;
+    jev_settings_payload(&app)
+}
+
+#[tauri::command]
 fn supported_agents() -> Vec<coderelay_core::AgentDescriptor> {
     coderelay_core::supported_agents()
 }
@@ -586,6 +645,9 @@ pub fn run() {
             list_recent_workspaces,
             list_sessions,
             get_session,
+            get_jev_settings,
+            save_jev_api_key,
+            clear_jev_api_key,
             read_config_source,
             save_config
         ])

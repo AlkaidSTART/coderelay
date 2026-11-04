@@ -173,3 +173,38 @@ pub async fn resolve_api_key(
 
     Err(JevError::NoKey)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stored_api_key_takes_priority_over_other_sources() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let environment = BTreeMap::from([(TYPESAFE_ENV_KEY.to_owned(), "env-key".to_owned())]);
+
+        assert_eq!(
+            resolve_api_key(
+                Some("config-key"),
+                Some("  sqlite-key  "),
+                dir.path(),
+                &environment,
+            )
+            .await
+            .expect("stored key"),
+            "sqlite-key"
+        );
+        assert_eq!(
+            resolve_api_key(Some("config-key"), None, dir.path(), &environment)
+                .await
+                .expect("config fallback"),
+            "config-key"
+        );
+        assert_eq!(
+            resolve_api_key(None, None, dir.path(), &environment)
+                .await
+                .expect("environment fallback"),
+            "env-key"
+        );
+    }
+}
