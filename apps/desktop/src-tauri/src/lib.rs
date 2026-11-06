@@ -54,7 +54,15 @@ struct DiscoveryPayload {
     routing_modes: Vec<RoutingMode>,
     agents: Vec<AgentListEntry>,
     catalog: ModelCatalog,
+    permissions: Vec<AgentPermissions>,
     recent_workspaces: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentPermissions {
+    cli_id: coderelay_core::AgentId,
+    options: &'static [coderelay_core::PermissionOption],
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,6 +93,7 @@ struct StartRunRequest {
     mode: Option<RoutingMode>,
     agent: Option<String>,
     model: Option<String>,
+    permission: Option<String>,
     timeout_ms: Option<u64>,
     session_id: Option<String>,
 }
@@ -273,6 +282,12 @@ async fn discover(app: AppHandle, request: WorkspaceRequest) -> Result<Discovery
         routing_modes: ROUTING_MODES.to_vec(),
         agents: build_agent_entries(&context),
         catalog: context.catalog.clone(),
+        permissions: coderelay_core::agent_ids()
+            .map(|cli_id| AgentPermissions {
+                cli_id,
+                options: coderelay_core::permission_options(cli_id),
+            })
+            .collect(),
         recent_workspaces,
     })
 }
@@ -420,7 +435,12 @@ async fn start_run(app: AppHandle, request: StartRunRequest) -> Result<StartRunR
     let context_source = (!history.is_empty()).then_some(TurnContextSource::Transcript);
     let effective_prompt = build_prompt_with_context(&history, &prompt);
     let prepared = context
-        .prepare_agent(selection.agent, selection.model.clone(), &effective_prompt)
+        .prepare_agent(
+            selection.agent,
+            selection.model.clone(),
+            &effective_prompt,
+            request.permission.as_deref(),
+        )
         .map_err(|error| format!("{error:#}"))?;
     let protocol = if prepared.structured {
         TurnProtocol::Structured

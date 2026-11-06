@@ -22,7 +22,7 @@ export function RightSidebar({
       }`}
       aria-label="Agents"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-[18px] [scrollbar-color:rgba(15,23,42,0.12)_transparent] [scrollbar-width:thin]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-[18px] [scrollbar-color:rgba(0,0,0,0.12)_transparent] [scrollbar-width:thin]">
         <div className="flex flex-col gap-[3px] pt-2.5">
           {agents.map((agent) => {
             const isSelected = selectedAgentId === agent.id;

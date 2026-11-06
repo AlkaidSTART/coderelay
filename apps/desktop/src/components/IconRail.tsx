@@ -5,7 +5,6 @@ import {
   HistoryIcon,
   HomeIcon,
   KeyIcon,
-  PlusIcon,
   SettingsIcon,
 } from "./icons";
 import { LiquidRouteIndicator } from "./LiquidRouteIndicator";
@@ -13,7 +12,6 @@ import { LiquidRouteIndicator } from "./LiquidRouteIndicator";
 export interface IconRailProps {
   currentView: WorkspaceView;
   onSelectView: (view: WorkspaceView) => void;
-  onStartNewTask: () => void;
 }
 
 const RAIL_BTN_BASE =
@@ -30,7 +28,6 @@ function railBtnClass(active: boolean): string {
 export function IconRail({
   currentView,
   onSelectView,
-  onStartNewTask,
 }: IconRailProps) {
   return (
     <LayoutGroup id="rail-route-group">
@@ -62,15 +59,6 @@ export function IconRail({
               <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
             ) : null}
             <HistoryIcon />
-          </button>
-          <button
-            aria-label="New"
-            className={railBtnClass(false)}
-            onClick={onStartNewTask}
-            title="New"
-            type="button"
-          >
-            <PlusIcon size={16} />
           </button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-2">

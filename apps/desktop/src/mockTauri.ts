@@ -207,6 +207,24 @@ const mockDiscovery: DiscoveryPayload = {
     ],
     options: mockCatalogOptions,
   },
+  permissions: [
+    {
+      cliId: "codex",
+      options: [
+        { id: "default", label: "默认", description: "沿用该 CLI 自身的配置", dangerous: false },
+        { id: "read-only", label: "只读", description: "沙箱只读，只分析不修改（最接近 plan）", dangerous: false },
+        { id: "full-access", label: "完全放行", description: "跳过所有确认且不使用沙箱", dangerous: true },
+      ],
+    },
+    {
+      cliId: "claude",
+      options: [
+        { id: "default", label: "默认", description: "沿用该 CLI 自身的配置", dangerous: false },
+        { id: "plan", label: "Plan", description: "只规划，不修改文件", dangerous: false },
+        { id: "auto", label: "Auto", description: "由分类器自动判断是否放行", dangerous: false },
+      ],
+    },
+  ],
   recentWorkspaces: [
     "/Users/allure/Desktop/coderelay",
     "/Users/allure/Projects/agent-workspace",

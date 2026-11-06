@@ -120,7 +120,7 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
     expect(html).not.toContain("API 密钥管理");
   });
 
-  it("renders IconRail with distinct navigation destinations for both API Keys and Settings", () => {
+  it("renders IconRail with distinct navigation destinations for both API Keys and Settings without unused third route", () => {
     let selectedView: WorkspaceView | null = null;
     const handleSelectView = (view: WorkspaceView) => {
       selectedView = view;
@@ -131,24 +131,26 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
       <IconRail
         currentView="apikeys"
         onSelectView={handleSelectView}
-        onStartNewTask={() => {}}
       />,
     );
 
     expect(apiKeyRailHtml).toContain('aria-label="API Keys"');
     expect(apiKeyRailHtml).toContain('aria-label="Settings"');
+    expect(apiKeyRailHtml).not.toContain('aria-label="New"');
+    expect(apiKeyRailHtml).not.toContain('title="New"');
 
     // When viewing config
     const configRailHtml = renderToStaticMarkup(
       <IconRail
         currentView="config"
         onSelectView={handleSelectView}
-        onStartNewTask={() => {}}
       />,
     );
 
     expect(configRailHtml).toContain('aria-label="API Keys"');
     expect(configRailHtml).toContain('aria-label="Settings"');
+    expect(configRailHtml).not.toContain('aria-label="New"');
+    expect(configRailHtml).not.toContain('title="New"');
   });
 
   it("renders Sidebar and Titlebar toggle button only on conversation-related routes", () => {

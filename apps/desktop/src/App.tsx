@@ -71,6 +71,7 @@ export function App() {
     mode: "local",
     agent: "",
     model: "",
+    permission: "",
   });
   const [workspaceInput, setWorkspaceInput] = useState("");
 
@@ -482,6 +483,7 @@ export function App() {
           mode: form.mode,
           agent: form.agent || null,
           model: form.model || null,
+          permission: form.permission || null,
           timeoutMs: null,
           sessionId: activeSessionId,
         },
@@ -528,6 +530,7 @@ export function App() {
       ...current,
       agent: agent.id,
       model: nextModels[0]?.modelId ?? "",
+      permission: "",
     }));
   }
 
@@ -596,7 +599,17 @@ export function App() {
         agent={form.agent}
         model={form.model}
         onAgentModelChange={(agentId, modelId) =>
-          setForm((c) => ({ ...c, agent: agentId, model: modelId }))
+          setForm((c) => ({
+            ...c,
+            agent: agentId,
+            model: modelId,
+            permission: agentId === c.agent ? c.permission : "",
+          }))
+        }
+        permission={form.permission}
+        permissions={discovery?.permissions ?? []}
+        onPermissionChange={(permission) =>
+          setForm((c) => ({ ...c, permission }))
         }
         agents={agents}
         catalogOptions={discovery?.catalog.options ?? []}
@@ -633,7 +646,6 @@ export function App() {
         <IconRail
           currentView={view}
           onSelectView={handleSelectView}
-          onStartNewTask={startNewTask}
         />
 
         {isConversationRoute ? (

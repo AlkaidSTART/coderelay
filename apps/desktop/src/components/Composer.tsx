@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import type { AgentEntry, ModelOption } from "../types";
+import type { AgentEntry, AgentPermissions, ModelOption } from "../types";
 import {
   formatModeLabel,
   getAvailableModelsForCli,
@@ -34,13 +34,16 @@ export interface ComposerProps {
   onAgentModelChange: (agent: string, model: string) => void;
   agents: AgentEntry[];
   catalogOptions: ModelOption[];
+  permission: string;
+  permissions: AgentPermissions[];
+  onPermissionChange: (permission: string) => void;
   selectedAgentLabel?: string;
 }
 
 const ACTION_BTN_BASE =
   "grid h-[30px] w-[30px] place-items-center rounded-lg transition-all duration-140 enabled:hover:bg-surface-subtle enabled:hover:text-ink disabled:opacity-30";
 
-type ActiveMenu = "mode" | "cli" | "model" | null;
+type ActiveMenu = "mode" | "cli" | "model" | "permission" | null;
 
 interface DropdownOption {
   value: string;
@@ -155,6 +158,9 @@ export function Composer({
   onAgentModelChange,
   agents,
   catalogOptions,
+  permission,
+  permissions,
+  onPermissionChange,
 }: ComposerProps) {
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -236,6 +242,21 @@ export function Composer({
 
   function handleModelChange(nextModelId: string) {
     onAgentModelChange(activeAgent, nextModelId);
+    setActiveMenu(null);
+  }
+
+  const permissionChoices =
+    permissions.find((item) => item.cliId === activeAgent)?.options ?? [];
+  const currentPermission =
+    permissionChoices.find((item) => item.id === permission) ??
+    permissionChoices[0];
+  const permissionOptions: DropdownOption[] = permissionChoices.map((item) => ({
+    value: item.id,
+    label: item.dangerous ? `⚠ ${item.label}` : item.label,
+  }));
+
+  function handlePermissionChange(nextPermission: string) {
+    onPermissionChange(nextPermission);
     setActiveMenu(null);
   }
 
@@ -357,6 +378,30 @@ export function Composer({
             maxLabelWidth="max-w-[130px]"
             minDropdownWidth="min-w-[180px]"
           />
+
+          {/* 第四块：选权限（仅当该 CLI 有多个权限档位） */}
+          {currentPermission && permissionChoices.length > 1 ? (
+            <CustomSelectPill
+              label={
+                currentPermission.dangerous
+                  ? `⚠ ${currentPermission.label}`
+                  : currentPermission.label
+              }
+              value={currentPermission.id}
+              options={permissionOptions}
+              onSelect={handlePermissionChange}
+              open={activeMenu === "permission"}
+              onToggle={() =>
+                setActiveMenu((curr) =>
+                  curr === "permission" ? null : "permission",
+                )
+              }
+              disabled={running}
+              title={`权限: ${currentPermission.label}（${currentPermission.description}）`}
+              maxLabelWidth="max-w-[100px]"
+              minDropdownWidth="min-w-[140px]"
+            />
+          ) : null}
 
           {running ? (
             <motion.button
