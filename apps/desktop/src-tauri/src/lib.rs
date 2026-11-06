@@ -588,7 +588,10 @@ fn resolve_dialog_initial_dir(initial_dir: Option<&str>) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-async fn pick_workspace(app: AppHandle, initial_dir: Option<String>) -> Result<Option<String>, String> {
+async fn pick_workspace(
+    app: AppHandle,
+    initial_dir: Option<String>,
+) -> Result<Option<String>, String> {
     let mut dialog = rfd::AsyncFileDialog::new();
     if let Some(dir) = resolve_dialog_initial_dir(initial_dir.as_deref()) {
         dialog = dialog.set_directory(&dir);
