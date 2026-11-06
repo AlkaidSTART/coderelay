@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { CoderelayClient } from "../src";
@@ -33,6 +36,25 @@ describe("CoderelayClient", () => {
     expect(status.transport).toBe("stdio");
     expect(discovery.defaultAgent).toBe("codex");
     expect(discovery.detected[0]?.candidates[0]?.path).toBe("/fixture/codex");
+  });
+
+  test("retries startup after a missing working directory is created", async () => {
+    const root = await mkdtemp(join(tmpdir(), "coderelay-sdk-"));
+    const cwd = join(root, "workspace");
+    const sdk = new CoderelayClient({
+      command: process.execPath,
+      args: [FIXTURE],
+      cwd,
+    });
+
+    try {
+      await expect(sdk.status()).rejects.toThrow();
+      await mkdir(cwd);
+      expect((await sdk.status()).transport).toBe("stdio");
+    } finally {
+      await sdk.close();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("buffers run events even when they arrive before the caller receives the handle", async () => {
