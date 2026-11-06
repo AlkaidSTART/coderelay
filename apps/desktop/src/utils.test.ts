@@ -288,15 +288,16 @@ describe("groupSessionsByWorkspace", () => {
     workspace,
   });
 
-  it("archives sessions by folder and gathers folder-less ones last, omitting empty folders", () => {
+  it("archives sessions by folder and preserves opened workspaces even when empty", () => {
     const groups = groupSessionsByWorkspace(
       [make("a", "/p/alpha"), make("x"), make("b", "/p/beta"), make("c", "/p/alpha"), make("y", "")],
       ["/p/beta", "/p/alpha", "/p/empty"],
     );
-    expect(groups.map((g) => g.workspace)).toEqual(["/p/beta", "/p/alpha", null]);
+    expect(groups.map((g) => g.workspace)).toEqual(["/p/beta", "/p/alpha", "/p/empty", null]);
     expect(groups[0]?.sessions.map((s) => s.id)).toEqual(["b"]);
     expect(groups[1]?.sessions.map((s) => s.id)).toEqual(["a", "c"]);
-    expect(groups[2]?.sessions.map((s) => s.id)).toEqual(["x", "y"]);
+    expect(groups[2]?.sessions).toEqual([]);
+    expect(groups[3]?.sessions.map((s) => s.id)).toEqual(["x", "y"]);
   });
 
   it("adds folders only known from sessions and omits the loose group when unused", () => {

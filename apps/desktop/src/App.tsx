@@ -10,6 +10,7 @@ import { IconRail } from "./components/IconRail";
 import { RightSidebar } from "./components/RightSidebar";
 import { SessionsView } from "./components/SessionsView";
 import { Sidebar } from "./components/Sidebar";
+import { StatsView } from "./components/StatsView";
 import { Titlebar } from "./components/Titlebar";
 import { WorkspaceView } from "./components/WorkspaceView";
 import { isConversationRouteActive, useNavigationStore } from "./stores/navigationStore";
@@ -552,7 +553,7 @@ export function App() {
   function handleSelectView(nextView: WorkspaceViewType): void {
     setView(nextView);
     setState((current) => ({ ...current, view: nextView }));
-    if (nextView === "sessions") {
+    if (nextView === "sessions" || nextView === "stats") {
       void refreshSessions(currentWorkspace.current);
     } else if (nextView === "config") {
       void loadConfigSource();
@@ -707,6 +708,20 @@ export function App() {
                 onRefreshSessions={() => void refreshSessions(currentWorkspace.current)}
                 onOpenSession={handleOpenSession}
                 onContinueSession={handleContinueSession}
+              />
+            ) : view === "stats" ? (
+              <StatsView
+                key="stats"
+                workspaceInput={workspaceInput}
+                sessions={state.sessions}
+                agents={agents}
+                catalogOptions={discovery?.catalog.options ?? []}
+                onRefreshSessions={() => void refreshSessions(currentWorkspace.current)}
+                onOpenSession={handleOpenSession}
+                loadSessionTurns={async (sessionId) => {
+                  const detail = await invoke<SessionDetail>("get_session", { sessionId });
+                  return detail.turns;
+                }}
               />
             ) : view === "apikeys" ? (
               <ApiKeyView

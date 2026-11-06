@@ -44,6 +44,9 @@ export function getActiveSidebarRoute(
   if (view === "sessions") {
     return "sessions";
   }
+  if (view === "stats") {
+    return "stats";
+  }
   if (view === "apikeys") {
     return "apikeys";
   }
@@ -67,6 +70,10 @@ export function isNewChatRouteActive(
 
 export function isSessionsRouteActive(view: WorkspaceView): boolean {
   return view === "sessions";
+}
+
+export function isStatsRouteActive(view: WorkspaceView): boolean {
+  return view === "stats";
 }
 
 export function isConfigRouteActive(view: WorkspaceView): boolean {
@@ -129,6 +136,11 @@ export const useNavigationStore = create<NavigationState>((set) => ({
   navigateToSessions: () =>
     set({
       view: "sessions",
+    }),
+
+  navigateToStats: () =>
+    set({
+      view: "stats",
     }),
 
   navigateToConfig: () =>

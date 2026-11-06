@@ -153,8 +153,8 @@ const defaultSessionRecord: SessionRecord = {
   id: "sess-default",
   cliId: "codex",
   title: "CodeRelay 控制平面初始化",
-  createdAt: 1729999999000,
-  updatedAt: 1730000000000,
+  createdAt: Date.now() - 86400000 * 20,
+  updatedAt: Date.now() - 86400000 * 20 + 3600000,
   workspace: "/Users/allure/Desktop/coderelay",
 };
 
@@ -182,6 +182,46 @@ const mockSessions: SessionRecord[] = [
     title: "优化本地 SQLite 会话存储与跨工作区索引性能",
     createdAt: Date.now() - 86400000 * 2,
     updatedAt: Date.now() - 86400000,
+    workspace: "/Users/allure/Desktop/coderelay",
+  },
+  {
+    id: "sess-004",
+    cliId: "codex",
+    title: "构建自适应模型调度算法与低延迟熔断机制",
+    createdAt: Date.now() - 86400000 * 3,
+    updatedAt: Date.now() - 86400000 * 3 + 7200000,
+    workspace: "/Users/allure/Desktop/coderelay",
+  },
+  {
+    id: "sess-005",
+    cliId: "claude",
+    title: "集成 GitHub 风格贡献活动热力图组件",
+    createdAt: Date.now() - 86400000 * 4,
+    updatedAt: Date.now() - 86400000 * 4 + 5400000,
+    workspace: "/Users/allure/Desktop/coderelay",
+  },
+  {
+    id: "sess-006",
+    cliId: "codex",
+    title: "验证多工作区权限持久化与沙箱安全边界",
+    createdAt: Date.now() - 86400000 * 6,
+    updatedAt: Date.now() - 86400000 * 6 + 3600000,
+    workspace: "/Users/allure/Desktop/coderelay",
+  },
+  {
+    id: "sess-007",
+    cliId: "claude",
+    title: "实现多系列折线图平滑贝塞尔曲线渲染",
+    createdAt: Date.now() - 86400000 * 8,
+    updatedAt: Date.now() - 86400000 * 8 + 4800000,
+    workspace: "/Users/allure/Desktop/coderelay",
+  },
+  {
+    id: "sess-008",
+    cliId: "codex",
+    title: "端到端自动化测试与 SSOT 单一数据源校验",
+    createdAt: Date.now() - 86400000 * 11,
+    updatedAt: Date.now() - 86400000 * 11 + 9000000,
     workspace: "/Users/allure/Desktop/coderelay",
   },
 ];
@@ -266,11 +306,24 @@ export async function mockInvoke(
   switch (cmd) {
     case "runtime_status":
       return mockRuntime;
-    case "discover":
+    case "discover": {
+      const cwd = typeof args.cwd === "string" && args.cwd.trim() ? args.cwd : mockDiscovery.cwd;
+      const recentWorkspaces = Array.from(new Set([cwd, ...mockDiscovery.recentWorkspaces]));
       return {
         ...mockDiscovery,
-        cwd: typeof args.cwd === "string" && args.cwd.trim() ? args.cwd : mockDiscovery.cwd,
+        cwd,
+        recentWorkspaces,
       };
+    }
+    case "record_workspace": {
+      const ws = typeof args.workspace === "string" ? args.workspace.trim() : "";
+      if (ws) {
+        mockDiscovery.recentWorkspaces = Array.from(
+          new Set([ws, ...mockDiscovery.recentWorkspaces]),
+        );
+      }
+      return null;
+    }
     case "list_sessions":
       return sessionsState;
     case "list_recent_workspaces":
@@ -281,26 +334,57 @@ export async function mockInvoke(
         sessionsState.find((s) => s.id === sessionId) ??
         sessionsState[0] ??
         defaultSessionRecord;
+
+      const modelId =
+        found.cliId === "codex"
+          ? found.id === "sess-004" || found.id === "sess-008"
+            ? "deepseek-v4-flash"
+            : "qwen-3.8-flash"
+          : found.id === "sess-005"
+            ? "claude-3-5-haiku"
+            : "claude-3-7-sonnet";
+
+      const turns: SessionDetail["turns"] = [
+        {
+          id: 1,
+          sessionId: found.id,
+          cliId: found.cliId,
+          prompt: found.title,
+          output: `已通过 ${found.cliId} 完成任务分析：\n\n1. 扫描当前工作区结构\n2. 校验配置定义与单一数据源约束\n3. 单元测试全量通过`,
+          exitCode: 0,
+          signal: null,
+          durationMs: 1420,
+          createdAt: found.createdAt,
+          modelId,
+          protocol: "structured",
+          reusedNative: false,
+          status: "success",
+          eventSummary: "执行成功，用时 1.42s",
+        },
+      ];
+
+      if (found.updatedAt > found.createdAt) {
+        turns.push({
+          id: 2,
+          sessionId: found.id,
+          cliId: found.cliId,
+          prompt: "继续优化执行细节并更新对话记录",
+          output: "优化已完成，所有指标已上报。",
+          exitCode: 0,
+          signal: null,
+          durationMs: 890,
+          createdAt: found.updatedAt,
+          modelId,
+          protocol: "structured",
+          reusedNative: true,
+          status: "success",
+          eventSummary: "后续交互执行成功",
+        });
+      }
+
       const detail: SessionDetail = {
         session: found,
-        turns: [
-          {
-            id: 1,
-            sessionId: found.id,
-            cliId: found.cliId,
-            prompt: found.title,
-            output: `已通过 ${found.cliId} 完成任务分析：\n\n1. 扫描当前工作区结构\n2. 校验配置定义与单一数据源约束\n3. 单元测试全量通过 (392 pass)`,
-            exitCode: 0,
-            signal: null,
-            durationMs: 1420,
-            createdAt: found.createdAt,
-            modelId: found.cliId === "codex" ? "qwen-3.8-flash" : "claude-3-7-sonnet",
-            protocol: "structured",
-            reusedNative: false,
-            status: "success",
-            eventSummary: "执行成功，用时 1.42s",
-          },
-        ],
+        turns,
       };
       return detail;
     }

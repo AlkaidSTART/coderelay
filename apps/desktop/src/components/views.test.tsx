@@ -5,6 +5,7 @@ import { ApiKeyView } from "./ApiKeyView";
 import { ConfigView } from "./ConfigView";
 import { IconRail } from "./IconRail";
 import { Sidebar } from "./Sidebar";
+import { StatsView } from "./StatsView";
 import { Titlebar } from "./Titlebar";
 import { isConversationRouteActive } from "../stores/navigationStore";
 import type { JevSettings, WorkspaceView } from "../types";
@@ -136,6 +137,7 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
 
     expect(apiKeyRailHtml).toContain('aria-label="API Keys"');
     expect(apiKeyRailHtml).toContain('aria-label="Settings"');
+    expect(apiKeyRailHtml).toContain('aria-label="Stats"');
     expect(apiKeyRailHtml).not.toContain('aria-label="New"');
     expect(apiKeyRailHtml).not.toContain('title="New"');
 
@@ -149,8 +151,20 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
 
     expect(configRailHtml).toContain('aria-label="API Keys"');
     expect(configRailHtml).toContain('aria-label="Settings"');
+    expect(configRailHtml).toContain('aria-label="Stats"');
     expect(configRailHtml).not.toContain('aria-label="New"');
     expect(configRailHtml).not.toContain('title="New"');
+
+    // When viewing stats
+    const statsRailHtml = renderToStaticMarkup(
+      <IconRail
+        currentView="stats"
+        onSelectView={handleSelectView}
+      />,
+    );
+
+    expect(statsRailHtml).toContain('aria-label="Stats"');
+    expect(statsRailHtml).toContain('title="Stats"');
   });
 
   it("renders Sidebar and Titlebar toggle button only on conversation-related routes", () => {
@@ -227,5 +241,51 @@ describe("Decoupled ApiKeyView & ConfigView", () => {
     expect(apiKeysRoute.isConversation).toBe(false);
     expect(apiKeysRoute.titlebarHtml).not.toContain('aria-label="Toggle sidebar"');
     expect(apiKeysRoute.sidebarHtml).toBeNull();
+
+    // 5. Stats view ("stats"): Sidebar NOT rendered, Titlebar toggle NOT present
+    const statsRoute = renderLayout("stats");
+    expect(statsRoute.isConversation).toBe(false);
+    expect(statsRoute.titlebarHtml).not.toContain('aria-label="Toggle sidebar"');
+    expect(statsRoute.sidebarHtml).toBeNull();
+  });
+
+  it("renders opened workspaces in sidebar even when there are no sessions yet", () => {
+    const sidebarHtml = renderToStaticMarkup(
+      <Sidebar
+        collapsed={false}
+        workspaceInput="/Users/allure/Projects/brand-new-project"
+        recentWorkspaces={[
+          "/Users/allure/Projects/brand-new-project",
+          "/Users/allure/Desktop/coderelay",
+        ]}
+        workspaceDropdownOpen={false}
+        onToggleWorkspaceDropdown={() => {}}
+        onSelectWorkspace={() => {}}
+        onPickWorkspace={() => {}}
+        loading={false}
+        onRefreshDiscovery={() => {}}
+        onStartNewTask={() => {}}
+        sessions={[
+          {
+            id: "sess-1",
+            title: "现有项目任务",
+            cliId: "codex",
+            createdAt: 1729999999000,
+            updatedAt: 1730000000000,
+            workspace: "/Users/allure/Desktop/coderelay",
+          },
+        ]}
+        activeSessionId="sess-1"
+        onOpenSession={() => {}}
+        onDeleteSession={() => {}}
+        onDeleteWorkspaceSessions={() => {}}
+      />,
+    );
+
+    // Both the active opened workspace without sessions and existing workspace with sessions are shown
+    expect(sidebarHtml).toContain("brand-new-project");
+    expect(sidebarHtml).toContain("coderelay");
+    expect(sidebarHtml).toContain("现有项目任务");
+    expect(sidebarHtml).toContain("暂无会话");
   });
 });
