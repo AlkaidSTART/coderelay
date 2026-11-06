@@ -88,13 +88,19 @@ export function Sidebar({
 
   return (
     <aside
-      className={`relative flex min-h-0 flex-col overflow-hidden border-r bg-sidebar transition-[width,opacity,border-color] duration-220 ease-[cubic-bezier(0.2,0,0,1)] ${
+      aria-hidden={collapsed}
+      className={`relative flex min-h-0 flex-col overflow-hidden bg-sidebar transition-[width,flex-basis,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[width,flex-basis] ${
         collapsed
-          ? "pointer-events-none w-0 shrink-0 basis-0 border-transparent opacity-0"
-          : "w-[240px] shrink-0 basis-[240px] border-line opacity-100"
+          ? "pointer-events-none w-0 shrink-0 basis-0 border-r border-transparent opacity-0"
+          : "w-[240px] shrink-0 basis-[240px] border-r border-line opacity-100"
       }`}
     >
-      <div className="relative flex items-center justify-between gap-2 px-3 pt-3.5 pb-2.5">
+      <div
+        className={`flex min-h-0 h-full w-[240px] min-w-[240px] flex-1 flex-col transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
+          collapsed ? "pointer-events-none -translate-x-3.5 opacity-0" : "translate-x-0 opacity-100"
+        }`}
+      >
+        <div className="relative flex items-center justify-between gap-2 px-3 pt-3.5 pb-2.5">
         <WorkspaceDropdown
           isOpen={workspaceDropdownOpen}
           onToggle={handleToggleDropdown}
@@ -167,7 +173,7 @@ export function Sidebar({
                       type="button"
                     >
                       <ChevronDownIcon
-                        className={`transition-transform duration-220 ease-[cubic-bezier(0.2,0,0,1)] ${expanded ? "" : "-rotate-90"}`}
+                        className={`transition-transform duration-240 ease-[cubic-bezier(0.16,1,0.3,1)] ${expanded ? "" : "-rotate-90"}`}
                       />
                       <FolderIcon size={14} />
                       <span className="truncate">{label}</span>
@@ -200,7 +206,7 @@ export function Sidebar({
                         exit={{ height: 0, opacity: 0 }}
                         initial={{ height: 0, opacity: 0 }}
                         key="sessions"
-                        transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+                        transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
                       >
                         {group.sessions.map((session) => {
                         const isActive = isSessionRouteActive(storeView, activeSessionId, session.id);

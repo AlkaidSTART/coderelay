@@ -111,9 +111,18 @@ const CLAUDE: &[PermissionOption] = &[
     ),
 ];
 
-// Pi exposes no permission model of its own (tool allowlists only), so it keeps
-// the default level.
-const PI: &[PermissionOption] = &[DEFAULT_OPTION];
+// Pi has no approval/sandbox model, only tool allowlists. `grep`/`find`/`ls` are
+// its read-only built-ins (off by default), so read-only = read + those three.
+const PI: &[PermissionOption] = &[
+    DEFAULT_OPTION,
+    option(
+        "read-only",
+        "只读",
+        "仅启用 read/grep/find/ls，禁用 bash、edit、write",
+        &["--tools", "read,grep,find,ls"],
+        false,
+    ),
+];
 
 const OMP: &[PermissionOption] = &[
     DEFAULT_OPTION,
@@ -198,6 +207,15 @@ mod tests {
     }
 
     #[test]
+    fn pi_read_only_allows_only_non_mutating_tools() {
+        let args = permission_args(AgentId::Pi, Some("read-only")).unwrap();
+        assert_eq!(args, &["--tools", "read,grep,find,ls"]);
+        for mutating in ["bash", "edit", "write", "powershell"] {
+            assert!(!args[1].split(',').any(|tool| tool == mutating));
+        }
+    }
+
+    #[test]
     fn none_and_default_add_no_args() {
         assert!(permission_args(AgentId::Codex, None).unwrap().is_empty());
         assert!(
@@ -211,6 +229,7 @@ mod tests {
     fn rejects_level_of_another_cli() {
         assert!(permission_args(AgentId::Codex, Some("plan")).is_err());
         assert!(permission_args(AgentId::Pi, Some("yolo")).is_err());
+        assert!(permission_args(AgentId::Omp, Some("read-only")).is_err());
     }
 
     #[test]

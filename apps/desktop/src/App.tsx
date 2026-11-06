@@ -34,9 +34,12 @@ import type {
 import {
   eventActivity,
   getAvailableModelsForCli,
+  loadPermission,
   mergeRecentWorkspaces,
   messageOf,
   resolveRouteSelection,
+  sanitizePermission,
+  savePermission,
 } from "./utils";
 
 const INITIAL_STATE: WorkbenchState = {
@@ -74,6 +77,14 @@ export function App() {
     permission: "",
   });
   const [workspaceInput, setWorkspaceInput] = useState("");
+
+  // Restore the remembered permission whenever the workspace or CLI changes.
+  useEffect(() => {
+    const permission = loadPermission(workspaceInput.trim(), form.agent);
+    setForm((current) =>
+      current.permission === permission ? current : { ...current, permission },
+    );
+  }, [workspaceInput, form.agent]);
 
   const activeRunId = useRef<string | null>(null);
   const currentWorkspace = useRef("");
@@ -483,7 +494,12 @@ export function App() {
           mode: form.mode,
           agent: form.agent || null,
           model: form.model || null,
-          permission: form.permission || null,
+          permission:
+            sanitizePermission(
+              form.permission,
+              discovery?.permissions.find((item) => item.cliId === form.agent)
+                ?.options ?? [],
+            ) || null,
           timeoutMs: null,
           sessionId: activeSessionId,
         },
@@ -530,7 +546,6 @@ export function App() {
       ...current,
       agent: agent.id,
       model: nextModels[0]?.modelId ?? "",
-      permission: "",
     }));
   }
 
@@ -603,14 +618,14 @@ export function App() {
             ...c,
             agent: agentId,
             model: modelId,
-            permission: agentId === c.agent ? c.permission : "",
           }))
         }
         permission={form.permission}
         permissions={discovery?.permissions ?? []}
-        onPermissionChange={(permission) =>
-          setForm((c) => ({ ...c, permission }))
-        }
+        onPermissionChange={(permission) => {
+          savePermission(workspaceInput.trim(), form.agent, permission);
+          setForm((c) => ({ ...c, permission }));
+        }}
         agents={agents}
         catalogOptions={discovery?.catalog.options ?? []}
         selectedAgentLabel={selectedAgent?.label}

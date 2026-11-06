@@ -229,3 +229,81 @@ export function groupSessionsByWorkspace(
   }
   return groups;
 }
+
+export const PERMISSION_STORAGE_KEY = "coderelay_permissions";
+
+type PermissionStorage = Pick<Storage, "getItem" | "setItem">;
+
+function defaultPermissionStorage(): PermissionStorage | null {
+  try {
+    return typeof window !== "undefined" && window.localStorage
+      ? window.localStorage
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPermissionMap(storage: PermissionStorage): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(
+      storage.getItem(PERMISSION_STORAGE_KEY) ?? "{}",
+    );
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function permissionKey(workspace: string, cliId: string): string {
+  return `${workspace}\u0000${cliId}`;
+}
+
+/** Remembered permission level for a (workspace, CLI) pair; "" means CLI default. */
+export function loadPermission(
+  workspace: string,
+  cliId: string,
+  storage: PermissionStorage | null = defaultPermissionStorage(),
+): string {
+  if (!storage || !cliId) {
+    return "";
+  }
+  return readPermissionMap(storage)[permissionKey(workspace, cliId)] ?? "";
+}
+
+export function savePermission(
+  workspace: string,
+  cliId: string,
+  permission: string,
+  storage: PermissionStorage | null = defaultPermissionStorage(),
+): void {
+  if (!storage || !cliId) {
+    return;
+  }
+  try {
+    storage.setItem(
+      PERMISSION_STORAGE_KEY,
+      JSON.stringify({
+        ...readPermissionMap(storage),
+        [permissionKey(workspace, cliId)]: permission,
+      }),
+    );
+  } catch {
+    // ignore quota/privacy-mode failures
+  }
+}
+
+/** Drop a remembered level the CLI no longer offers, so the backend never rejects it. */
+export function sanitizePermission(
+  permission: string,
+  options: readonly { id: string }[],
+): string {
+  return options.some((option) => option.id === permission) ? permission : "";
+}
