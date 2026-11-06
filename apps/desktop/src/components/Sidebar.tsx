@@ -259,6 +259,7 @@ export function Sidebar({
           </div>
         </div>
       </LayoutGroup>
+      </div>
     </aside>
   );
 }
