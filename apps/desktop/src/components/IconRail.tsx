@@ -6,6 +6,7 @@ import {
   HomeIcon,
   KeyIcon,
   SettingsIcon,
+  StatsIcon,
 } from "./icons";
 import { LiquidRouteIndicator } from "./LiquidRouteIndicator";
 
@@ -59,6 +60,18 @@ export function IconRail({
               <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
             ) : null}
             <HistoryIcon />
+          </button>
+          <button
+            aria-label="Stats"
+            className={railBtnClass(currentView === "stats")}
+            onClick={() => onSelectView("stats")}
+            title="Stats"
+            type="button"
+          >
+            {currentView === "stats" ? (
+              <LiquidRouteIndicator layoutId="rail-active-pill" variant="glass" />
+            ) : null}
+            <StatsIcon />
           </button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-2">

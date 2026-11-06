@@ -45,17 +45,18 @@ export function StatsView({
 
   // Asynchronously load turns for sessions if loadSessionTurns is provided and no external turnsMap given
   useEffect(() => {
-    if (externalTurnsMap || !loadSessionTurns || sessions.length === 0) {
+    const loader = loadSessionTurns;
+    if (externalTurnsMap || !loader || sessions.length === 0) {
       return;
     }
     let isMounted = true;
-    async function fetchTurns() {
+    async function fetchTurns(activeLoader: (sessionId: string) => Promise<SessionTurn[]>) {
       setLoadingTurns(true);
       try {
         const results = await Promise.all(
           sessions.slice(0, 100).map(async (s) => {
             try {
-              const turns = await loadSessionTurns(s.id);
+              const turns = await activeLoader(s.id);
               return [s.id, turns] as const;
             } catch {
               return [s.id, []] as const;
@@ -71,7 +72,7 @@ export function StatsView({
         }
       }
     }
-    void fetchTurns();
+    void fetchTurns(loader);
     return () => {
       isMounted = false;
     };

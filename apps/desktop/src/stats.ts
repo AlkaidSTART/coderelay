@@ -447,7 +447,13 @@ export function computeStreaks(
   let prevTime: number | null = null;
 
   for (const dStr of sortedDates) {
-    const [y, m, d] = dStr.split("-").map(Number);
+    const parts = dStr.split("-").map(Number);
+    const y = parts[0];
+    const m = parts[1];
+    const d = parts[2];
+    if (y === undefined || m === undefined || d === undefined) {
+      continue;
+    }
     const time = new Date(y, m - 1, d).getTime();
     const oneDay = 86400000;
 

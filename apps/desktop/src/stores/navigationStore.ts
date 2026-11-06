@@ -5,6 +5,7 @@ export type SidebarRouteId =
   | "new-chat"
   | `session:${string}`
   | "sessions"
+  | "stats"
   | "config"
   | "apikeys";
 
@@ -22,6 +23,7 @@ export interface NavigationState {
   navigateToNewChat: () => void;
   navigateToSession: (sessionId: string) => void;
   navigateToSessions: () => void;
+  navigateToStats: () => void;
   navigateToConfig: () => void;
   navigateToApiKeys: () => void;
   toggleSidebar: () => void;
