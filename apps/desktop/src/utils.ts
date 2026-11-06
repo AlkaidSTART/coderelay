@@ -195,7 +195,8 @@ export interface SessionGroup {
 /**
  * Archives sessions under their folder; sessions without a folder are gathered
  * into a single trailing group. Folders follow `workspaces` order, then any
- * folder only known from sessions. Only folders containing sessions are kept.
+ * folder only known from sessions. Retains all specified workspaces so opened
+ * folders remain visible even before sessions are started.
  */
 export function groupSessionsByWorkspace(
   sessions: readonly SessionRecord[],
@@ -218,12 +219,10 @@ export function groupSessionsByWorkspace(
     bucket.push(session);
     folders.set(session.workspace as string, bucket);
   }
-  const groups: SessionGroup[] = [...folders]
-    .filter(([, items]) => items.length > 0)
-    .map(([workspace, items]) => ({
-      workspace,
-      sessions: items,
-    }));
+  const groups: SessionGroup[] = [...folders].map(([workspace, items]) => ({
+    workspace,
+    sessions: items,
+  }));
   if (loose.length > 0) {
     groups.push({ workspace: null, sessions: loose });
   }
