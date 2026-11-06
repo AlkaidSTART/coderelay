@@ -266,13 +266,19 @@ fn title_from_prompt(prompt: &str) -> String {
 #[tauri::command]
 async fn discover(app: AppHandle, request: WorkspaceRequest) -> Result<DiscoveryPayload, String> {
     let context = context_for(&request).await?;
+    let cwd_string = context.cwd.to_string_lossy().into_owned();
+    let _ = with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .record_workspace(&cwd_string)
+            .map_err(|error| error.to_string())
+    });
     let recent_workspaces = with_session_store(&app.state::<DesktopState>(), |store| {
         store
             .get_recent_workspaces(8)
             .map_err(|error| error.to_string())
     })?;
     Ok(DiscoveryPayload {
-        cwd: context.cwd.to_string_lossy().into_owned(),
+        cwd: cwd_string,
         config_path: context
             .loaded_config
             .path
@@ -582,15 +588,32 @@ fn resolve_dialog_initial_dir(initial_dir: Option<&str>) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-async fn pick_workspace(initial_dir: Option<String>) -> Result<Option<String>, String> {
+async fn pick_workspace(app: AppHandle, initial_dir: Option<String>) -> Result<Option<String>, String> {
     let mut dialog = rfd::AsyncFileDialog::new();
     if let Some(dir) = resolve_dialog_initial_dir(initial_dir.as_deref()) {
         dialog = dialog.set_directory(&dir);
     }
-    Ok(dialog
+    let picked = dialog
         .pick_folder()
         .await
-        .map(|handle| handle.path().to_string_lossy().into_owned()))
+        .map(|handle| handle.path().to_string_lossy().into_owned());
+    if let Some(ref path) = picked {
+        let _ = with_session_store(&app.state::<DesktopState>(), |store| {
+            store
+                .record_workspace(path)
+                .map_err(|error| error.to_string())
+        });
+    }
+    Ok(picked)
+}
+
+#[tauri::command]
+fn record_workspace(app: AppHandle, workspace: String) -> Result<(), String> {
+    with_session_store(&app.state::<DesktopState>(), |store| {
+        store
+            .record_workspace(&workspace)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]
@@ -743,7 +766,8 @@ pub fn run() {
             save_jev_api_key,
             clear_jev_api_key,
             read_config_source,
-            save_config
+            save_config,
+            record_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running CodeRelay desktop");
