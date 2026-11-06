@@ -194,7 +194,10 @@ export class CoderelayClient {
       this.child = child;
       child.once("spawn", () => resolve());
       child.once("error", (error) => {
-        this.child = null;
+        if (this.child === child) {
+          this.child = null;
+          this.startPromise = null;
+        }
         reject(error);
       });
       child.once("exit", (code, signal) => {
