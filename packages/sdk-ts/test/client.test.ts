@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,10 +11,11 @@ import packageManifest from "../package.json";
 const FIXTURE = fileURLToPath(new URL("./fixtures/fake-host.ts", import.meta.url));
 const clients: CoderelayClient[] = [];
 
-function client(): CoderelayClient {
+function client(env?: Record<string, string>): CoderelayClient {
   const instance = new CoderelayClient({
     command: process.execPath,
     args: [FIXTURE],
+    env,
   });
   clients.push(instance);
   return instance;
@@ -82,6 +84,31 @@ describe("CoderelayClient", () => {
     expect(result.status).toBe("completed");
     expect(result.code).toBe(0);
     expect(result.text).toBe("hello sdk");
+  });
+
+  test("rejects the run result and event stream when the host exits", async () => {
+    const sdk = client({ CODERELAY_FIXTURE_RUN_MODE: "exit" });
+    const run = await sdk.run({ request: { prompt: "say hello" } });
+    const iterator = run[Symbol.asyncIterator]();
+
+    await Promise.all([
+      rejects(run.completed, /CodeRelay host exited \(17\)/),
+      rejects(iterator.next(), /CodeRelay host exited \(17\)/),
+    ]);
+  }, 2_000);
+
+  test("closing rejects an active run and allows a new request", async () => {
+    const sdk = client({ CODERELAY_FIXTURE_RUN_MODE: "wait" });
+    const run = await sdk.run({ request: { prompt: "say hello" } });
+    const iterator = run[Symbol.asyncIterator]();
+    const rejected = Promise.all([
+      rejects(run.completed, /CodeRelay client closed/),
+      rejects(iterator.next(), /CodeRelay client closed/),
+    ]);
+
+    await sdk.close();
+    const [status] = await Promise.all([sdk.status(), rejected]);
+    expect(status.transport).toBe("stdio");
   });
 
   test("delegates cancellation to the host", async () => {

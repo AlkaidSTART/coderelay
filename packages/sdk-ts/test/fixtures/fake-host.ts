@@ -85,6 +85,13 @@ lines.on("line", (line) => {
         reasons: ["fixture route"],
       },
     });
+    if (process.env.CODERELAY_FIXTURE_RUN_MODE === "exit") {
+      process.stdout.write("", () => process.exit(17));
+      return;
+    }
+    if (process.env.CODERELAY_FIXTURE_RUN_MODE === "wait") {
+      return;
+    }
     write({
       protocolVersion: 1,
       runId,
