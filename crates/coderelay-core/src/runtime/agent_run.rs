@@ -597,7 +597,9 @@ async fn run_agent(
                     None => streams_closed = true,
                 }
             }
-            status = child.wait(), if child_exit.is_none() => {
+            // On Unix, keep the process group leader unreaped until its output
+            // pipes close. Descendants may still hold them after the leader exits.
+            status = child.wait(), if child_exit.is_none() && (!cfg!(unix) || streams_closed) => {
                 if let Ok(status) = status {
                     child_exit = Some(status);
                 }

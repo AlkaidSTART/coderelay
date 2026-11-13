@@ -155,6 +155,18 @@ async fn timeout_terminates_the_process_group() {
 }
 
 #[tokio::test]
+async fn timeout_terminates_descendants_after_the_group_leader_exits() {
+    let mut options = shell("sleep 6 & exit 0");
+    options.timeout = Some(Duration::from_millis(300));
+
+    let result = tokio::time::timeout(Duration::from_secs(3), run(options))
+        .await
+        .expect("timeout must close pipes held by the descendant");
+
+    assert_eq!(result.status, AgentRunStatus::Timeout);
+}
+
+#[tokio::test]
 async fn user_abort_wins_over_a_later_timeout() {
     let mut options = shell("sleep 30");
     options.timeout = Some(Duration::from_millis(120));
