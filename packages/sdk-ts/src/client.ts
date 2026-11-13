@@ -64,12 +64,14 @@ interface EventWaiter {
   resolve: (event: AgentEvent | null) => void;
 }
 
+type RunOutcome = AgentRunResult | Error;
+
 interface RunState {
   queue: AgentEvent[];
   waiters: EventWaiter[];
-  completed: AgentRunResult | null;
-  completionPromise: Promise<AgentRunResult>;
-  resolveCompletion: (result: AgentRunResult) => void;
+  outcome: RunOutcome | null;
+  completionPromise: Promise<RunOutcome>;
+  resolveCompletion: (outcome: RunOutcome) => void;
 }
 
 export type EventListener = (event: AgentEvent, envelope: EventEnvelope) => void;
@@ -112,14 +114,14 @@ function isRunCompletedEnvelope(value: unknown): value is RunCompletedEnvelope {
 }
 
 function createRunState(): RunState {
-  let resolveCompletion: (result: AgentRunResult) => void = () => undefined;
-  const completionPromise = new Promise<AgentRunResult>((resolve) => {
+  let resolveCompletion: (outcome: RunOutcome) => void = () => undefined;
+  const completionPromise = new Promise<RunOutcome>((resolve) => {
     resolveCompletion = resolve;
   });
   return {
     queue: [],
     waiters: [],
-    completed: null,
+    outcome: null,
     completionPromise,
     resolveCompletion,
   };
@@ -200,24 +202,28 @@ export class CoderelayClient {
         }
         reject(error);
       });
-      child.once("exit", (code, signal) => {
+      // Drain final protocol messages before failing any unfinished runs.
+      child.once("close", (code, signal) => {
+        if (this.child !== child) {
+          return;
+        }
         const error = new Error(
           `CodeRelay host exited (${code ?? signal ?? "unknown"}): ${this.stderrTail.trim()}`,
         );
-        for (const request of this.pending.values()) {
-          clearTimeout(request.timer);
-          request.reject(error);
-        }
-        this.pending.clear();
-        this.child = null;
-        this.startPromise = null;
+        this.resetHost(error);
       });
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (chunk: string) => {
-        this.stderrTail = (this.stderrTail + chunk).slice(-8_000);
+        if (this.child === child) {
+          this.stderrTail = (this.stderrTail + chunk).slice(-8_000);
+        }
       });
       const lines = createInterface({ input: child.stdout });
-      lines.on("line", (line) => this.handleLine(line));
+      lines.on("line", (line) => {
+        if (this.child === child) {
+          this.handleLine(line);
+        }
+      });
     });
     await this.startPromise;
     return this;
@@ -252,8 +258,10 @@ export class CoderelayClient {
   }
 
   async startRun(params: StartRunParams): Promise<CoderelayRun> {
-    const result = await this.request<StartRunResult>(METHODS.startRun, params);
-    this.ensureRun(result.runId);
+    const result = await this.request<StartRunResult>(METHODS.startRun, params, (start) => {
+      // Register the run while handling the response, before the host can close.
+      this.ensureRun(start.runId);
+    });
     return new CoderelayRun(this, result);
   }
 
@@ -291,8 +299,7 @@ export class CoderelayClient {
 
   async close(): Promise<void> {
     const child = this.child;
-    this.child = null;
-    this.startPromise = null;
+    this.resetHost(new Error("CodeRelay client closed"));
     if (child && !child.killed) {
       child.kill();
     }
@@ -306,21 +313,51 @@ export class CoderelayClient {
         yield queued;
         continue;
       }
-      if (state.completed) {
+      if (state.outcome instanceof Error) {
+        throw state.outcome;
+      }
+      if (state.outcome) {
         return;
       }
       const event = await new Promise<AgentEvent | null>((resolve) => {
         state.waiters.push({ resolve });
       });
-      if (event === null) {
-        return;
+      if (event !== null) {
+        yield event;
       }
-      yield event;
     }
   }
 
-  waitForRun(runId: string): Promise<AgentRunResult> {
-    return this.ensureRun(runId).completionPromise;
+  async waitForRun(runId: string): Promise<AgentRunResult> {
+    const outcome = await this.ensureRun(runId).completionPromise;
+    if (outcome instanceof Error) {
+      throw outcome;
+    }
+    return outcome;
+  }
+
+  private resetHost(error: Error): void {
+    this.child = null;
+    this.startPromise = null;
+    this.stderrTail = "";
+    for (const request of this.pending.values()) {
+      clearTimeout(request.timer);
+      request.reject(error);
+    }
+    this.pending.clear();
+    for (const state of this.runs.values()) {
+      if (!state.outcome) {
+        this.finishRun(state, error);
+      }
+    }
+  }
+
+  private finishRun(state: RunState, outcome: RunOutcome): void {
+    state.outcome = outcome;
+    state.resolveCompletion(outcome);
+    for (const waiter of state.waiters.splice(0)) {
+      waiter.resolve(null);
+    }
   }
 
   private ensureRun(runId: string): RunState {
@@ -357,11 +394,7 @@ export class CoderelayClient {
 
     if (isRunCompletedEnvelope(parsed)) {
       const state = this.ensureRun(parsed.runId);
-      state.completed = parsed.result;
-      state.resolveCompletion(parsed.result);
-      for (const waiter of state.waiters.splice(0)) {
-        waiter.resolve(null);
-      }
+      this.finishRun(state, parsed.result);
       for (const listener of this.completedListeners) {
         listener(parsed.result, parsed);
       }
@@ -404,7 +437,11 @@ export class CoderelayClient {
     pending.resolve(parsed.result);
   }
 
-  private async request<T>(method: Method, params?: unknown): Promise<T> {
+  private async request<T>(
+    method: Method,
+    params?: unknown,
+    onResponse?: (result: T) => void,
+  ): Promise<T> {
     await this.start();
     if (!this.child) {
       throw new Error("CodeRelay host is not running");
@@ -422,7 +459,15 @@ export class CoderelayClient {
         reject(new Error(`CodeRelay request timed out: ${method}`));
       }, this.options.requestTimeoutMs);
       this.pending.set(requestId, {
-        resolve: (value) => resolve(value as T),
+        resolve: (value) => {
+          const result = value as T;
+          try {
+            onResponse?.(result);
+            resolve(result);
+          } catch (error) {
+            reject(error);
+          }
+        },
         reject,
         timer,
       });
