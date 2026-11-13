@@ -13,6 +13,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StatsView } from "./components/StatsView";
 import { Titlebar } from "./components/Titlebar";
 import { WorkspaceView } from "./components/WorkspaceView";
+import { RunEvents } from "./runEvents";
 import { isConversationRouteActive, useNavigationStore } from "./stores/navigationStore";
 import { useThemeStore } from "./stores/themeStore";
 import type {
@@ -87,7 +88,8 @@ export function App() {
     );
   }, [workspaceInput, form.agent]);
 
-  const activeRunId = useRef<string | null>(null);
+  const [runEvents] = useState(() => new RunEvents());
+  const runListenersReady = useRef<Promise<void[]> | null>(null);
   const currentWorkspace = useRef("");
 
   // Navigation store
@@ -398,58 +400,67 @@ export function App() {
     let disposed = false;
     const unlisteners: UnlistenFn[] = [];
 
-    void Promise.all([
-      listen<RunEventPayload>("run-event", ({ payload }) => {
-        if (payload.runId !== activeRunId.current) {
-          return;
-        }
-        setState((current) => {
-          const nextActivity = eventActivity(payload.event);
-          return {
-            ...current,
-            output:
-              payload.event.kind === "assistant_text"
-                ? current.output + (payload.event.text ?? "")
-                : current.output,
-            activity: nextActivity
-              ? [...current.activity.slice(-99), nextActivity]
-              : current.activity,
-          };
-        });
-      }),
-      listen<RunCompletedPayload>("run-completed", ({ payload }) => {
-        if (payload.runId !== activeRunId.current) {
-          return;
-        }
-        activeRunId.current = null;
-        setActiveSessionId(payload.sessionId);
-        setState((current) => ({
-          ...current,
-          running: false,
-          runId: null,
-          activeSessionId: payload.sessionId,
-          result: payload.result,
-          output: payload.result.text || current.output,
-        }));
-        void refreshSessions(currentWorkspace.current);
-      }),
-      listen<SessionUpdatedPayload>("session-updated", () => {
-        void refreshSessions(currentWorkspace.current);
-        void refreshRecentWorkspaces();
-      }),
-    ]).then((registered) => {
+    function track(unlisten: UnlistenFn): void {
       if (disposed) {
-        registered.forEach((unlisten) => unlisten());
+        unlisten();
       } else {
-        unlisteners.push(...registered);
+        unlisteners.push(unlisten);
       }
-    });
+    }
+
+    function reportListenerError(error: unknown): void {
+      if (!disposed) {
+        setState((current) => ({ ...current, error: messageOf(error) }));
+      }
+    }
+
+    const ready = Promise.all([
+      listen<RunEventPayload>("run-event", ({ payload }) => {
+        runEvents.dispatch(payload.runId, () => {
+          setState((current) => {
+            const nextActivity = eventActivity(payload.event);
+            return {
+              ...current,
+              output:
+                payload.event.kind === "assistant_text"
+                  ? current.output + (payload.event.text ?? "")
+                  : current.output,
+              activity: nextActivity
+                ? [...current.activity.slice(-99), nextActivity]
+                : current.activity,
+            };
+          });
+        });
+      }).then(track),
+      listen<RunCompletedPayload>("run-completed", ({ payload }) => {
+        runEvents.dispatch(payload.runId, () => {
+          runEvents.reset();
+          setActiveSessionId(payload.sessionId);
+          setState((current) => ({
+            ...current,
+            running: false,
+            runId: null,
+            activeSessionId: payload.sessionId,
+            result: payload.result,
+            output: payload.result.text || current.output,
+          }));
+          void refreshSessions(currentWorkspace.current);
+        });
+      }).then(track),
+    ]);
+    runListenersReady.current = ready;
+    void ready.catch(reportListenerError);
+    void listen<SessionUpdatedPayload>("session-updated", () => {
+      void refreshSessions(currentWorkspace.current);
+      void refreshRecentWorkspaces();
+    }).then(track).catch(reportListenerError);
 
     return () => {
       disposed = true;
+      runListenersReady.current = null;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [setActiveSessionId]);
+  }, [runEvents, setActiveSessionId]);
 
   const discovery = state.discovery;
   const agents = discovery?.agents ?? [];
@@ -481,10 +492,16 @@ export function App() {
 
   async function startRun(): Promise<void> {
     const prompt = form.prompt.trim();
-    if (!prompt || state.running) {
+    const ready = runListenersReady.current;
+    if (!prompt || !ready || !runEvents.begin()) {
       return;
     }
     try {
+      await ready;
+      if (runListenersReady.current !== ready) {
+        runEvents.reset();
+        return;
+      }
       const response = await invoke<StartRunResponse>("start_run", {
         request: {
           workspace: {
@@ -505,7 +522,6 @@ export function App() {
           sessionId: activeSessionId,
         },
       });
-      activeRunId.current = response.runId;
       setActiveSessionId(response.sessionId);
       setState((current) => ({
         ...current,
@@ -522,7 +538,9 @@ export function App() {
         },
         error: null,
       }));
+      runEvents.activate(response.runId);
     } catch (error) {
+      runEvents.reset();
       setState((current) => ({ ...current, error: messageOf(error) }));
     }
   }
